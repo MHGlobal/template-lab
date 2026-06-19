@@ -1,0 +1,58 @@
+{
+  "id": "promo-instagram-test-001",
+  "name": "Promoção Relâmpago Teste",
+  "category": "social-media",
+  "thumbnail": "",
+  "width": 1080,
+  "height": 1080,
+  "tags": ["teste", "promoção", "instagram"],
+  "fabric_json": {
+    "version": "5.3.0",
+    "objects": [
+      {
+        "type": "rect",
+        "left": 0,
+        "top": 0,
+        "width": 1080,
+        "height": 1080,
+        "fill": "#27A300",
+        "selectable": false
+      },
+      {
+        "type": "i-text",
+        "left": 540,
+        "top": 300,
+        "text": "OFERTA\nESPECIAL",
+        "fontSize": 120,
+        "fontWeight": "bold",
+        "fontFamily": "Inter",
+        "fill": "#ffffff",
+        "originX": "center",
+        "originY": "center",
+        "textAlign": "center"
+      },
+      {
+        "type": "i-text",
+        "left": 540,
+        "top": 500,
+        "text": "50% OFF",
+        "fontSize": 80,
+        "fontWeight": "bold",
+        "fontFamily": "Inter",
+        "fill": "#ECFFEB",
+        "originX": "center",
+        "originY": "center",
+        "backgroundColor": "#005C00",
+        "padding": 20
+      },
+      {
+        "type": "circle",
+        "left": 800,
+        "top": 800,
+        "radius": 100,
+        "fill": "#ffffff",
+        "opacity": 0.2
+      }
+    ]
+  }
+}

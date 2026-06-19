@@ -1,0 +1,29 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ECFFEB;
+  --foreground: #005C00;
+  --primary: #27A300;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+@layer components {
+  .bento-card {
+    @apply bg-white/60 backdrop-blur-md border border-white/20 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all duration-300;
+  }
+
+  .glass-panel {
+    @apply bg-white/40 backdrop-blur-xl border border-white/40 shadow-xl;
+  }
+
+  .aurora-bg {
+    background: radial-gradient(circle at 10% 20%, rgba(39, 163, 0, 0.1) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(0, 92, 0, 0.1) 0%, transparent 40%);
+  }
+}
