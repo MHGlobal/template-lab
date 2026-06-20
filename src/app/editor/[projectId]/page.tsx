@@ -19,7 +19,6 @@ export default function EditorPage() {
   const { t } = useTranslation();
   
   const projectId = params?.projectId as string;
-  const templateId = searchParams?.get('templateId');
 
   const [loading, setLoading] = useState(true);
   const [projectData, setProjectData] = useState<any>(null);
@@ -28,7 +27,6 @@ export default function EditorPage() {
     const loadData = async () => {
       try {
         if (!projectId || projectId === 'new') {
-          // Verifica se há um template pendente no localStorage (de importação)
           const pending = localStorage.getItem('pending_template');
           if (pending) {
             const data = JSON.parse(pending);
@@ -39,7 +37,7 @@ export default function EditorPage() {
               height: data.height || 1080,
               fabric_json: data.fabric_json || null
             });
-            // Opcional: mantemos no localStorage para fallbacks ou removemos
+            localStorage.removeItem('pending_template');
           } else {
             // Cria um projeto limpo padrão
             setProjectData({
@@ -80,7 +78,7 @@ export default function EditorPage() {
     };
 
     loadData();
-  }, [projectId, templateId]);
+  }, [projectId]);
 
   if (loading) {
     return (

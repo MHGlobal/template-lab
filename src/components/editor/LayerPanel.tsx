@@ -89,7 +89,7 @@ export default function LayerPanel({
             const realIdx = item.index;
             const isActive = activeObject === item.obj;
             const isDragging = dragIndex === realIdx;
-            const vis = (item.obj as any).visible !== false && (item.obj as any).opacity !== 0;
+            const vis = (item.obj as any).visible !== false;
             const locked = (item.obj as any).lockMovementX === true;
             const isGrid = (item.obj as any).data?.type === 'grid';
 

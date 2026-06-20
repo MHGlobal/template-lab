@@ -32,7 +32,7 @@ export const FabricCanvas: React.FC<FabricCanvasProps> = ({
       });
 
       if (initialJson) {
-        fabricCanvas.loadFromJSON(initialJson, () => {
+        fabricCanvas.loadFromJSON(initialJson).then(() => {
           fabricCanvas.renderAll();
         });
       }
@@ -55,7 +55,7 @@ export const FabricCanvas: React.FC<FabricCanvasProps> = ({
 
   useEffect(() => {
     if (canvas && initialJson) {
-      canvas.loadFromJSON(initialJson, () => {
+      canvas.loadFromJSON(initialJson).then(() => {
         canvas.renderAll();
       });
     }

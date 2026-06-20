@@ -51,6 +51,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
   const placementPreview = useRef<fabric.FabricObject | null>(null);
   const isPlacingRef = useRef(false);
   const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedOpacityMap = useRef(new WeakMap<fabric.FabricObject, number>());
 
   const isInternalUpdate = useRef(false);
   const isGridVisibleRef = useRef(isGridVisible);
@@ -177,24 +178,24 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
 
     switch (tool) {
       case 'rect':
-        return new fabric.Rect({ left: x, top: y, width: absW, height: absH, fill: colors.rect, stroke: '#000000', strokeWidth: 0 });
+        return new fabric.Rect({ left: x, top: y, width: absW, height: absH, fill: colors.rect, stroke: '#000000', strokeWidth: 0, strokeUniform: true });
       case 'rounded-rect':
-        return new fabric.Rect({ left: x, top: y, width: absW, height: absH, rx: 12, ry: 12, fill: colors['rounded-rect'], stroke: '#000000', strokeWidth: 0 });
+        return new fabric.Rect({ left: x, top: y, width: absW, height: absH, rx: 12, ry: 12, fill: colors['rounded-rect'], stroke: '#000000', strokeWidth: 0, strokeUniform: true });
       case 'circle':
-        return new fabric.Circle({ left: x, top: y, radius: Math.max(absW, absH) / 2, fill: colors.circle, stroke: '#000000', strokeWidth: 0 });
+        return new fabric.Circle({ left: x, top: y, radius: Math.max(absW, absH) / 2, fill: colors.circle, stroke: '#000000', strokeWidth: 0, strokeUniform: true });
       case 'ellipse':
-        return new fabric.Ellipse({ left: x, top: y, rx: absW / 2, ry: absH / 2, fill: colors.ellipse, stroke: '#000000', strokeWidth: 0 });
+        return new fabric.Ellipse({ left: x, top: y, rx: absW / 2, ry: absH / 2, fill: colors.ellipse, stroke: '#000000', strokeWidth: 0, strokeUniform: true });
       case 'triangle':
-        return new fabric.Triangle({ left: x, top: y, width: absW, height: absH, fill: colors.triangle, stroke: '#000000', strokeWidth: 0 });
+        return new fabric.Triangle({ left: x, top: y, width: absW, height: absH, fill: colors.triangle, stroke: '#000000', strokeWidth: 0, strokeUniform: true });
       case 'line':
-        return new fabric.Line([0, 0, absW, absH], { left: x, top: y, stroke: '#10B981', strokeWidth: 4, hasBorders: true });
+        return new fabric.Line([0, 0, absW, absH], { left: x, top: y, stroke: '#10B981', strokeWidth: 4, hasBorders: true, strokeUniform: true });
       case 'arrow': {
         const len = Math.sqrt(absW * absW + absH * absH);
         if (len < 10) return null;
         const angle = Math.atan2(height, width);
         const headSize = Math.min(20, len * 0.3);
         const arrow = new fabric.Group([
-          new fabric.Line([0, 0, absW, absH], { stroke: colors.arrow, strokeWidth: 4 }),
+          new fabric.Line([0, 0, absW, absH], { stroke: colors.arrow, strokeWidth: 4, strokeUniform: true }),
           new fabric.Triangle({
             left: absW, top: absH, width: headSize, height: headSize * 0.6,
             fill: colors.arrow, angle: 0, originX: 'center', originY: 'center',
@@ -215,7 +216,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
           const a = (Math.PI / spikes) * i - Math.PI / 2;
           points.push({ x: cx + radius * Math.cos(a), y: cy + radius * Math.sin(a) });
         }
-        return new fabric.Polygon(points, { left: x, top: y, fill: colors.star, stroke: '#000000', strokeWidth: 0, data: { isStar: true } } as any);
+        return new fabric.Polygon(points, { left: x, top: y, fill: colors.star, stroke: '#000000', strokeWidth: 0, data: { isStar: true }, strokeUniform: true } as any);
       }
       case 'polygon': {
         const r = Math.max(absW, absH) / 2;
@@ -227,7 +228,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
           const a = (Math.PI * 2 / sides) * i - Math.PI / 2;
           pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
         }
-        return new fabric.Polygon(pts, { left: x, top: y, fill: '#8B5CF6', stroke: '#000000', strokeWidth: 0 });
+        return new fabric.Polygon(pts, { left: x, top: y, fill: '#8B5CF6', stroke: '#000000', strokeWidth: 0, strokeUniform: true });
       }
       default:
         return null;
@@ -446,6 +447,19 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
 
     // Placement events (use ref to avoid stale closure)
     canvas.on('mouse:down', (opt) => {
+      if (activeToolRef.current === 'select' && opt.e.altKey && opt.target) {
+        const active = canvas.getActiveObject();
+        if (active) {
+          active.clone().then((clone: fabric.Object) => {
+            clone.set({ left: (clone.left ?? 0) + 20, top: (clone.top ?? 0) + 20 });
+            canvas.add(clone);
+            canvas.setActiveObject(clone);
+            canvas.renderAll();
+            saveHistory();
+          });
+          return;
+        }
+      }
       if (activeToolRef.current === 'arrow') arrowMouseDown(opt);
       else placementMouseDown(opt);
     });
@@ -891,6 +905,10 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     }
     canvas.loadFromJSON(json).then(() => {
       if (!fabricCanvasRef.current) return;
+      fabricCanvasRef.current.getObjects().forEach(obj => {
+        (obj as any).data = (obj as any).data || {};
+      });
+      fabricCanvasRef.current.renderAll();
       captureHistory();
       updateActiveProps();
     });
@@ -1126,8 +1144,8 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
 
   const setLayerVisibility = useCallback((obj: fabric.FabricObject, visible: boolean) => {
     if (!fabricCanvasRef.current) return;
-    obj.set({ visible, opacity: visible ? (obj as any)._savedOpacity || 1 : 0 });
-    if (!visible) (obj as any)._savedOpacity = obj.opacity;
+    obj.set({ visible, opacity: visible ? (savedOpacityMap.current.get(obj) ?? 1) : 0 });
+    if (!visible) savedOpacityMap.current.set(obj, obj.opacity ?? 1);
     fabricCanvasRef.current.renderAll();
   }, []);
 
@@ -1152,14 +1170,8 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     const objects = canvas.getObjects();
     const currentIndex = objects.indexOf(obj);
     if (currentIndex === -1 || currentIndex === newIndex) return;
-    const delta = Math.abs(currentIndex - newIndex);
-    for (let i = 0; i < delta; i++) {
-      if (newIndex < currentIndex) {
-        canvas.sendObjectBackwards(obj);
-      } else {
-        canvas.bringObjectForward(obj);
-      }
-    }
+    const clampedIndex = Math.max(0, Math.min(newIndex, objects.length - 1));
+    canvas.moveObjectTo(obj, clampedIndex);
     canvas.renderAll();
     saveHistory();
   }, [saveHistory]);

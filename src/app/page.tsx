@@ -1,20 +1,33 @@
-import React from 'react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, 
   AlertCircle, 
   Image as ImageIcon, 
   Clock, 
   Plus,
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from 'lucide-react';
 import Link from 'next/link';
+import { templateService } from '@/services/templateService';
+import type { FabricTemplate } from '@/types';
 
 export default function Dashboard() {
+  const [templates, setTemplates] = useState<FabricTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    templateService.getTemplates().then(data => {
+      setTemplates(data);
+      setLoading(false);
+    });
+  }, []);
+
   const stats = [
-    { label: 'Total Templates', value: '12', icon: ImageIcon, color: 'text-blue-500' },
-    { label: 'Aprovados', value: '8', icon: CheckCircle2, color: 'text-green-500' },
-    { label: 'Pendentes', value: '3', icon: Clock, color: 'text-yellow-500' },
-    { label: 'Com Erro', value: '1', icon: AlertCircle, color: 'text-red-500' },
+    { label: 'Total Templates', value: templates.length.toString(), icon: ImageIcon, color: 'text-blue-500' },
+    { label: 'Categorias', value: new Set(templates.map(t => t.category)).size.toString(), icon: CheckCircle2, color: 'text-green-500' },
   ];
 
   return (
@@ -40,10 +53,10 @@ export default function Dashboard() {
               <div className={`p-3 rounded-2xl bg-white shadow-sm ${stat.color}`}>
                 <stat.icon size={24} />
               </div>
-              <span className="text-xs font-bold px-2 py-1 rounded-full bg-green-100 text-[#005C00]">Semana</span>
+              <span className="text-xs font-bold px-2 py-1 rounded-full bg-green-100 text-[#005C00]">Total</span>
             </div>
             <h3 className="text-green-800/60 font-semibold text-sm uppercase tracking-wider">{stat.label}</h3>
-            <p className="text-4xl font-bold mt-1">{stat.value}</p>
+            <p className="text-4xl font-bold mt-1">{loading ? '-' : stat.value}</p>
           </div>
         ))}
       </div>
@@ -56,25 +69,43 @@ export default function Dashboard() {
               Ver todos <ArrowRight size={14} />
             </Link>
           </div>
-          <div className="space-y-4">
-            {[1, 2, 3].map((item) => (
-              <div key={item} className="flex items-center gap-4 p-4 rounded-2xl bg-white/40 border border-white/20 hover:bg-white/60 transition-colors cursor-pointer">
-                <div className="w-16 h-16 bg-green-100 rounded-xl flex items-center justify-center text-[#27A300] font-bold">
-                  T{item}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-green-600" />
+            </div>
+          ) : templates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <ImageIcon className="w-12 h-12 text-gray-300 mb-4" />
+              <p className="text-gray-400 font-medium">Nenhum template encontrado</p>
+              <Link href="/import" className="text-[#27A300] text-sm font-bold mt-2 hover:underline">
+                Importar seu primeiro template
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {templates.slice(0, 3).map((template) => (
+                <div key={template.id} className="flex items-center gap-4 p-4 rounded-2xl bg-white/40 border border-white/20 hover:bg-white/60 transition-colors cursor-pointer">
+                  <div className="w-16 h-16 bg-green-100 rounded-xl flex items-center justify-center text-[#27A300] font-bold">
+                    {template.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold">{template.name}</h4>
+                    <p className="text-sm text-green-800/60">
+                      Categoria: {template.category === 'social-media' ? 'Social Media' : template.category} 
+                      {template.width && template.height ? ` • ${template.width}x${template.height}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    {template.tags?.slice(0, 2).map(tag => (
+                      <span key={tag} className="text-[10px] font-bold px-2 py-1 rounded bg-green-100 text-[#005C00] ml-1">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h4 className="font-bold">Template Promoção Instagram {item}</h4>
-                  <p className="text-sm text-green-800/60">Categoria: Social Media • 1080x1080</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-green-500/10 text-green-600 border border-green-500/20">
-                    Aprovado
-                  </span>
-                  <p className="text-xs text-green-800/40 mt-1">2 horas atrás</p>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="bento-card flex flex-col justify-center items-center text-center bg-gradient-to-br from-[#27A300] to-[#005C00] text-white">
@@ -82,13 +113,13 @@ export default function Dashboard() {
             <CheckCircle2 size={40} />
           </div>
           <h2 className="text-2xl font-bold mb-2">Meta do MVP</h2>
-          <p className="text-green-100/80 mb-6">Estamos a 80% do objetivo de 20 templates aprovados.</p>
+          <p className="text-green-100/80 mb-6">{templates.length} de 20 templates criados.</p>
           <div className="w-full bg-white/10 rounded-full h-3 mb-6 overflow-hidden">
-            <div className="bg-white h-full w-[80%]" />
+            <div className="bg-white h-full" style={{ width: `${Math.min(100, (templates.length / 20) * 100)}%` }} />
           </div>
-          <button className="w-full py-4 bg-white text-[#005C00] rounded-2xl font-bold shadow-xl hover:scale-105 transition-transform">
-            Validar Próximo
-          </button>
+          <Link href="/library" className="w-full py-4 bg-white text-[#005C00] rounded-2xl font-bold shadow-xl hover:scale-105 transition-transform text-center">
+            {templates.length === 0 ? 'Importar Template' : 'Ver Templates'}
+          </Link>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileJson, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
 import { validateTemplate } from '@/lib/validators/templateValidator';
+import { getEditorForCategory } from '@/lib/editorRegistry';
 
 export default function ImportPage() {
   const [jsonText, setJsonText] = useState('');
@@ -35,7 +36,8 @@ export default function ImportPage() {
       if (validation.valid) {
         localStorage.setItem('pending_template', JSON.stringify(data));
         localStorage.setItem('pending_template_warnings', JSON.stringify(validation.warnings));
-        router.push('/viewer');
+        const editorRoute = getEditorForCategory(data.category);
+        router.push(`/${editorRoute}/new?fromImport=true&category=${data.category}`);
       } else {
         setError(`Erro de Validação: ${validation.errors.join(', ')}`);
         setWarnings(validation.warnings);

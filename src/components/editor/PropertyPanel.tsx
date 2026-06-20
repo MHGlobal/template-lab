@@ -24,6 +24,8 @@ interface PropertyPanelProps {
   onBringToFront: () => void;
   onSendToBack: () => void;
   onDelete: () => void;
+  onGroup?: () => void;
+  onUngroup?: () => void;
 }
 
 export default function PropertyPanel({
@@ -31,6 +33,7 @@ export default function PropertyPanel({
   onSetOpacity, onSetPosition, onSetSize,
   onSetFontFamily, onSetFontSize, onSetFontWeight, onSetTextAlign, onSetTextContent,
   onApplyImageFilter, onBringToFront, onSendToBack, onDelete,
+  onGroup, onUngroup,
 }: PropertyPanelProps) {
   if (!activeProps) {
     return (
@@ -84,6 +87,20 @@ export default function PropertyPanel({
           Eliminar
         </button>
       </div>
+      {activeProps.type === 'group' && onUngroup && (
+        <div className="px-4 pb-3">
+          <button onClick={onUngroup} className="w-full p-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+            Desagrupar
+          </button>
+        </div>
+      )}
+      {onGroup && !activeProps.type?.includes('group') && (
+        <div className="px-4 pb-3">
+          <button onClick={onGroup} className="w-full p-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+            Agrupar seleção
+          </button>
+        </div>
+      )}
 
       {/* Position */}
       <Section title="Posição" icon={Move}>
