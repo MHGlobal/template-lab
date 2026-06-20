@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useEditor } from '@/hooks/useEditor';
 import { templateService } from '@/services/templateService';
 import { useTranslation } from '@/providers/LanguageContext';
@@ -11,6 +11,7 @@ import {
 import Toolbar from './Toolbar';
 import PropertyPanel from './PropertyPanel';
 import ZoomControls from './ZoomControls';
+import LayerPanel from './LayerPanel';
 
 interface EditorProps {
   projectId?: string;
@@ -32,8 +33,11 @@ export default function Editor({
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [editorName, setEditorName] = useState(name);
 
+  const [rightPanelTab, setRightPanelTab] = useState<'properties' | 'layers'>('properties');
+
   const {
-    addRect, addCircle, addTriangle, addLine, addPolygon, addStar,
+    isReady,
+    activeTool, setActiveTool,
     toggleFreeDrawing, addText, addImage,
     toggleGrid, isGridVisible,
     togglePan, isPanMode,
@@ -43,17 +47,32 @@ export default function Editor({
     setFontFamily, setFontSize, setFontWeight, setTextAlign, setTextContent,
     applyImageFilter,
     bringToFront, sendToBack, deleteSelected,
+    groupSelection, ungroupSelection,
+    alignSelected, distributeSelected,
     undo, redo, loadJson,
     exportToImage, exportToJson,
-    activeProps, isDrawingMode,
+    activeProps, selectedObject, isDrawingMode,
+    getCanvasObjects, selectObject,
+    setLayerVisibility, setLayerLock, reorderLayer,
   } = useEditor(canvasRef, { width, height });
 
+  const canvasObjects = getCanvasObjects();
+
+  const handleToggleVisibility = useCallback((obj: any) => {
+    const wasVisible = obj.visible !== false && obj.opacity !== 0;
+    setLayerVisibility(obj, !wasVisible);
+  }, [setLayerVisibility]);
+
+  const handleToggleLock = useCallback((obj: any) => {
+    const wasLocked = obj.lockMovementX === true;
+    setLayerLock(obj, !wasLocked);
+  }, [setLayerLock]);
+
   useEffect(() => {
-    if (initialJson) {
-      const timer = setTimeout(() => loadJson(initialJson), 200);
-      return () => clearTimeout(timer);
+    if (initialJson && isReady) {
+      loadJson(initialJson);
     }
-  }, [initialJson, loadJson]);
+  }, [initialJson, isReady, loadJson]);
 
   const handleExport = () => {
     const dataUrl = exportToImage('png');
@@ -87,15 +106,11 @@ export default function Editor({
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans">
       <Toolbar
-        onAddRect={addRect}
-        onAddCircle={addCircle}
-        onAddTriangle={addTriangle}
-        onAddLine={addLine}
-        onAddPolygon={addPolygon}
-        onAddStar={addStar}
+        activeTool={activeTool}
+        onSelectTool={setActiveTool}
         onAddText={addText}
-        onToggleFreeDrawing={toggleFreeDrawing}
         onAddImage={addImage}
+        onToggleFreeDrawing={toggleFreeDrawing}
         onToggleGrid={toggleGrid}
         isGridVisible={isGridVisible}
         isDrawingMode={isDrawingMode}
@@ -172,24 +187,62 @@ export default function Editor({
         />
       </main>
 
-      <PropertyPanel
-        activeProps={activeProps}
-        onSetFill={setFill}
-        onSetStroke={setStroke}
-        onSetStrokeWidth={setStrokeWidth}
-        onSetOpacity={setOpacity}
-        onSetPosition={setPosition}
-        onSetSize={setSize}
-        onSetFontFamily={setFontFamily}
-        onSetFontSize={setFontSize}
-        onSetFontWeight={setFontWeight}
-        onSetTextAlign={setTextAlign}
-        onSetTextContent={setTextContent}
-        onApplyImageFilter={applyImageFilter}
-        onBringToFront={bringToFront}
-        onSendToBack={sendToBack}
-        onDelete={deleteSelected}
-      />
+      <aside className="w-72 bg-white border-l shadow-sm flex flex-col shrink-0">
+        <div className="flex border-b shrink-0">
+          <button
+            onClick={() => setRightPanelTab('properties')}
+            className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
+              rightPanelTab === 'properties'
+                ? 'text-[#27A300] border-b-2 border-[#27A300]'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            {t('editorObjectProperties')}
+          </button>
+          <button
+            onClick={() => setRightPanelTab('layers')}
+            className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
+              rightPanelTab === 'layers'
+                ? 'text-[#27A300] border-b-2 border-[#27A300]'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            {t('editorLayers')}
+          </button>
+        </div>
+
+        {rightPanelTab === 'properties' ? (
+          <PropertyPanel
+            activeProps={activeProps}
+            onSetFill={setFill}
+            onSetStroke={setStroke}
+            onSetStrokeWidth={setStrokeWidth}
+            onSetOpacity={setOpacity}
+            onSetPosition={setPosition}
+            onSetSize={setSize}
+            onSetFontFamily={setFontFamily}
+            onSetFontSize={setFontSize}
+            onSetFontWeight={setFontWeight}
+            onSetTextAlign={setTextAlign}
+            onSetTextContent={setTextContent}
+            onApplyImageFilter={applyImageFilter}
+            onBringToFront={bringToFront}
+            onSendToBack={sendToBack}
+            onDelete={deleteSelected}
+            onGroup={groupSelection}
+            onUngroup={ungroupSelection}
+          />
+        ) : (
+          <LayerPanel
+            objects={canvasObjects}
+            activeObject={selectedObject}
+            onSelectObject={selectObject}
+            onToggleVisibility={handleToggleVisibility}
+            onToggleLock={handleToggleLock}
+            onReorder={reorderLayer}
+          />
+        )}
+      </aside>
     </div>
   );
 }
