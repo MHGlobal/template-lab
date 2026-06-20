@@ -3,7 +3,7 @@
 import React from 'react';
 import {
   Layers, Move, Maximize, PaintBucket, Minus, Droplets,
-  AlignLeft, AlignCenter, AlignRight, Type,
+  AlignLeft, AlignCenter, AlignRight, Type, Image,
 } from 'lucide-react';
 import type { ActiveObjectProps } from '@/hooks/useEditor';
 
@@ -26,6 +26,9 @@ interface PropertyPanelProps {
   onDelete: () => void;
   onGroup?: () => void;
   onUngroup?: () => void;
+  canvasBg?: string;
+  onSetCanvasBg?: (color: string) => void;
+  onUploadBgImage?: () => void;
 }
 
 export default function PropertyPanel({
@@ -34,16 +37,35 @@ export default function PropertyPanel({
   onSetFontFamily, onSetFontSize, onSetFontWeight, onSetTextAlign, onSetTextContent,
   onApplyImageFilter, onBringToFront, onSendToBack, onDelete,
   onGroup, onUngroup,
+  canvasBg = '#ffffff', onSetCanvasBg, onUploadBgImage,
 }: PropertyPanelProps) {
   if (!activeProps) {
     return (
-      <aside className="w-72 bg-white border-l border-gray-200 shadow-sm h-full flex flex-col">
+      <aside className="w-72 bg-white border-l border-gray-200 shadow-sm h-full flex flex-col overflow-y-auto">
         <div className="p-4 border-b border-gray-100">
           <h2 className="text-xs font-bold text-gray-700 flex items-center gap-2 uppercase tracking-wider">
             <Layers className="w-3.5 h-3.5" />
             Propriedades
           </h2>
         </div>
+
+        {/* Canvas Background */}
+        <div className="pt-4">
+          <Section title="Fundo" icon={Image}>
+            <div className="mb-2">
+              <label className="text-[11px] font-semibold text-gray-500 block mb-1">Cor</label>
+              <ColorField value={canvasBg} onChange={v => onSetCanvasBg?.(v)} />
+            </div>
+            <button
+              onClick={onUploadBgImage}
+              className="w-full p-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Image className="w-3.5 h-3.5" />
+              Imagem de fundo
+            </button>
+          </Section>
+        </div>
+
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
           <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mb-3 text-gray-400">
             <Move className="w-5 h-5" />

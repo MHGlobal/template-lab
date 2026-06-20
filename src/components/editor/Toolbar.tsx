@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   MousePointer2, Square, Circle, Triangle, Minus, Hexagon, Star,
   Type, PenTool, Image, Grid3x3, Egg, ArrowRight, CornerDownRight,
+  Heart, MessageCircle, Pentagon, MoreHorizontal,
 } from 'lucide-react';
 import type { ToolId } from '@/hooks/useEditor';
 
@@ -31,6 +32,13 @@ const shapeTools: { id: ToolId; icon: React.ComponentType<{ className?: string }
   { id: 'star', icon: Star, label: 'Estrela' },
 ];
 
+const moreTools: { id: ToolId; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
+  { id: 'heart', icon: Heart, label: 'Coração' },
+  { id: 'speech-bubble', icon: MessageCircle, label: 'Balão' },
+  { id: 'pentagon', icon: Pentagon, label: 'Pentágono' },
+  { id: 'dashed-line', icon: Minus, label: 'Linha Tracejada' },
+];
+
 const actionTools = [
   { id: 'text', icon: Type, label: 'Texto (T)', action: 'onAddText' as const },
   { id: 'free-draw', icon: PenTool, label: 'Desenho Livre (D)', action: 'onToggleFreeDrawing' as const, toggle: true },
@@ -44,25 +52,47 @@ export default function Toolbar({
   onToggleFreeDrawing, onToggleGrid,
   isGridVisible, isDrawingMode,
 }: ToolbarProps) {
+  const [showMore, setShowMore] = useState(false);
+
+  const renderToolBtn = (id: ToolId, Icon: React.ComponentType<{ className?: string }>, label: string, isActive: boolean) => (
+    <button
+      key={id}
+      onClick={() => onSelectTool(id)}
+      title={label}
+      className={`group relative p-2 rounded-lg transition-all active:scale-95 ${
+        isActive
+          ? 'bg-green-100 text-[#27A300] shadow-sm ring-1 ring-green-300'
+          : 'hover:bg-green-50 hover:text-[#27A300] text-gray-500'
+      }`}
+    >
+      <Icon className="w-5 h-5" />
+      <span className="absolute left-full ml-2 px-2 py-0.5 bg-gray-800 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity z-50">
+        {label}
+      </span>
+    </button>
+  );
+
   return (
-    <aside className="w-14 bg-white border-r border-gray-200 flex flex-col items-center py-3 gap-1.5 shadow-sm h-full select-none">
-      {shapeTools.map(({ id, icon: Icon, label }) => (
-        <button
-          key={id}
-          onClick={() => onSelectTool(id)}
-          title={label}
-          className={`group relative p-2 rounded-lg transition-all active:scale-95 ${
-            activeTool === id
-              ? 'bg-green-100 text-[#27A300] shadow-sm ring-1 ring-green-300'
-              : 'hover:bg-green-50 hover:text-[#27A300] text-gray-500'
-          }`}
-        >
-          <Icon className="w-5 h-5" />
-          <span className="absolute left-full ml-2 px-2 py-0.5 bg-gray-800 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity z-50">
-            {label}
-          </span>
-        </button>
-      ))}
+    <aside className="w-14 bg-white border-r border-gray-200 flex flex-col items-center py-3 gap-1.5 shadow-sm h-full select-none overflow-y-auto">
+      {shapeTools.map(({ id, icon: Icon, label }) =>
+        renderToolBtn(id, Icon, label, activeTool === id)
+      )}
+
+      <div className="w-7 h-px bg-gray-200 my-1" />
+
+      <button
+        onClick={() => setShowMore(!showMore)}
+        title={showMore ? 'Menos formas' : 'Mais formas'}
+        className={`group relative p-2 rounded-lg transition-all ${
+          showMore ? 'bg-green-100 text-[#27A300]' : 'hover:bg-green-50 text-gray-400'
+        }`}
+      >
+        <MoreHorizontal className="w-5 h-5" />
+      </button>
+
+      {showMore && moreTools.map(({ id, icon: Icon, label }) =>
+        renderToolBtn(id, Icon, label, activeTool === id)
+      )}
 
       <div className="w-7 h-px bg-gray-200 my-1" />
 

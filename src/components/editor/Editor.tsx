@@ -6,12 +6,14 @@ import { templateService } from '@/services/templateService';
 import { useTranslation } from '@/providers/LanguageContext';
 import {
   Undo2, Redo2, MoveUp, MoveDown, Trash2,
-  Download, Save, Loader2,
+  Download, Save, Loader2, Eye,
 } from 'lucide-react';
 import Toolbar from './Toolbar';
 import PropertyPanel from './PropertyPanel';
 import ZoomControls from './ZoomControls';
 import LayerPanel from './LayerPanel';
+import ArtboardSelector from './ArtboardSelector';
+import SafeZoneOverlay from './SafeZoneOverlay';
 
 interface EditorProps {
   projectId?: string;
@@ -34,6 +36,9 @@ export default function Editor({
   const [editorName, setEditorName] = useState(name);
 
   const [rightPanelTab, setRightPanelTab] = useState<'properties' | 'layers'>('properties');
+  const [canvasBg, setCanvasBgState] = useState('#ffffff');
+  const [showSafeZone, setShowSafeZone] = useState(false);
+  const [canvasSize, setCanvasSize] = useState({ width, height });
 
   const {
     isReady,
@@ -54,7 +59,13 @@ export default function Editor({
     activeProps, selectedObject, isDrawingMode,
     getCanvasObjects, selectObject,
     setLayerVisibility, setLayerLock, reorderLayer,
+    resizeCanvas, setCanvasBg, uploadCanvasBg,
   } = useEditor(canvasRef, { width, height, maxHistory: 200 });
+
+  const handleResizeCanvas = useCallback((w: number, h: number) => {
+    resizeCanvas(w, h);
+    setCanvasSize({ width: w, height: h });
+  }, [resizeCanvas]);
 
   const canvasObjects = getCanvasObjects();
 
@@ -67,6 +78,25 @@ export default function Editor({
     const wasLocked = obj.lockMovementX === true;
     setLayerLock(obj, !wasLocked);
   }, [setLayerLock]);
+
+  const handleSetCanvasBg = useCallback((color: string) => {
+    setCanvasBgState(color);
+    setCanvasBg(color);
+  }, [setCanvasBg, setCanvasBgState]);
+
+  const handleUploadBgImage = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        uploadCanvasBg(file);
+        setCanvasBgState('');
+      }
+    };
+    input.click();
+  }, [uploadCanvasBg]);
 
   useEffect(() => {
     if (initialJson && isReady) {
@@ -146,6 +176,23 @@ export default function Editor({
             />
           </div>
 
+          <div className="flex items-center gap-2 ml-2">
+            <ArtboardSelector
+              currentWidth={canvasSize.width}
+              currentHeight={canvasSize.height}
+              onResize={handleResizeCanvas}
+            />
+            <button
+              onClick={() => setShowSafeZone(!showSafeZone)}
+              title={showSafeZone ? 'Ocultar zona segura' : 'Mostrar zona segura'}
+              className={`p-1.5 rounded-lg transition-colors ${
+                showSafeZone ? 'bg-green-100 text-[#27A300]' : 'hover:bg-gray-100 text-gray-500'
+              }`}
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+          </div>
+
           <div className="flex items-center gap-2">
             <button
               onClick={handleSave}
@@ -165,14 +212,15 @@ export default function Editor({
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto flex items-center justify-center p-8 bg-[#E8ECF0]" style={{
-          backgroundImage: 'radial-gradient(circle, #D0D5DD 1px, transparent 1px)',
-          backgroundSize: '20px 20px',
-        }}>
-          <div className="bg-white shadow-2xl rounded-sm">
-            <canvas ref={canvasRef} />
+          <div className="flex-1 overflow-auto flex items-center justify-center p-8 bg-[#E8ECF0]" style={{
+            backgroundImage: 'radial-gradient(circle, #D0D5DD 1px, transparent 1px)',
+            backgroundSize: '20px 20px',
+          }}>
+            <div className="relative bg-white shadow-2xl rounded-sm">
+              <canvas ref={canvasRef} />
+              <SafeZoneOverlay width={canvasSize.width} height={canvasSize.height} zoom={zoomLevel} visible={showSafeZone} />
+            </div>
           </div>
-        </div>
 
         <ZoomControls
           zoomLevel={zoomLevel}
@@ -231,6 +279,9 @@ export default function Editor({
             onDelete={deleteSelected}
             onGroup={groupSelection}
             onUngroup={ungroupSelection}
+            canvasBg={canvasBg}
+            onSetCanvasBg={handleSetCanvasBg}
+            onUploadBgImage={handleUploadBgImage}
           />
         ) : (
           <LayerPanel

@@ -30,7 +30,7 @@ export interface ActiveObjectProps {
   text?: string;
 }
 
-export type ToolId = 'select' | 'rect' | 'circle' | 'triangle' | 'ellipse' | 'line' | 'polygon' | 'star' | 'arrow' | 'rounded-rect';
+export type ToolId = 'select' | 'rect' | 'circle' | 'triangle' | 'ellipse' | 'line' | 'polygon' | 'star' | 'arrow' | 'rounded-rect' | 'heart' | 'speech-bubble' | 'pentagon' | 'dashed-line';
 
 export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options: EditorOptions) => {
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
@@ -174,6 +174,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     const colors: Record<string, string> = {
       rect: '#4F46E5', circle: '#EC4899', triangle: '#F59E0B',
       ellipse: '#8B5CF6', 'rounded-rect': '#06B6D4', arrow: '#10B981', star: '#EF4444',
+      heart: '#EF4444', 'speech-bubble': '#8B5CF6', pentagon: '#F59E0B', 'dashed-line': '#10B981',
     };
 
     switch (tool) {
@@ -230,6 +231,46 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
         }
         return new fabric.Polygon(pts, { left: x, top: y, fill: '#8B5CF6', stroke: '#000000', strokeWidth: 0, strokeUniform: true });
       }
+      case 'heart': {
+        const r = Math.max(absW, absH) / 2;
+        const cx = r; const cy = r;
+        const heartPts: fabric.XY[] = [];
+        for (let i = 0; i < 40; i++) {
+          const t = (Math.PI / 40) * i;
+          const hx = cx + 16 * Math.pow(Math.sin(t), 3) * (r / 16);
+          const hy = cy - (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * (r / 16);
+          heartPts.push({ x: hx, y: hy });
+        }
+        return new fabric.Polygon(heartPts, { left: x, top: y, fill: colors.heart, stroke: '#000000', strokeWidth: 0, strokeUniform: true });
+      }
+      case 'speech-bubble': {
+        const bw = absW; const bh = absH;
+        const triSize = 15;
+        const sbPts = [
+          { x: 0, y: 0 }, { x: bw, y: 0 },
+          { x: bw, y: bh - triSize },
+          { x: bw * 0.6 + triSize, y: bh - triSize },
+          { x: bw * 0.6, y: bh },
+          { x: bw * 0.6 - triSize, y: bh - triSize },
+          { x: 0, y: bh - triSize },
+        ];
+        return new fabric.Polygon(sbPts, { left: x, top: y, fill: colors['speech-bubble'], stroke: '#000000', strokeWidth: 0, strokeUniform: true });
+      }
+      case 'pentagon': {
+        const pr = Math.max(absW, absH) / 2;
+        const pcx = pr; const pcy = pr;
+        const pentaPts: fabric.XY[] = [];
+        for (let i = 0; i < 5; i++) {
+          const a = (Math.PI * 2 / 5) * i - Math.PI / 2;
+          pentaPts.push({ x: pcx + pr * Math.cos(a), y: pcy + pr * Math.sin(a) });
+        }
+        return new fabric.Polygon(pentaPts, { left: x, top: y, fill: colors.pentagon, stroke: '#000000', strokeWidth: 0, strokeUniform: true });
+      }
+      case 'dashed-line':
+        return new fabric.Line([0, 0, absW, absH], {
+          left: x, top: y, stroke: colors['dashed-line'], strokeWidth: 4,
+          strokeDashArray: [8, 4], strokeUniform: true,
+        });
       default:
         return null;
     }
@@ -971,6 +1012,42 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     ));
   }, [options, applyZoom, zoomTo]);
 
+  const resizeCanvas = useCallback((width: number, height: number) => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.setWidth(width);
+    canvas.setHeight(height);
+    const existingGrid = canvas.getObjects().filter(o => (o as any).data?.type === 'grid');
+    if (existingGrid.length > 0) {
+      existingGrid.forEach(o => canvas.remove(o));
+      options.width = width;
+      options.height = height;
+      addGridLines();
+    }
+    canvas.renderAll();
+  }, [addGridLines]);
+
+  const setCanvasBg = useCallback((color: string) => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.backgroundColor = color;
+    canvas.renderAll();
+    saveHistory();
+  }, [saveHistory]);
+
+  const uploadCanvasBg = useCallback((file: File) => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    const url = URL.createObjectURL(file);
+    fabric.Image.fromURL(url).then((img) => {
+      canvas.backgroundImage = img;
+      img.scaleX = canvas.width! / img.width!;
+      img.scaleY = canvas.height! / img.height!;
+      canvas.renderAll();
+      saveHistory();
+    });
+  }, [saveHistory]);
+
   const togglePan = useCallback(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
@@ -1205,5 +1282,6 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     activeProps, selectedObject,
     isDrawingMode, getCanvasObjects, selectObject,
     setLayerVisibility, setLayerLock, reorderLayer,
+    resizeCanvas, setCanvasBg, uploadCanvasBg,
   };
 };
