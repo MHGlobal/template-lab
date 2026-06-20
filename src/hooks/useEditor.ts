@@ -6,6 +6,7 @@ import * as fabric from 'fabric';
 export interface EditorOptions {
   width: number;
   height: number;
+  maxHistory?: number;
 }
 
 export interface ActiveObjectProps {
@@ -48,6 +49,8 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
   useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
   const placementAnchor = useRef<{ x: number; y: number } | null>(null);
   const placementPreview = useRef<fabric.FabricObject | null>(null);
+  const isPlacingRef = useRef(false);
+  const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isInternalUpdate = useRef(false);
   const isGridVisibleRef = useRef(isGridVisible);
@@ -102,7 +105,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     setActiveProps(extractObjectProps(obj ?? null));
   }, [extractObjectProps]);
 
-  const MAX_HISTORY = 50;
+  const MAX_HISTORY = options.maxHistory ?? 50;
 
   const getCanvasState = useCallback(() => {
     if (!fabricCanvasRef.current) return null;
@@ -114,8 +117,10 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
   const captureHistory = useCallback(() => {
     const state = getCanvasState();
     if (!state) return;
-    historyRef.current = [state];
-    historyIndexRef.current = 0;
+    const idx = historyIndexRef.current;
+    historyRef.current.length = idx + 1;
+    historyRef.current[idx + 1] = state;
+    historyIndexRef.current = idx + 1;
   }, [getCanvasState]);
 
   const saveHistory = useCallback(() => {
@@ -319,11 +324,13 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     if (!canvas || !anchor || !preview) return;
     placementAnchor.current = null;
     placementPreview.current = null;
+    isPlacingRef.current = true;
     canvas.remove(preview);
     const w = (preview.width ?? 0) * (preview.scaleX ?? 1);
     const h = (preview.height ?? 0) * (preview.scaleY ?? 1);
     if (w < 5 && h < 5) {
       canvas.renderAll();
+      isPlacingRef.current = false;
       return;
     }
     preview.set({ selectable: true, evented: true, opacity: 1 } as any);
@@ -332,6 +339,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     canvas.renderAll();
     saveHistory();
     setActiveTool('select');
+    isPlacingRef.current = false;
   }, [saveHistory, setActiveTool]);
 
   // Arrow placement (needs special handling - line + head)
@@ -422,6 +430,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       updateActiveProps();
     });
     canvas.on('object:removed', () => {
+      if (isPlacingRef.current) return;
       saveHistory();
       updateActiveProps();
     });
@@ -1048,7 +1057,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
         case 'A':
           if (ctrl) {
             e.preventDefault();
-            const selectable = canvas.getObjects().filter(o => !(o as any).evented === false || !(o as any).selectable === false);
+            const selectable = canvas.getObjects().filter(o => (o as any).evented !== false && (o as any).selectable !== false);
             if (selectable.length > 0) {
               canvas.discardActiveObject();
               const sel = new fabric.ActiveSelection(selectable, { canvas });
@@ -1090,7 +1099,10 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+    };
   }, [deleteSelected, undo, redo, saveHistory]);
 
   const nudgeSelected = useCallback((dx: number, dy: number) => {
@@ -1102,7 +1114,9 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       obj.setCoords();
     });
     canvas?.renderAll();
-  }, []);
+    if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+    nudgeTimerRef.current = setTimeout(() => saveHistory(), 200);
+  }, [saveHistory]);
 
   // Layer panel support
   const getCanvasObjects = useCallback((): { obj: fabric.FabricObject; index: number }[] => {

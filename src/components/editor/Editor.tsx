@@ -54,7 +54,7 @@ export default function Editor({
     activeProps, selectedObject, isDrawingMode,
     getCanvasObjects, selectObject,
     setLayerVisibility, setLayerLock, reorderLayer,
-  } = useEditor(canvasRef, { width, height });
+  } = useEditor(canvasRef, { width, height, maxHistory: 200 });
 
   const canvasObjects = getCanvasObjects();
 
