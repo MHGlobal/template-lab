@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Minus, Plus, Maximize, Hand, Expand } from 'lucide-react';
+import { Minus, Plus, Maximize, Hand, Expand, MousePointer2 } from 'lucide-react';
 
 interface ZoomControlsProps {
   zoomLevel: number;
@@ -9,20 +9,20 @@ interface ZoomControlsProps {
   onZoomOut: () => void;
   onZoomTo: (value: number) => void;
   onZoomFit: () => void;
+  onZoomToSelection: () => void;
   onTogglePan: () => void;
   isPanMode: boolean;
   canvasWidth: number;
   canvasHeight: number;
 }
 
-const presets = [25, 50, 75, 100, 150, 200, 400];
-
 export default function ZoomControls({
-  zoomLevel, onZoomIn, onZoomOut, onZoomTo, onZoomFit,
+  zoomLevel, onZoomIn, onZoomOut, onZoomTo, onZoomFit, onZoomToSelection,
   onTogglePan, isPanMode, canvasWidth, canvasHeight,
 }: ZoomControlsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const presets = [25, 50, 75, 100, 150, 200, 400];
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -47,6 +47,14 @@ export default function ZoomControls({
           className="p-1.5 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
         >
           <Expand className="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          onClick={onZoomToSelection}
+          title="Zoom à seleção"
+          className="p-1.5 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+        >
+          <MousePointer2 className="w-3.5 h-3.5" />
         </button>
 
         <button
