@@ -1,0 +1,75 @@
+package com.rs.localstorage;
+
+import android.app.*;
+import android.content.*;
+import android.graphics.Bitmap;
+import android.media.MediaMetadataRetriever;
+import android.os.*;
+import java.io.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.*;
+
+public class HotspotServerService extends Service {
+    static final int PORT=8080;
+    static final long SESSION_MS=4L*60L*60L*1000L;
+    volatile boolean running=false;
+    ServerSocket ss;
+    ExecutorService pool=Executors.newFixedThreadPool(16);
+    final Map<String,Session> sessions=new ConcurrentHashMap<>();
+    final Map<String,Integer> failures=new ConcurrentHashMap<>();
+    final Map<String,Long> blocked=new ConcurrentHashMap<>();
+    final Semaphore streamSlots=new Semaphore(5,true);
+    UserStore users;
+    PowerManager.WakeLock wakeLock;
+
+    static class Session {
+        String role,user,token; int clientSlot; long expires;
+        Session(String role,String user,int clientSlot,String token,long expires){this.role=role;this.user=user;this.clientSlot=clientSlot;this.token=token;this.expires=expires;}
+        boolean admin(){return "admin".equals(role);} boolean client(){return "client".equals(role);}
+    }
+
+    public IBinder onBind(Intent i){return null;}
+
+    public int onStartCommand(Intent i,int f,int id){
+        users=new UserStore(this);
+        startForeground(77,notif("A iniciar servidor..."));
+        acquireWakeLock();
+        if(!running)pool.submit(new Runnable(){public void run(){startServer();}});
+        return START_NOT_STICKY;
+    }
+
+    void acquireWakeLock(){try{PowerManager pm=(PowerManager)getSystemService(POWER_SERVICE);wakeLock=pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"RSLocalStorage:Server");wakeLock.acquire();}catch(Exception ignored){}}
+
+    void startServer(){
+        try{
+            prepareLibrary();
+            ss=new ServerSocket();ss.setReuseAddress(true);ss.bind(new InetSocketAddress((InetAddress)null,PORT));running=true;
+            setStatus("Servidor ativo · RS Cinema pronto\n"+privateUrls()+"\n\nClientes configurados: "+users.countClients()+"/5");
+            updateNotif("Servidor ativo · porta "+PORT);
+            while(running){final Socket s=ss.accept();pool.submit(new Runnable(){public void run(){handle(s);}});}
+        }catch(Exception e){if(running)stopWith("Erro do servidor: "+e.getMessage());else setStatus("Servidor parado");}
+    }
+
+    void prepareLibrary(){moviesRoot().mkdirs();seriesRoot().mkdirs();}
+    File storageRoot(){return Environment.getExternalStorageDirectory();}
+    File mediaRoot(){return new File(storageRoot(),"RS Media");}
+    File moviesRoot(){return new File(mediaRoot(),"Filmes");}
+    File seriesRoot(){return new File(mediaRoot(),"Series");}
+
+    String privateUrls(){
+        LinkedHashSet<String> urls=new LinkedHashSet<>();
+        try{Enumeration<NetworkInterface> en=NetworkInterface.getNetworkInterfaces();while(en.hasMoreElements()){NetworkInterface ni=en.nextElement();if(!ni.isUp()||ni.isLoopback())continue;Enumeration<InetAddress> as=ni.getInetAddresses();while(as.hasMoreElements()){InetAddress a=as.nextElement();if(a instanceof Inet4Address&&isPrivateV4(a))urls.add("http://"+a.getHostAddress()+":"+PORT);}}}catch(Exception ignored){}
+        if(urls.isEmpty())return "Nenhum IPv4 privado detetado.";StringBuilder b=new StringBuilder("Endereços detetados:");for(String u:urls)b.append("\n").append(u);return b.toString();
+    }
+
+    boolean isPrivateV4(InetAddress a){if(!(a instanceof Inet4Address))return false;byte[] b=a.getAddress();int x=b[0]&255,y=b[1]&255;return x==10||(x==172&&y>=16&&y<=31)||(x==192&&y==168);}
+    boolean allowed(Socket s){InetAddress r=s.getInetAddress(),l=s.getLocalAddress();if(r==null||l==null)return false;if(r.isLoopbackAddress())return true;return isPrivateV4(r)&&isPrivateV4(l);}
+
+    void handle(Socket s){
+        try{
+            if(!allowed(s)){safeClose(s);return;}s.setSoTimeout(60000);
+            InputStream in=new BufferedInputStream(s.getInputStream());OutputStream out=new BufferedOutputStream(s.getOutputStream());
+            String req=readLine(in);if(req==null)return;String[] parts=req.split(" ");if(parts.length<2)return;String method=parts[0].toUpperCase(Locale.US),target=parts[1];
+            Map<String,String> h=new HashMap<>();String line;while((line=readLine(in))!=null&&!line.isEmpty()){int k=line.indexOf(':');if(k>0)h.put(line.substring(0,k).trim().toLowerCase(Locale.US),line.substring(k
