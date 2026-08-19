@@ -1,0 +1,23 @@
+:white;color:#111827;text-decoration:none}</style></head><body><div class='e'><h1>"+esc(title)+"</h1><p>"+esc(sub)+"</p><a href='"+href+"'>Continuar</a></div></body></html>";}
+
+    void serveDownload(OutputStream out,File f,boolean head)throws Exception{if(!f.exists()||!f.isFile())throw new FileNotFoundException();long len=f.length();String hd="HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename*=UTF-8''"+url(f.getName())+"\r\nContent-Length: "+len+"\r\nConnection: close\r\n\r\n";out.write(hd.getBytes(StandardCharsets.UTF_8));if(head)return;FileInputStream in=new FileInputStream(f);try{byte[] b=new byte[131072];int n;while((n=in.read(b))>0)out.write(b,0,n);}finally{in.close();}}
+
+    String readLine(InputStream in)throws IOException{ByteArrayOutputStream b=new ByteArrayOutputStream();int c,prev=-1;while((c=in.read())!=-1){if(prev=='\r'&&c=='\n'){byte[] x=b.toByteArray();int n=x.length;if(n>0&&x[n-1]=='\r')n--;return new String(x,0,n,StandardCharsets.ISO_8859_1);}b.write(c);prev=c;if(b.size()>16384)throw new IOException("Cabeçalho demasiado grande");}if(b.size()==0)return null;return new String(b.toByteArray(),StandardCharsets.ISO_8859_1);}
+    byte[] readExact(InputStream in,int len)throws IOException{byte[] b=new byte[len];int off=0,n;while(off<len&&(n=in.read(b,off,len-off))>0)off+=n;if(off<len)throw new EOFException("Pedido incompleto");return b;}
+    byte[] readFile(File f)throws IOException{ByteArrayOutputStream o=new ByteArrayOutputStream();FileInputStream in=new FileInputStream(f);try{byte[] b=new byte[65536];int n;while((n=in.read(b))>0)o.write(b,0,n);}finally{in.close();}return o.toByteArray();}
+    long parseLong(String s,long d){try{return s==null?d:Long.parseLong(s);}catch(Exception e){return d;}}
+    Map<String,String> query(String x)throws Exception{Map<String,String>m=new HashMap<>();if(x==null||x.isEmpty())return m;for(String p:x.split("&")){String[]kv=p.split("=",2);m.put(URLDecoder.decode(kv[0],"UTF-8"),kv.length>1?URLDecoder.decode(kv[1],"UTF-8"):"");}return m;}
+    String url(String s)throws Exception{return URLEncoder.encode(s==null?"":s,"UTF-8").replace("+","%20");}
+    String size(long n){if(n<1024)return n+" B";if(n<1024*1024)return String.format(Locale.US,"%.1f KB",n/1024.0);if(n<1024L*1024L*1024L)return String.format(Locale.US,"%.1f MB",n/(1024.0*1024));return String.format(Locale.US,"%.1f GB",n/(1024.0*1024*1024));}
+    String esc(String s){if(s==null)return "";return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&#39;");}
+    String attr(String s){return esc(s);}
+    String xml(String s){return esc(s);}
+
+    void sendHtml(OutputStream out,int code,String reason,String html)throws Exception{sendBytes(out,code,reason,"text/html; charset=utf-8",html.getBytes(StandardCharsets.UTF_8),"no-store");}
+    void sendBytes(OutputStream out,int code,String reason,String type,byte[] data,String cache)throws Exception{String h="HTTP/1.1 "+code+" "+reason+"\r\nContent-Type: "+type+"\r\nContent-Length: "+data.length+"\r\nCache-Control: "+cache+"\r\nConnection: close\r\n\r\n";out.write(h.getBytes(StandardCharsets.UTF_8));out.write(data);}
+    void redirect(OutputStream out,String loc)throws Exception{sendRaw(out,"HTTP/1.1 302 Found\r\nLocation: "+loc+"\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");}
+    void sendRaw(OutputStream out,String s)throws Exception{out.write(s.getBytes(StandardCharsets.UTF_8));}
+
+    void setConfirmedAddress(String local,String remote){setStatus("Servidor ativo · RS Cinema\nEndereço confirmado:\nhttp://"+local+":"+PORT+"\n\nÚltimo cliente: "+remote+"\nClientes configurados: "+users.countClients()+"/5\nClientes ativos: "+getSharedPreferences("rs",MODE_PRIVATE).getInt("active_clients",0)+"/5");updateNotif("Abrir: http://"+local+":"+PORT);}
+    Notification notif(String text){String ch="rsstorage";NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);if(Build.VERSION.SDK_INT>=26)nm.createNotificationChannel(new NotificationChannel(ch,"RS Local Storage",NotificationManager.IMPORTANCE_LOW));Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,ch):new Notification.Builder(this);return b.setContentTitle("RS Local Storage").setContentText(text).setSmallIcon(android.R.drawable.stat_sys_upload_done).setOngoing(true).build();}
+    void updateNotif(String t){((NotificationManager)getSystemService(NOTIFIC
