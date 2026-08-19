@@ -1,0 +1,6 @@
+ATION_SERVICE)).notify(77,notif(t));}
+    void setStatus(String t){getSharedPreferences("rs",MODE_PRIVATE).edit().putString("status",t).apply();}
+    void stopWith(String t){setStatus(t);updateNotif(t);running=false;stopSelf();}
+    void safeClose(Socket s){try{if(s!=null)s.close();}catch(Exception ignored){}}
+    public void onDestroy(){running=false;try{if(ss!=null)ss.close();}catch(Exception ignored){}pool.shutdownNow();if(wakeLock!=null&&wakeLock.isHeld())try{wakeLock.release();}catch(Exception ignored){}setStatus("Servidor parado");super.onDestroy();}
+}
