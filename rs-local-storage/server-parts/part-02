@@ -1,0 +1,25 @@
+ null;}}s.expires=System.currentTimeMillis()+SESSION_MS;return s;}
+    void cleanupSessions(){long n=System.currentTimeMillis();for(Map.Entry<String,Session> e:sessions.entrySet())if(e.getValue().expires<n)sessions.remove(e.getKey());}
+    String cookie(Map<String,String> h){String c=h.get("cookie");if(c==null)return null;for(String x:c.split(";")){x=x.trim();if(x.startsWith("RSSESSION="))return x.substring(10);}return null;}
+    void updateActiveClients(){cleanupSessions();HashSet<Integer> active=new HashSet<>();for(Session s:sessions.values())if(s.client())active.add(s.clientSlot);getSharedPreferences("rs",MODE_PRIVATE).edit().putInt("active_clients",active.size()).apply();}
+
+    File safeAdmin(String rel)throws IOException{if(rel==null)rel="";File r=storageRoot().getCanonicalFile(),f=new File(r,rel).getCanonicalFile();guardInside(r,f);return f;}
+    File safeMedia(String rel)throws IOException{if(rel==null)rel="";File r=mediaRoot().getCanonicalFile(),f=new File(r,rel).getCanonicalFile();guardInside(r,f);return f;}
+    void guardInside(File root,File f)throws IOException{String rp=root.getCanonicalPath(),fp=f.getCanonicalPath();if(!fp.equals(rp)&&!fp.startsWith(rp+File.separator))throw new SecurityException("Caminho bloqueado");}
+
+    void adminFiles(OutputStream out,File d,Session session)throws Exception{
+        if(!d.exists()||!d.isDirectory()){sendHtml(out,404,"Not Found",errorPage("Pasta não encontrada","O diretório já não existe.","/"));return;}
+        String current=storageRoot().toURI().relativize(d.toURI()).getPath();StringBuilder rows=new StringBuilder();
+        if(!d.getCanonicalFile().equals(storageRoot().getCanonicalFile())){File p=d.getParentFile();rows.append(fileRow("↩","Voltar","Pasta anterior","/admin/files?d="+url(storageRoot().toURI().relativize(p.toURI()).getPath()),false));}
+        File[] fs=d.listFiles();if(fs!=null){Arrays.sort(fs,new Comparator<File>(){public int compare(File a,File b){if(a.isDirectory()!=b.isDirectory())return a.isDirectory()?-1:1;return a.getName().compareToIgnoreCase(b.getName());}});for(File f:fs){String rel=storageRoot().toURI().relativize(f.toURI()).getPath();if(f.isDirectory())rows.append(fileRow("▰",esc(f.getName()),"Pasta","/admin/files?d="+url(rel),false));else rows.append(fileRow("·",esc(f.getName()),size(f.length()),"/admin/download?f="+url(rel),true));}}
+        String body=adminShell("Ficheiros","Acesso total ao armazenamento", "<section class='panel upload'><div><strong>Enviar ficheiros</strong><p>Destino: /"+esc(current)+"</p></div><input id='up' type='file' multiple><button onclick='upload()'>Enviar</button><span id='msg'></span></section><section class='panel list'>"+rows+"</section><script>async function upload(){const fs=document.getElementById('up').files,m=document.getElementById('msg');if(!fs.length){m.textContent='Escolha ficheiros.';return;}for(const f of fs){m.textContent='A enviar '+f.name+'…';const r=await fetch('/admin/upload?d="+url(current)+"&name='+encodeURIComponent(f.name),{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f});if(!r.ok){m.textContent='Falha em '+f.name;return;}}m.textContent='Concluído';setTimeout(()=>location.reload(),500)}</script>",session);
+        sendHtml(out,200,"OK",body);
+    }
+
+    String fileRow(String icon,String name,String meta,String href,boolean download){return "<a class='file' href='"+href+"'><span class='fic'>"+icon+"</span><span class='fname'><b>"+name+"</b><small>"+meta+"</small></span><span class='arrow'>"+(download?"↓":"›")+"</span></a>";}
+
+    String adminShell(String title,String subtitle,String content,Session s){return "<!doctype html><html><head>"+head("RS Local Storage")+adminCss()+"</head><body><div class='admin-layout'><aside><div class='brand'>RS<span>Local</span></div><div class='badge'>ADMIN</div><nav><a class='active' href='/'>Ficheiros</a><a href='/media'>RS Cinema</a></nav><div class='aside-foot'><span>"+esc(s.user)+"</span><a href='/logout'>Terminar sessão</a></div></aside><main><header><div><h1>"+title+"</h1><p>"+subtitle+"</p></div><a class='cinema-link' href='/media'>Abrir cinema</a></header>"+content+"</main></div></body></html>";}
+
+    void receiveUpload(InputStream in,OutputStream out,Map<String,String> qp,long len)throws Exception{
+        if(len<0||len>8L*1024L*1024L*1024L){sendHtml(out,413,"Payload Too Large",errorPage("Ficheiro demasiado grande","Limite desta versão: 8 GB por upload.","/"));return;}
+        String name=qp.get("name");if(name==null||nam
