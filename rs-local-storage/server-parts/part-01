@@ -1,0 +1,38 @@
++1).trim());}
+            long clen=parseLong(h.get("content-length"),0);String remoteIp=s.getInetAddress().getHostAddress();if(!s.getInetAddress().isLoopbackAddress())setConfirmedAddress(s.getLocalAddress().getHostAddress(),remoteIp);
+            String path=target,query="";int q=target.indexOf('?');if(q>=0){path=target.substring(0,q);query=target.substring(q+1);}path=URLDecoder.decode(path,"UTF-8");Map<String,String> qp=query(query);
+
+            if(path.equals("/login")&&method.equals("POST")){byte[] body=readExact(in,(int)Math.min(clen,65536));doLogin(out,remoteIp,new String(body,StandardCharsets.UTF_8));out.flush();return;}
+            Session session=session(h);
+            if(session==null){sendHtml(out,401,"Unauthorized",loginPage(null));out.flush();return;}
+
+            if(path.equals("/logout")){sessions.remove(session.token);redirect(out,"/");}
+            else if(path.equals("/")){if(session.admin())adminFiles(out,storageRoot(),session);else cinemaHome(out,session);}
+            else if(path.equals("/admin/files")){requireAdmin(session);adminFiles(out,safeAdmin(qp.get("d")),session);}
+            else if(path.equals("/admin/download")){requireAdmin(session);serveDownload(out,safeAdmin(qp.get("f")),"HEAD".equals(method));}
+            else if(path.equals("/admin/upload")&&method.equals("POST")){requireAdmin(session);receiveUpload(in,out,qp,clen);}
+            else if(path.equals("/media")){requireClientOrAdmin(session);mediaPage(out,session,qp);}
+            else if(path.equals("/watch")){requireClientOrAdmin(session);watchPage(out,session,safeMedia(qp.get("f")));}
+            else if(path.equals("/stream")){requireClientOrAdmin(session);serveStream(out,safeMedia(qp.get("f")),h,"HEAD".equals(method));}
+            else if(path.equals("/thumb")){requireClientOrAdmin(session);serveThumb(out,safeMedia(qp.get("f")));}
+            else{sendHtml(out,404,"Not Found",errorPage("Página não encontrada","Voltar ao início","/"));}
+            out.flush();
+        }catch(SecurityException e){try{OutputStream out=s.getOutputStream();sendHtml(out,403,"Forbidden",errorPage("Acesso bloqueado","Esta conta não tem permissão para este recurso.","/"));out.flush();}catch(Exception ignored){}}
+        catch(Exception e){try{OutputStream out=s.getOutputStream();sendHtml(out,500,"Server Error",errorPage("Erro interno",esc(String.valueOf(e.getMessage())),"/"));out.flush();}catch(Exception ignored){}}
+        finally{safeClose(s);}
+    }
+
+    void requireAdmin(Session s){if(s==null||!s.admin())throw new SecurityException();}
+    void requireClientOrAdmin(Session s){if(s==null||(!s.admin()&&!s.client()))throw new SecurityException();}
+
+    void doLogin(OutputStream out,String ip,String body)throws Exception{
+        long now=System.currentTimeMillis();Long until=blocked.get(ip);if(until!=null&&until>now){sendHtml(out,429,"Too Many Requests",loginPage("Muitas tentativas. Aguarde alguns minutos."));return;}
+        Map<String,String> f=query(body);String u=f.get("u")==null?"":f.get("u"),p=f.get("p")==null?"":f.get("p");Session newSession=null;
+        if(users.verifyAdmin(u,p))newSession=createSession("admin",u,-1);
+        else{int slot=users.verifyClient(u,p);if(slot>=0)newSession=createSession("client",u,slot);}
+        if(newSession!=null){failures.remove(ip);sessions.put(newSession.token,newSession);updateActiveClients();sendRaw(out,"HTTP/1.1 302 Found\r\nSet-Cookie: RSSESSION="+newSession.token+"; HttpOnly; SameSite=Strict\r\nLocation: /\r\nCache-Control: no-store\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");}
+        else{int n=failures.containsKey(ip)?failures.get(ip)+1:1;failures.put(ip,n);if(n>=5){blocked.put(ip,now+300000L);failures.remove(ip);}sendHtml(out,401,"Unauthorized",loginPage("Utilizador ou palavra-passe incorretos."));}
+    }
+
+    Session createSession(String role,String user,int slot){String t=UUID.randomUUID().toString().replace("-","")+UUID.randomUUID().toString().replace("-","");return new Session(role,user,slot,t,System.currentTimeMillis()+SESSION_MS);}
+    Session session(Map<String,String> h){cleanupSessions();String token=cookie(h);if(token==null)return null;Session s=sessions.get(token);if(s==null||s.expires<System.currentTimeMillis()){sessions.remove(token);updateActiveClients();return null;}if(s.client()){boolean valid=false;for(UserStore.Client c:users.clients())if(c.slot==s.clientSlot&&c.enabled&&c.username.equals(s.user))valid=true;if(!valid){sessions.remove(token);updateActiveClients();return
