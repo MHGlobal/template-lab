@@ -1,0 +1,29 @@
+ia?section=series&f="+url(r)+"'><div class='poster' "+(th.isEmpty()?"":"style=\"background-image:url('"+th+"')\"")+"><span class='pill'>PASTA</span></div><h3>"+esc(f.getName())+"</h3><p>Continuar</p></a>");}else if(isVideo(f))items.append(mediaCard(f,"episode"));}}
+            String name=dir.equals(seriesRoot())?"Séries":dir.getName();String back=dir.equals(seriesRoot())?"/":"/media?section=series&f="+url(mediaRoot().toURI().relativize(dir.getParentFile().toURI()).getPath());sendHtml(out,200,"OK",cinemaShell(name,s,"<section class='page-title'><a class='back' href='"+back+"'>← Voltar</a><span>SÉRIES</span><h1>"+esc(name)+"</h1></section><section class='section'><div class='grid'>"+(items.length()==0?emptyMedia("Pasta vazia","Nenhum episódio encontrado."):items.toString())+"</div></section>"));return;
+        }
+        throw new SecurityException();
+    }
+
+    String mediaCard(File f,String type)throws Exception{String rel=mediaRoot().toURI().relativize(f.toURI()).getPath(),title=cleanTitle(f.getName());return "<a class='poster-card searchable' data-name='"+attr(title)+"' href='/watch?f="+url(rel)+"'><div class='poster' style=\"background-image:url('/thumb?f="+url(rel)+"')\"><span class='play'>▶</span><span class='pill'>"+(type.equals("episode")?"EPISÓDIO":"FILME")+"</span></div><h3>"+esc(title)+"</h3><p>"+size(f.length())+"</p></a>";}
+
+    String emptyMedia(String title,String sub){return "<div class='empty'><b>"+title+"</b><span>"+sub+"</span></div>";}
+
+    void watchPage(OutputStream out,Session s,File f)throws Exception{
+        if(!f.exists()||!f.isFile()||!isVideo(f))throw new SecurityException();String rel=mediaRoot().toURI().relativize(f.toURI()).getPath(),title=cleanTitle(f.getName());String html=cinemaShell(title,s,"<section class='watch'><a class='back' href='javascript:history.back()'>← Voltar</a><div class='player'><video controls autoplay playsinline preload='metadata' poster='/thumb?f="+url(rel)+"'><source src='/stream?f="+url(rel)+"' type='"+mime(f)+"'>O navegador não suporta este formato.</video></div><div class='watch-meta'><span>AGORA A REPRODUZIR</span><h1>"+esc(title)+"</h1><p>"+size(f.length())+" · streaming local</p></div></section>");sendHtml(out,200,"OK",html);
+    }
+
+    void serveStream(OutputStream out,File f,Map<String,String> h,boolean head)throws Exception{
+        if(!f.exists()||!f.isFile()||!isVideo(f))throw new SecurityException();
+        if(!streamSlots.tryAcquire(2,TimeUnit.SECONDS)){sendHtml(out,503,"Busy",errorPage("Limite de streaming atingido","Esta versão suporta até 5 streams simultâneos.","/"));return;}
+        try{
+            long total=f.length(),start=0,end=total-1;boolean partial=false;String range=h.get("range");
+            if(range!=null&&range.startsWith("bytes=")){String r=range.substring(6).trim();String[] se=r.split("-",2);if(!se[0].isEmpty())start=Long.parseLong(se[0]);if(se.length>1&&!se[1].isEmpty())end=Math.min(end,Long.parseLong(se[1]));if(start<0||start>=total||end<start){sendRaw(out,"HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */"+total+"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");return;}partial=true;}
+            long len=end-start+1;StringBuilder hd=new StringBuilder();hd.append("HTTP/1.1 ").append(partial?"206 Partial Content":"200 OK").append("\r\nContent-Type: ").append(mime(f)).append("\r\nAccept-Ranges: bytes\r\nContent-Length: ").append(len).append("\r\n");if(partial)hd.append("Content-Range: bytes ").append(start).append('-').append(end).append('/').append(total).append("\r\n");hd.append("Cache-Control: private, max-age=3600\r\nConnection: close\r\n\r\n");out.write(hd.toString().getBytes(StandardCharsets.UTF_8));if(head)return;
+            RandomAccessFile raf=new RandomAccessFile(f,"r");try{raf.seek(start);byte[] buf=new byte[262144];long remain=len;while(remain>0){int n=raf.read(buf,0,(int)Math.min(buf.length,remain));if(n<0)break;out.write(buf,0,n);remain-=n;}}finally{raf.close();}
+        }finally{streamSlots.release();}
+    }
+
+    void serveThumb(OutputStream out,File video)throws Exception{
+        if(!video.exists()||!video.isFile()||!isVideo(video))throw new SecurityException();File cache=new File(getCacheDir(),"thumbs");cache.mkdirs();String key=Integer.toHexString(video.getAbsolutePath().hashCode())+"_"+video.lastModified()+".jpg";File jpg=new File(cache,key);
+        if(!jpg.exists()){
+            MediaMetadataRetriever mmr=new MediaMetadataRetriever();Bitmap frame=null,scaled=null;try{mmr.setDataSource(video.
