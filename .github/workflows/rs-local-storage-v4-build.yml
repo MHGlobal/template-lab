@@ -23,7 +23,7 @@ jobs:
       - name: Decode V4 source
         run: |
           mkdir -p /tmp/rs-v4
-          base64 -d v4/rs-v4-src.tar.gz.b64 > /tmp/rs-v4/src.tar.gz
+          cat v4/chunk* | base64 -d > /tmp/rs-v4/src.tar.gz
           tar -xzf /tmp/rs-v4/src.tar.gz -C /tmp/rs-v4
       - name: Clone pinned llama.cpp
         run: |
