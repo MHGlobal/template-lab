@@ -27,7 +27,8 @@ jobs:
       - name: Decode RS Local Storage V4.1 source
         run: |
           mkdir -p rs-local-storage-v41
-          cat rs-v41-part-00 rs-v41-part-01 rs-v41-part-02 rs-v41-part-03 rs-v41-part-04 rs-v41-part-05 rs-v41-part-06 | base64 -d > /tmp/rs-v41.zip
+          cat rs-v41-part-00 rs-v41-part-01 rs-v41-part-02 rs-v41-part-03 rs-v41-part-04 rs-v41-part-05 rs-v41-part-06 | tr -cd 'A-Za-z0-9+/=' | base64 -d > /tmp/rs-v41.zip
+          unzip -t /tmp/rs-v41.zip
           unzip -q /tmp/rs-v41.zip -d rs-local-storage-v41
           test -f rs-local-storage-v41/rsapp/build.gradle.kts
 
