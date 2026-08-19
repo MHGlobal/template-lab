@@ -1,9 +1,1 @@
-name: Removed
-on:
-  workflow_dispatch:
-
-jobs:
-  removed:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Removed"
+# temporary workflow disabled after V4 build
