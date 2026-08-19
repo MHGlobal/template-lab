@@ -24,13 +24,32 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
 
-      - name: Decode RS Local Storage V4.1 source
+      - name: Decode and verify RS Local Storage V4.1 source
         run: |
           mkdir -p rs-local-storage-v41
-          : > /tmp/rs-v41.zip
-          for f in rs-v41-part-00 rs-v41-part-01 rs-v41-part-02 rs-v41-part-03 rs-v41-part-04 rs-v41-part-05 rs-v41-part-06; do
-            tr -cd 'A-Za-z0-9+/=' < "$f" | base64 -d >> /tmp/rs-v41.zip
-          done
+          python3 - <<'PY'
+          import base64, hashlib, pathlib, re
+          files = [pathlib.Path(f"rs-v41-part-{i:02d}") for i in range(7)]
+          out = bytearray()
+          for p in files:
+              raw = p.read_text(encoding="utf-8", errors="ignore")
+              clean = re.sub(r"[^A-Za-z0-9+/=]", "", raw)
+              clean += "=" * ((-len(clean)) % 4)
+              try:
+                  chunk = base64.b64decode(clean, validate=False)
+              except Exception as exc:
+                  raise SystemExit(f"Cannot decode {p}: {exc}")
+              print(p.name, "text", len(raw), "clean", len(clean), "bytes", len(chunk))
+              out.extend(chunk)
+          path = pathlib.Path("/tmp/rs-v41.zip")
+          path.write_bytes(out)
+          digest = hashlib.sha256(out).hexdigest()
+          print("zip bytes", len(out))
+          print("sha256", digest)
+          expected = "5187a6739125213e871661059630434fd10b53f42369319fa1e7496b20177d1a"
+          if digest != expected:
+              raise SystemExit(f"Source SHA mismatch: expected {expected}, got {digest}")
+          PY
           unzip -t /tmp/rs-v41.zip
           unzip -q /tmp/rs-v41.zip -d rs-local-storage-v41
           test -f rs-local-storage-v41/rsapp/build.gradle.kts
