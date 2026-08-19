@@ -79,8 +79,30 @@ jobs:
           unzip -q /tmp/rs-v41.zip -d rs-local-storage-v41
           test -f rs-local-storage-v41/rsapp/build.gradle.kts
           test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
+          test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
           echo '=== RS AI calls in AiActivity.kt ==='
           grep -nE 'cleanUp|loadModel|InferenceEngine|state' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt || true
+          echo '=== AiWebBridge.kt ==='
+          nl -ba rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt | sed -n '1,320p'
+
+      - name: Repair V4.1 Java source literal
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java')
+          s = p.read_text()
+          bad = 'replace("' + chr(10) + '","<br>")'
+          good = r'replace("\n","<br>")'
+          count = s.count(bad)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one broken newline literal, found {count}')
+          s = s.replace(bad, good)
+          p.write_text(s)
+          if bad in s or good not in s:
+              raise SystemExit('Java newline literal repair verification failed')
+          print('Repaired HotspotServerService.java newline replacement literal')
+          PY
+          nl -ba rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java | sed -n '220,235p'
 
       - name: Clone pinned llama.cpp
         run: |
