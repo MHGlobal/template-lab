@@ -1,4 +1,4 @@
-name: Build RS Local Storage V4 APK
+name: Removed
 on:
   workflow_dispatch:
 
@@ -6,4 +6,4 @@ jobs:
   removed:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Temporary V4 workflow retired after successful build"
+      - run: echo "Removed"
