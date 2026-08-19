@@ -24,6 +24,13 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
 
+      - name: Decode RS Local Storage V4.1 source
+        run: |
+          mkdir -p rs-local-storage-v41
+          base64 -d rs-local-storage-v41-source.b64 > /tmp/rs-v41.zip
+          unzip -q /tmp/rs-v41.zip -d rs-local-storage-v41
+          test -f rs-local-storage-v41/rsapp/build.gradle.kts
+
       - name: Clone pinned llama.cpp
         run: |
           git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git llama.cpp
