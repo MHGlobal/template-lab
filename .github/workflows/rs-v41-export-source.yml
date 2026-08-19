@@ -1,0 +1,37 @@
+name: Export RS Local Storage V4.1 Source
+
+on:
+  push:
+    branches:
+      - rs-local-storage-v41-build
+    paths:
+      - '.github/workflows/rs-v41-export-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct V4.1 source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat rs-v41-part-* | tr -d '\r\n' | base64 -d > /tmp/rs-v41.zip
+          mkdir -p /tmp/rs-v41-source
+          unzip -q /tmp/rs-v41.zip -d /tmp/rs-v41-source
+          test -d /tmp/rs-v41-source/rsapp
+          find /tmp/rs-v41-source -maxdepth 5 -type f | sort | head -200
+
+      - name: Upload reconstructed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Local-Storage-v4.1-Source
+          path: /tmp/rs-v41-source
+          if-no-files-found: error
+          retention-days: 1
