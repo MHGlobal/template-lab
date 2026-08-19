@@ -6,6 +6,11 @@ on:
       - rs-local-storage-v41-build
     paths:
       - '.github/workflows/rs-v41-export-source.yml'
+  pull_request:
+    branches:
+      - editor
+    paths:
+      - '.github/workflows/rs-v41-export-source.yml'
   workflow_dispatch:
 
 permissions:
