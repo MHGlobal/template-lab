@@ -9,7 +9,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
@@ -25,18 +24,61 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
 
-      - name: Reconstruct RS Local Storage V4.1 source
+      - name: Repair, decode and verify RS Local Storage V4.1 source
         run: |
-          set -euxo pipefail
-          mkdir -p /tmp/rs-v41
-          cat rs-v41-part-* | tr -d '\r\n' | base64 -d > /tmp/rs-v41.zip
-          unzip -q /tmp/rs-v41.zip -d /tmp/rs-v41
-          test -f /tmp/rs-v41/rsapp/build.gradle.kts
-          test -f /tmp/rs-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
-          echo '=== AI STATE/LOAD/UNLOAD DIAGNOSTICS ==='
-          grep -RniE 'unload|loadModel|Initialized|modelState|ModelState' /tmp/rs-v41/rsapp/src/main/java/com/rs/localstorage /tmp/rs-v41/rsapp/src/main 2>/dev/null || true
-          echo '=== AiActivity.kt relevant region ==='
-          nl -ba /tmp/rs-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt | sed -n '1,320p'
+          mkdir -p rs-local-storage-v41
+          python3 - <<'PY'
+          import base64, hashlib, pathlib, re
+          expected = "5187a6739125213e871661059630434fd10b53f42369319fa1e7496b20177d1a"
+          parts = []
+          for i in range(7):
+              raw = pathlib.Path(f"rs-v41-part-{i:02d}").read_text(encoding="utf-8", errors="ignore")
+              clean = re.sub(r"[^A-Za-z0-9+/=]", "", raw)
+              parts.append(clean)
+              print(f"part-{i:02d}: {len(clean)} chars")
+
+          def decode(s):
+              s = s + "=" * ((-len(s)) % 4)
+              return base64.b64decode(s, validate=False)
+
+          decoded = [None] * 7
+          for i in (0, 2, 3, 4, 5, 6):
+              decoded[i] = decode(parts[i])
+
+          bad = parts[1]
+          candidates = []
+          if len(bad) == 12000:
+              candidates.append((None, bad))
+          elif len(bad) == 12001:
+              candidates.extend((pos, bad[:pos] + bad[pos+1:]) for pos in range(len(bad)))
+          else:
+              raise SystemExit(f"Unexpected part-01 length: {len(bad)}")
+
+          solution = None
+          repaired_pos = None
+          for pos, cand in candidates:
+              try:
+                  b1 = decode(cand)
+              except Exception:
+                  continue
+              out = decoded[0] + b1 + b"".join(decoded[2:])
+              if hashlib.sha256(out).hexdigest() == expected:
+                  solution = out
+                  repaired_pos = pos
+                  break
+
+          if solution is None:
+              raise SystemExit("Unable to reconstruct exact V4.1 ZIP from source chunks")
+
+          if repaired_pos is not None:
+              print(f"Repaired part-01 by removing character at position {repaired_pos}")
+          print("zip bytes", len(solution))
+          print("sha256", hashlib.sha256(solution).hexdigest())
+          pathlib.Path("/tmp/rs-v41.zip").write_bytes(solution)
+          PY
+          unzip -t /tmp/rs-v41.zip
+          unzip -q /tmp/rs-v41.zip -d rs-local-storage-v41
+          test -f rs-local-storage-v41/rsapp/build.gradle.kts
 
       - name: Clone pinned llama.cpp
         run: |
@@ -46,22 +88,20 @@ jobs:
 
       - name: Inject RS Local Storage V4.1 module
         run: |
-          cp -R /tmp/rs-v41/rsapp llama.cpp/examples/llama.android/rsapp
+          cp -R rs-local-storage-v41/rsapp llama.cpp/examples/llama.android/rsapp
           printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
 
       - name: Build V4.1 APK
         working-directory: llama.cpp/examples/llama.android
-        env:
-          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/29.0.13113456
         run: |
           chmod +x gradlew
-          ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+          ./gradlew :rsapp:assembleDebug --stacktrace
 
       - name: Inspect APK
         run: |
           APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 12
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 8
           cp "$APK" RS-Local-Storage-v4.1.apk
           sha256sum RS-Local-Storage-v4.1.apk
 
