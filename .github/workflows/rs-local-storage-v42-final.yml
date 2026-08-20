@@ -76,6 +76,11 @@ jobs:
           grep -q 'rsGlobalMenu' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'rsEnhanceFileVideoV42' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'isPermanentLibraryNode' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'adminClientSave' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'usage-grid' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q "sendBeacon('/api/progress'" rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q "visibilityState==='hidden'" rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q "addEventListener('contextmenu'" rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'ensureDirectory(mediaRoot())' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
           grep -q 'DEFAULT_CONTEXT_SIZE    = 4096' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
           grep -q 'BATCH_SIZE              = 256' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
