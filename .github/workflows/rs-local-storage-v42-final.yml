@@ -1,0 +1,218 @@
+name: Build RS Local Storage V4.2.5 Natural Speech UI APK
+
+on:
+  push:
+    branches: [ rs-local-storage-v42-final ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android toolchain and workflow parser
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+          python3 -m pip install --disable-pip-version-check pyyaml
+
+      - name: Materialize validated R11 source and runtime
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import subprocess, yaml
+          from pathlib import Path
+          wf = yaml.safe_load(Path('.github/workflows/rs-local-storage-v411-r11.yml').read_text())
+          wanted = {
+              'Reuse validated R10 source pipeline',
+              'Apply R11 navigation UX and accessibility hardening',
+          }
+          found = set()
+          for step in wf['jobs']['build']['steps']:
+              name = step.get('name')
+              if name in wanted:
+                  run = step.get('run')
+                  if not run:
+                      raise SystemExit(f'R11 step has no run body: {name}')
+                  subprocess.run(['bash', '-lc', run], check=True)
+                  found.add(name)
+          missing = wanted - found
+          if missing:
+              raise SystemExit(f'R11 source pipeline steps missing: {sorted(missing)}')
+          PY
+          test -f rs-local-storage-v41/rsapp/build.gradle.kts
+          test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
+          test -f llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+
+      - name: Apply V4.2.5 natural-speech source and runtime patch
+        run: |
+          set -euxo pipefail
+          base64 -d rs-v42/apply_v42.py.gz.b64 | gunzip > /tmp/apply_v42.py
+          python3 -m py_compile /tmp/apply_v42.py
+          python3 /tmp/apply_v42.py
+
+      - name: Verify V4.2.5 source invariants
+        run: |
+          set -euxo pipefail
+          grep -q 'versionCode = 21' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionName = "4.2.5"' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'adjustResize' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
+          grep -q 'android:extractNativeLibs="true"' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
+          grep -q 'useLegacyPackaging = true' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'Diagnóstico do runtime' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
+          grep -q 'validateModelFile' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q '/api/ai/diagnostics' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q '/api/ai/stop' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'application/x-ndjson' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'rsInitAiV422' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'generateStreaming' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'visibleAnswer' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'lastIndexOf("</think>"' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q '/no_think' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'selectedName.contains("qwen3")' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'answer_token' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'aiEvent(out,"final",answer)' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'Pensamento concluído' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'stopGeneration' llama.cpp/examples/llama.android/lib/src/main/java/com/arm/aichat/InferenceEngine.kt
+          grep -q 'showStoragePermissionDialog' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MainActivity.java
+          grep -q 'Environment.isExternalStorageManager' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
+          grep -q 'adminFolders' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'transferStatus' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'rsStageInput' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'PdfRenderer' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'servePdfPage' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'rs-ui-v425' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q '/api/ai/speech/settings' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q '/api/ai/speech/audio' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'rsSpeechMaybeAuto' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'synthesizeToFile' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiSpeechManager.java
+          grep -q 'isNetworkConnectionRequired' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiSpeechManager.java
+          grep -q 'TTL_MS=2L\*60L\*1000L' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiSpeechManager.java
+          grep -q 'android.intent.action.TTS_SERVICE' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
+          grep -q 'sectionHead' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MainActivity.java
+          grep -q 'RS CONTROL CENTER' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MainActivity.java
+          grep -q 'rsGlobalMenu' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'rsEnhanceFileVideoV42' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'isPermanentLibraryNode' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'adminClientSave' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'usage-grid' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q "sendBeacon('/api/progress'" rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q "visibilityState==='hidden'" rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q "addEventListener('contextmenu'" rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'ensureDirectory(mediaRoot())' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
+          grep -q 'DEFAULT_CONTEXT_SIZE    = 4096' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q 'BATCH_SIZE              = 256' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q 'backend_summary()' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q 'has_cpu_backend()' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q 'nativeRuntimeInfo' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q 'aichat_recent_log' llama.cpp/examples/llama.android/lib/src/main/cpp/logging.h
+          test -s rs-local-storage-v41/rsapp/src/main/assets/RS_BUILD_PROOF.txt
+
+      - name: Compile JVM sources and build V4.2.5 APK
+        run: |
+          set -euxo pipefail
+          rm -rf llama.cpp/examples/llama.android/rsapp
+          cp -R rs-local-storage-v41/rsapp llama.cpp/examples/llama.android/rsapp
+          if ! grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts; then
+            printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          fi
+          cd llama.cpp/examples/llama.android
+          chmod +x gradlew
+          ./gradlew :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
+          ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/29.0.13113456 ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+
+      - name: Validate final APK deeply
+        run: |
+          set -euxo pipefail
+          APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
+          test -s "$APK"
+
+          # Package/version are read from the compiled binary AndroidManifest.xml.
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.rs.localstorage'" /tmp/badging.txt
+          grep -q "versionCode='21'" /tmp/badging.txt
+          grep -q "versionName='4.2.5'" /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/manifest-tree.txt
+          grep -q 'android:extractNativeLibs.*0xffffffff' /tmp/manifest-tree.txt
+
+          # The APK itself must be an intact ZIP and contain the ARM64 native runtime.
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | tee /tmp/apk-files.txt
+          grep -q 'lib/arm64-v8a/libai-chat.so' /tmp/apk-files.txt
+          unzip -p "$APK" lib/arm64-v8a/libai-chat.so > /tmp/libai-chat.so
+          test -s /tmp/libai-chat.so
+          file /tmp/libai-chat.so | tee /tmp/native-file.txt
+          grep -q 'ELF 64-bit' /tmp/native-file.txt
+          readelf -h /tmp/libai-chat.so | tee /tmp/native-elf.txt
+          grep -q 'AArch64' /tmp/native-elf.txt
+
+          # Build proof is packaged as an asset and confirms the exact V4.2 feature source set.
+          unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee /tmp/rs-proof.txt
+          grep -q 'RS Local Storage V4.2.5 NATURAL SPEECH UI' /tmp/rs-proof.txt
+          grep -q 'versionCode=21' /tmp/rs-proof.txt
+          grep -q 'Biblioteca=permission-gated+non-destructive+unreadable-is-error' /tmp/rs-proof.txt
+          grep -q 'AndroidNavigation=global-right-menu+section-aware+a11y' /tmp/rs-proof.txt
+          grep -q 'WebNavigation=global-dropdown+role-aware+responsive' /tmp/rs-proof.txt
+          grep -q 'AI=gguf-magic-validation+non-null-errors+native-diagnostics+ndjson-streaming+qwen-nothink+close-only-think-filter+authoritative-final-event' /tmp/rs-proof.txt
+          grep -q 'ChatUI=responsive-chatgpt-style+collapsed-process+final-answer-only+stop+copy+regenerate+safe-code-rendering' /tmp/rs-proof.txt
+          grep -q 'Speech=android-offline-tts+final-answer-only+per-user-toggle+offline-voice-picker+one-shot-private-cache+delete-after-transfer+two-minute-ttl+engine-release' /tmp/rs-proof.txt
+          grep -q 'Runtime=pinned-llama.cpp+extracted-native-libs+cpu-backend-guard+native-log-tail' /tmp/rs-proof.txt
+          grep -q 'Transfers=persistent-upload-queue+xhr-byte-progress+folder-picker+tracked-downloads+conflict-policy' /tmp/rs-proof.txt
+          grep -q 'Media=image-zoom+audio-player+media-session+custom-file-video+android-pdf-renderer' /tmp/rs-proof.txt
+          grep -q 'VisualSystem=rs-black+graphite+orange+white+central-tokens+consistent-components' /tmp/rs-proof.txt
+          grep -q 'Users=admin-edit+password+usage' /tmp/rs-proof.txt
+          grep -q 'Progress=sendBeacon+pagehide+keepalive' /tmp/rs-proof.txt
+
+          # Validate DEX structurally instead of grepping raw compiled bytes for source strings.
+          python3 - "$APK" <<'PY'
+          import struct, sys, zipfile
+          apk = sys.argv[1]
+          with zipfile.ZipFile(apk) as z:
+              dex_names = sorted(n for n in z.namelist() if n.startswith('classes') and n.endswith('.dex'))
+              if not dex_names:
+                  raise SystemExit('No DEX files found in APK')
+              for name in dex_names:
+                  data = z.read(name)
+                  if len(data) < 112:
+                      raise SystemExit(f'DEX too small: {name} ({len(data)} bytes)')
+                  if not data.startswith(b'dex\n') or data[7:8] != b'\x00':
+                      raise SystemExit(f'Invalid DEX magic: {name}')
+                  declared_size = struct.unpack_from('<I', data, 32)[0]
+                  header_size = struct.unpack_from('<I', data, 36)[0]
+                  if declared_size != len(data):
+                      raise SystemExit(f'DEX file_size mismatch: {name}: header={declared_size}, actual={len(data)}')
+                  if header_size != 112:
+                      raise SystemExit(f'Unexpected DEX header_size: {name}: {header_size}')
+                  print(f'Validated {name}: {len(data)} bytes')
+          PY
+
+          # Debug APK must still have a cryptographically valid Android signature.
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signature.txt
+          grep -q 'Verified' /tmp/signature.txt
+
+          cp "$APK" RS-Local-Storage-v4.2.5-NATURAL-SPEECH.apk
+          sha256sum RS-Local-Storage-v4.2.5-NATURAL-SPEECH.apk | tee RS-Local-Storage-v4.2.5-NATURAL-SPEECH.sha256
+          test -s RS-Local-Storage-v4.2.5-NATURAL-SPEECH.apk
+          test -s RS-Local-Storage-v4.2.5-NATURAL-SPEECH.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Local-Storage-v4.2.5-NATURAL-SPEECH-APK
+          path: |
+            RS-Local-Storage-v4.2.5-NATURAL-SPEECH.apk
+            RS-Local-Storage-v4.2.5-NATURAL-SPEECH.sha256
+          if-no-files-found: error
+          retention-days: 7
