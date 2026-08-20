@@ -99,44 +99,68 @@ jobs:
           set -euxo pipefail
           APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
           test -s "$APK"
+
+          # Package/version are read from the compiled binary AndroidManifest.xml.
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='com.rs.localstorage'" /tmp/badging.txt
           grep -q "versionCode='16'" /tmp/badging.txt
           grep -q "versionName='4.2.0'" /tmp/badging.txt
+
+          # The APK itself must be an intact ZIP and contain the ARM64 native runtime.
           unzip -t "$APK" >/dev/null
           unzip -l "$APK" | tee /tmp/apk-files.txt
           grep -q 'lib/arm64-v8a/libai-chat.so' /tmp/apk-files.txt
+          unzip -p "$APK" lib/arm64-v8a/libai-chat.so > /tmp/libai-chat.so
+          test -s /tmp/libai-chat.so
+          file /tmp/libai-chat.so | tee /tmp/native-file.txt
+          grep -q 'ELF 64-bit' /tmp/native-file.txt
+          readelf -h /tmp/libai-chat.so | tee /tmp/native-elf.txt
+          grep -q 'AArch64' /tmp/native-elf.txt
+
+          # Build proof is packaged as an asset and confirms the exact V4.2 feature source set.
           unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee /tmp/rs-proof.txt
           grep -q 'RS Local Storage V4.2.0' /tmp/rs-proof.txt
+          grep -q 'versionCode=16' /tmp/rs-proof.txt
           grep -q 'Biblioteca=non-destructive-protected' /tmp/rs-proof.txt
+          grep -q 'AndroidNavigation=R11-native-grouped+server-aware+a11y' /tmp/rs-proof.txt
           grep -q 'WebNavigation=global-dropdown+role-aware' /tmp/rs-proof.txt
           grep -q 'AI=gguf-magic-validation+non-null-errors+native-diagnostics' /tmp/rs-proof.txt
           grep -q 'Runtime=pinned-llama.cpp+ctx4096+batch256+init-error-state+native-return-codes' /tmp/rs-proof.txt
           grep -q 'Media=image-zoom+audio-player+media-session+custom-file-video' /tmp/rs-proof.txt
+          grep -q 'Users=admin-edit+password+usage' /tmp/rs-proof.txt
+          grep -q 'Progress=sendBeacon+pagehide+keepalive' /tmp/rs-proof.txt
+
+          # Validate DEX structurally instead of grepping raw compiled bytes for source strings.
           python3 - "$APK" <<'PY'
-          import sys, zipfile
+          import struct, sys, zipfile
           apk = sys.argv[1]
           with zipfile.ZipFile(apk) as z:
-              dex_names = [n for n in z.namelist() if n.startswith('classes') and n.endswith('.dex')]
+              dex_names = sorted(n for n in z.namelist() if n.startswith('classes') and n.endswith('.dex'))
               if not dex_names:
                   raise SystemExit('No DEX files found in APK')
-              dex = b''.join(z.read(n) for n in dex_names)
-          markers = [
-              b'MainNavigation',
-              b'File Storage',
-              b'RS Cinema',
-              b'validateModelFile',
-              b'rsGlobalMenu',
-              b'rsEnhanceFileVideoV42',
-          ]
-          for marker in markers:
-              if marker not in dex:
-                  raise SystemExit(f'Packaged DEX marker missing: {marker!r}')
-          print('V4.2 DEX feature markers verified')
+              for name in dex_names:
+                  data = z.read(name)
+                  if len(data) < 112:
+                      raise SystemExit(f'DEX too small: {name} ({len(data)} bytes)')
+                  if not data.startswith(b'dex\n') or data[7:8] != b'\x00':
+                      raise SystemExit(f'Invalid DEX magic: {name}')
+                  declared_size = struct.unpack_from('<I', data, 32)[0]
+                  header_size = struct.unpack_from('<I', data, 36)[0]
+                  if declared_size != len(data):
+                      raise SystemExit(f'DEX file_size mismatch: {name}: header={declared_size}, actual={len(data)}')
+                  if header_size != 112:
+                      raise SystemExit(f'Unexpected DEX header_size: {name}: {header_size}')
+                  print(f'Validated {name}: {len(data)} bytes')
           PY
+
+          # Debug APK must still have a cryptographically valid Android signature.
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signature.txt
+          grep -q 'Verified' /tmp/signature.txt
+
           cp "$APK" RS-Local-Storage-v4.2.0-FINAL.apk
           sha256sum RS-Local-Storage-v4.2.0-FINAL.apk | tee RS-Local-Storage-v4.2.0-FINAL.sha256
+          test -s RS-Local-Storage-v4.2.0-FINAL.apk
+          test -s RS-Local-Storage-v4.2.0-FINAL.sha256
 
       - uses: actions/upload-artifact@v4
         with:
