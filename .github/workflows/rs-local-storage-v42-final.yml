@@ -1,4 +1,4 @@
-name: Build RS Local Storage V4.2 Final APK
+name: Build RS Local Storage V4.2.1 Hotfix APK
 
 on:
   push:
