@@ -1,0 +1,149 @@
+name: Build RS Local Storage V4.2 Final APK
+
+on:
+  push:
+    branches: [ rs-local-storage-v42-final ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android toolchain and workflow parser
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+          python3 -m pip install --disable-pip-version-check pyyaml
+
+      - name: Materialize validated R11 source and runtime
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import subprocess, yaml
+          from pathlib import Path
+          wf = yaml.safe_load(Path('.github/workflows/rs-local-storage-v411-r11.yml').read_text())
+          wanted = {
+              'Reuse validated R10 source pipeline',
+              'Apply R11 navigation UX and accessibility hardening',
+          }
+          found = set()
+          for step in wf['jobs']['build']['steps']:
+              name = step.get('name')
+              if name in wanted:
+                  run = step.get('run')
+                  if not run:
+                      raise SystemExit(f'R11 step has no run body: {name}')
+                  subprocess.run(['bash', '-lc', run], check=True)
+                  found.add(name)
+          missing = wanted - found
+          if missing:
+              raise SystemExit(f'R11 source pipeline steps missing: {sorted(missing)}')
+          PY
+          test -f rs-local-storage-v41/rsapp/build.gradle.kts
+          test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
+          test -f llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+
+      - name: Apply V4.2 final source and runtime patch
+        run: |
+          set -euxo pipefail
+          base64 -d rs-v42/apply_v42.py.gz.b64 | gunzip > /tmp/apply_v42.py
+          python3 -m py_compile /tmp/apply_v42.py
+          python3 /tmp/apply_v42.py
+
+      - name: Verify V4.2 source invariants
+        run: |
+          set -euxo pipefail
+          grep -q 'versionCode = 16' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionName = "4.2.0"' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'adjustResize' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
+          grep -q 'GGUF válido' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
+          grep -q 'validateModelFile' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'Diagnóstico do runtime' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
+          grep -q '/api/ai/diagnostics' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'rsGlobalMenu' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'rsEnhanceFileVideoV42' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'isPermanentLibraryNode' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'ensureDirectory(mediaRoot())' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
+          grep -q 'DEFAULT_CONTEXT_SIZE    = 4096' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q 'BATCH_SIZE              = 256' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          test -s rs-local-storage-v41/rsapp/src/main/assets/RS_BUILD_PROOF.txt
+
+      - name: Compile JVM sources and build V4.2 APK
+        run: |
+          set -euxo pipefail
+          rm -rf llama.cpp/examples/llama.android/rsapp
+          cp -R rs-local-storage-v41/rsapp llama.cpp/examples/llama.android/rsapp
+          if ! grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts; then
+            printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          fi
+          cd llama.cpp/examples/llama.android
+          chmod +x gradlew
+          ./gradlew :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
+          ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/29.0.13113456 ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+
+      - name: Validate final APK deeply
+        run: |
+          set -euxo pipefail
+          APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.rs.localstorage'" /tmp/badging.txt
+          grep -q "versionCode='16'" /tmp/badging.txt
+          grep -q "versionName='4.2.0'" /tmp/badging.txt
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | tee /tmp/apk-files.txt
+          grep -q 'lib/arm64-v8a/libai-chat.so' /tmp/apk-files.txt
+          unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee /tmp/rs-proof.txt
+          grep -q 'RS Local Storage V4.2.0' /tmp/rs-proof.txt
+          grep -q 'Biblioteca=non-destructive-protected' /tmp/rs-proof.txt
+          grep -q 'WebNavigation=global-dropdown+role-aware' /tmp/rs-proof.txt
+          grep -q 'AI=gguf-magic-validation+non-null-errors+native-diagnostics' /tmp/rs-proof.txt
+          grep -q 'Runtime=pinned-llama.cpp+ctx4096+batch256+init-error-state+native-return-codes' /tmp/rs-proof.txt
+          grep -q 'Media=image-zoom+audio-player+media-session+custom-file-video' /tmp/rs-proof.txt
+          python3 - "$APK" <<'PY'
+          import sys, zipfile
+          apk = sys.argv[1]
+          with zipfile.ZipFile(apk) as z:
+              dex_names = [n for n in z.namelist() if n.startswith('classes') and n.endswith('.dex')]
+              if not dex_names:
+                  raise SystemExit('No DEX files found in APK')
+              dex = b''.join(z.read(n) for n in dex_names)
+          markers = [
+              b'MainNavigation',
+              b'File Storage',
+              b'RS Cinema',
+              b'validateModelFile',
+              b'rsGlobalMenu',
+              b'rsEnhanceFileVideoV42',
+          ]
+          for marker in markers:
+              if marker not in dex:
+                  raise SystemExit(f'Packaged DEX marker missing: {marker!r}')
+          print('V4.2 DEX feature markers verified')
+          PY
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signature.txt
+          cp "$APK" RS-Local-Storage-v4.2.0-FINAL.apk
+          sha256sum RS-Local-Storage-v4.2.0-FINAL.apk | tee RS-Local-Storage-v4.2.0-FINAL.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Local-Storage-v4.2.0-FINAL-APK
+          path: |
+            RS-Local-Storage-v4.2.0-FINAL.apk
+            RS-Local-Storage-v4.2.0-FINAL.sha256
+          if-no-files-found: error
+          retention-days: 7
