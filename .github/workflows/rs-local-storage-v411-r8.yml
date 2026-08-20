@@ -1,0 +1,139 @@
+name: Build RS Local Storage V4.1.1 R8 APK
+on:
+  pull_request:
+    branches: [ editor ]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android toolchain and workflow parser
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+          python3 -m pip install --disable-pip-version-check pyyaml
+      - name: Reuse validated R7 source and runtime pipeline
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import subprocess, yaml
+          from pathlib import Path
+          wf=yaml.safe_load(Path('.github/workflows/rs-local-storage-v411-r7.yml').read_text())
+          wanted={
+              'Reuse validated R6 source and runtime patch pipeline',
+              'Apply R7 media preview UX hardening',
+          }
+          found=set()
+          for step in wf['jobs']['build']['steps']:
+              name=step.get('name')
+              if name in wanted:
+                  subprocess.run(['bash','-lc',step['run']],check=True)
+                  found.add(name)
+          missing=wanted-found
+          if missing: raise SystemExit(f'R7 pipeline steps missing: {sorted(missing)}')
+          PY
+      - name: Apply R8 touch gestures and Media Session hardening
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          g=Path('rs-local-storage-v41/rsapp/build.gradle.kts')
+          gs=g.read_text()
+          if 'versionCode = 11' not in gs or 'versionName = "4.1.1-r7"' not in gs:
+              raise SystemExit('R7 version marker missing')
+          g.write_text(gs.replace('versionCode = 11','versionCode = 12').replace('versionName = "4.1.1-r7"','versionName = "4.1.1-r8"'))
+
+          p=Path('rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java')
+          s=p.read_text()
+          if 'rsEnhanceMediaPreviews' not in s or '.rs-audio-player{' not in s:
+              raise SystemExit('R7 media enhancement markers missing')
+
+          js="""function rsEnhanceMediaR8(){
+          document.querySelectorAll('.rs-image-host img').forEach(img=>{
+            if(img.dataset.rsTouchEnhanced)return;img.dataset.rsTouchEnhanced='1';
+            const host=img.parentElement;const pts=new Map();let lastDistance=0;
+            const dist=()=>{const a=[...pts.values()];if(a.length<2)return 0;return Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)};
+            host.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'){pts.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pts.size===2){lastDistance=dist();e.preventDefault()}}},true);
+            host.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pts.size>=2){const d=dist();if(lastDistance>0&&Math.abs(d-lastDistance)>3){host.dispatchEvent(new WheelEvent('wheel',{deltaY:d>lastDistance?-1:1,bubbles:false,cancelable:true}));lastDistance=d}e.preventDefault();e.stopImmediatePropagation()}},true);
+            const release=e=>{pts.delete(e.pointerId);if(pts.size<2)lastDistance=0};host.addEventListener('pointerup',release,true);host.addEventListener('pointercancel',release,true);
+          });
+          const audios=[...document.querySelectorAll('.rs-audio-engine')];
+          if(!audios.length)return;
+          const session=window.__rsAudioSession||(window.__rsAudioSession={active:null,installed:false});
+          const fmtTitle=a=>{const card=a.closest('.preview,.media-preview,.audio-preview');const label=card&&card.querySelector('h1,h2,h3,.title,.name');return (label&&label.textContent||document.title||'RS Music').trim()};
+          const updatePosition=a=>{if(!('mediaSession' in navigator)||!navigator.mediaSession.setPositionState||!isFinite(a.duration)||a.duration<=0)return;try{navigator.mediaSession.setPositionState({duration:a.duration,playbackRate:a.playbackRate||1,position:Math.min(a.duration,Math.max(0,a.currentTime||0))})}catch(_){}};
+          audios.forEach(a=>{if(a.dataset.rsSessionEnhanced)return;a.dataset.rsSessionEnhanced='1';
+            a.addEventListener('play',()=>{audios.forEach(other=>{if(other!==a&&!other.paused)other.pause()});session.active=a;if('mediaSession' in navigator){try{navigator.mediaSession.metadata=new MediaMetadata({title:fmtTitle(a),artist:'RS Local Storage',album:'RS Music'});navigator.mediaSession.playbackState='playing';updatePosition(a)}catch(_){}}});
+            a.addEventListener('pause',()=>{if(session.active===a&&'mediaSession' in navigator){try{navigator.mediaSession.playbackState='paused';updatePosition(a)}catch(_){}}});
+            a.addEventListener('timeupdate',()=>{if(session.active===a)updatePosition(a)});
+            a.addEventListener('ratechange',()=>{if(session.active===a)updatePosition(a)});
+          });
+          if('mediaSession' in navigator&&!session.installed){session.installed=true;const active=()=>session.active;
+            const handlers={play:()=>{const a=active();if(a)a.play().catch(()=>{})},pause:()=>{const a=active();if(a)a.pause()},seekbackward:d=>{const a=active();if(a)a.currentTime=Math.max(0,a.currentTime-(d.seekOffset||10))},seekforward:d=>{const a=active();if(a)a.currentTime=Math.min(a.duration||1e12,a.currentTime+(d.seekOffset||10))},seekto:d=>{const a=active();if(a&&typeof d.seekTime==='number')a.currentTime=Math.max(0,Math.min(a.duration||d.seekTime,d.seekTime))},stop:()=>{const a=active();if(a){a.pause();a.currentTime=0}}};
+            Object.entries(handlers).forEach(([k,v])=>{try{navigator.mediaSession.setActionHandler(k,v)}catch(_){}});
+          }
+          }
+          document.addEventListener('DOMContentLoaded',rsEnhanceMediaR8);"""
+          css=""".rs-image-host{overscroll-behavior:contain}.rs-image-host.rs-pinch-active{cursor:zoom-in}.rs-audio-player button:focus-visible,.rs-image-toolbar button:focus-visible{outline:2px solid #fff;outline-offset:2px}"""
+
+          def java_escape(x):
+              return x.replace('\\','\\\\').replace('"','\\"').replace('\r','').replace('\n','')
+
+          start=s.find('    String jsHelpers(){return "<script>')
+          if start<0: raise SystemExit('jsHelpers start missing')
+          end=s.find('</script>";}',start)
+          if end<0: raise SystemExit('jsHelpers end missing')
+          if 'rsEnhanceMediaR8' not in s[start:end]:
+              s=s[:end]+java_escape(js)+s[end:]
+
+          cstart=s.find('    String css(){return "<style>')
+          if cstart<0: raise SystemExit('css start missing')
+          cend=s.find('</style>";}',cstart)
+          if cend<0: raise SystemExit('css end missing')
+          if '.rs-image-host{overscroll-behavior:contain}' not in s[cstart:cend]:
+              s=s[:cend]+java_escape(css)+s[cend:]
+
+          p.write_text(s)
+          required=['rsEnhanceMediaR8','navigator.mediaSession.setActionHandler','setPositionState','isPermanentLibraryNode']
+          for marker in required:
+              if marker not in s: raise SystemExit(f'R8 marker missing: {marker}')
+          PY
+          grep -q 'versionCode = 12' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionName = "4.1.1-r8"' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'rsEnhanceMediaR8' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'ensureDirectory(mediaRoot())' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
+      - name: Compile and build APK
+        run: |
+          cp -R rs-local-storage-v41/rsapp llama.cpp/examples/llama.android/rsapp
+          printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          cd llama.cpp/examples/llama.android
+          chmod +x gradlew
+          ./gradlew :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
+          ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/29.0.13113456 ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+      - name: Validate APK
+        run: |
+          set -euxo pipefail
+          APK=llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='12'" /tmp/badging.txt
+          grep -q "versionName='4.1.1-r8'" /tmp/badging.txt
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          cp "$APK" RS-Local-Storage-v4.1.1-R8.apk
+          sha256sum RS-Local-Storage-v4.1.1-R8.apk | tee RS-Local-Storage-v4.1.1-R8.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Local-Storage-v4.1.1-R8-APK
+          path: |
+            RS-Local-Storage-v4.1.1-R8.apk
+            RS-Local-Storage-v4.1.1-R8.sha256
+          if-no-files-found: error
