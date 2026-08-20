@@ -1,4 +1,4 @@
-name: Build RS Local Storage V4.2.1 Hotfix APK
+name: Build RS Local Storage V4.2.2 Chat Experience APK
 
 on:
   push:
@@ -67,14 +67,20 @@ jobs:
       - name: Verify V4.2 source invariants
         run: |
           set -euxo pipefail
-          grep -q 'versionCode = 17' rs-local-storage-v41/rsapp/build.gradle.kts
-          grep -q 'versionName = "4.2.1"' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionCode = 18' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionName = "4.2.2"' rs-local-storage-v41/rsapp/build.gradle.kts
           grep -q 'adjustResize' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
           grep -q 'android:extractNativeLibs="true"' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
           grep -q 'useLegacyPackaging = true' rs-local-storage-v41/rsapp/build.gradle.kts
           grep -q 'Diagnóstico do runtime' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
           grep -q 'validateModelFile' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
           grep -q '/api/ai/diagnostics' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q '/api/ai/stop' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'application/x-ndjson' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'rsInitAiV422' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'generateStreaming' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'visibleAnswer' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'stopGeneration' llama.cpp/examples/llama.android/lib/src/main/java/com/arm/aichat/InferenceEngine.kt
           grep -q 'rsGlobalMenu' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'rsEnhanceFileVideoV42' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'isPermanentLibraryNode' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
@@ -114,8 +120,8 @@ jobs:
           # Package/version are read from the compiled binary AndroidManifest.xml.
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='com.rs.localstorage'" /tmp/badging.txt
-          grep -q "versionCode='17'" /tmp/badging.txt
-          grep -q "versionName='4.2.1'" /tmp/badging.txt
+          grep -q "versionCode='18'" /tmp/badging.txt
+          grep -q "versionName='4.2.2'" /tmp/badging.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/manifest-tree.txt
           grep -q 'android:extractNativeLibs.*0xffffffff' /tmp/manifest-tree.txt
 
@@ -132,12 +138,13 @@ jobs:
 
           # Build proof is packaged as an asset and confirms the exact V4.2 feature source set.
           unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee /tmp/rs-proof.txt
-          grep -q 'RS Local Storage V4.2.1' /tmp/rs-proof.txt
-          grep -q 'versionCode=17' /tmp/rs-proof.txt
+          grep -q 'RS Local Storage V4.2.2 CHAT EXPERIENCE' /tmp/rs-proof.txt
+          grep -q 'versionCode=18' /tmp/rs-proof.txt
           grep -q 'Biblioteca=non-destructive-protected' /tmp/rs-proof.txt
           grep -q 'AndroidNavigation=R11-native-grouped+server-aware+a11y' /tmp/rs-proof.txt
           grep -q 'WebNavigation=global-dropdown+role-aware' /tmp/rs-proof.txt
-          grep -q 'AI=gguf-magic-validation+non-null-errors+native-diagnostics' /tmp/rs-proof.txt
+          grep -q 'AI=gguf-magic-validation+non-null-errors+native-diagnostics+ndjson-streaming+final-answer-filter' /tmp/rs-proof.txt
+          grep -q 'ChatUI=responsive-chatgpt-style+process-vs-answer+stop+copy+regenerate+safe-code-rendering' /tmp/rs-proof.txt
           grep -q 'Runtime=pinned-llama.cpp+extracted-native-libs+cpu-backend-guard+native-log-tail' /tmp/rs-proof.txt
           grep -q 'Media=image-zoom+audio-player+media-session+custom-file-video' /tmp/rs-proof.txt
           grep -q 'Users=admin-edit+password+usage' /tmp/rs-proof.txt
@@ -170,16 +177,16 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signature.txt
           grep -q 'Verified' /tmp/signature.txt
 
-          cp "$APK" RS-Local-Storage-v4.2.1-HOTFIX.apk
-          sha256sum RS-Local-Storage-v4.2.1-HOTFIX.apk | tee RS-Local-Storage-v4.2.1-HOTFIX.sha256
-          test -s RS-Local-Storage-v4.2.1-HOTFIX.apk
-          test -s RS-Local-Storage-v4.2.1-HOTFIX.sha256
+          cp "$APK" RS-Local-Storage-v4.2.2-CHAT.apk
+          sha256sum RS-Local-Storage-v4.2.2-CHAT.apk | tee RS-Local-Storage-v4.2.2-CHAT.sha256
+          test -s RS-Local-Storage-v4.2.2-CHAT.apk
+          test -s RS-Local-Storage-v4.2.2-CHAT.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: RS-Local-Storage-v4.2.1-HOTFIX-APK
+          name: RS-Local-Storage-v4.2.2-CHAT-APK
           path: |
-            RS-Local-Storage-v4.2.1-HOTFIX.apk
-            RS-Local-Storage-v4.2.1-HOTFIX.sha256
+            RS-Local-Storage-v4.2.2-CHAT.apk
+            RS-Local-Storage-v4.2.2-CHAT.sha256
           if-no-files-found: error
           retention-days: 7
