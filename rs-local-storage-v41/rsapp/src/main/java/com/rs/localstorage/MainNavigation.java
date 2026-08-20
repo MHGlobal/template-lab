@@ -125,7 +125,7 @@ final class MainNavigation {
             activity.startActivity(intent);
         } catch (Exception e) {
             String message = e.getMessage();
-            Toast.makeText(activity, message == null || message.isBlank() ? "Não foi possível abrir a área." : message, Toast.LENGTH_LONG).show();
+            Toast.makeText(activity, message == null || message.trim().isEmpty() ? "Não foi possível abrir a área." : message, Toast.LENGTH_LONG).show();
         }
     }
 }
