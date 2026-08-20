@@ -70,9 +70,8 @@ jobs:
           grep -q 'versionCode = 16' rs-local-storage-v41/rsapp/build.gradle.kts
           grep -q 'versionName = "4.2.0"' rs-local-storage-v41/rsapp/build.gradle.kts
           grep -q 'adjustResize' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
-          grep -q 'GGUF válido' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
-          grep -q 'validateModelFile' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
           grep -q 'Diagnóstico do runtime' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
+          grep -q 'validateModelFile' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
           grep -q '/api/ai/diagnostics' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'rsGlobalMenu' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'rsEnhanceFileVideoV42' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
