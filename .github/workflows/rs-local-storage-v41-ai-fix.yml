@@ -1,4 +1,4 @@
-name: Build RS Local Storage V4.1 AI Fix APK
+name: Build RS Local Storage V4.1.1 Hardened APK
 on:
   pull_request:
     branches: [ editor ]
@@ -12,12 +12,10 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: android-actions/setup-android@v3
 
       - name: Install Android SDK, NDK and CMake
@@ -25,84 +23,75 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
 
-      - name: Reconstruct and verify V4.1 source
+      - name: Reconstruct V4.1 source
         run: |
           set -euxo pipefail
           mkdir -p rs-local-storage-v41
           python3 - <<'PY'
           import base64, hashlib, pathlib, re
           expected = "5187a6739125213e871661059630434fd10b53f42369319fa1e7496b20177d1a"
-          parts = []
+          parts=[]
           for i in range(7):
-              raw = pathlib.Path(f"rs-v41-part-{i:02d}").read_text(encoding="utf-8", errors="ignore")
-              clean = re.sub(r"[^A-Za-z0-9+/=]", "", raw)
-              parts.append(clean)
-              print(f"part-{i:02d}: {len(clean)} chars")
-
+              raw=pathlib.Path(f"rs-v41-part-{i:02d}").read_text(encoding="utf-8",errors="ignore")
+              parts.append(re.sub(r"[^A-Za-z0-9+/=]","",raw))
           def decode(s):
-              s = s + "=" * ((-len(s)) % 4)
-              return base64.b64decode(s, validate=False)
-
-          decoded = [None] * 7
-          for i in (0, 2, 3, 4, 5, 6):
-              decoded[i] = decode(parts[i])
-
-          bad = parts[1]
-          if len(bad) == 12000:
-              candidates = [(None, bad)]
-          elif len(bad) == 12001:
-              candidates = [(pos, bad[:pos] + bad[pos+1:]) for pos in range(len(bad))]
-          else:
-              raise SystemExit(f"Unexpected part-01 length: {len(bad)}")
-
-          solution = None
-          repaired_pos = None
-          for pos, cand in candidates:
-              try:
-                  b1 = decode(cand)
-              except Exception:
-                  continue
-              out = decoded[0] + b1 + b"".join(decoded[2:])
-              if hashlib.sha256(out).hexdigest() == expected:
-                  solution = out
-                  repaired_pos = pos
-                  break
-
-          if solution is None:
-              raise SystemExit("Unable to reconstruct exact V4.1 ZIP from source chunks")
-          print("repaired_pos", repaired_pos)
-          print("zip bytes", len(solution))
-          print("sha256", hashlib.sha256(solution).hexdigest())
+              s += "="*((-len(s))%4)
+              return base64.b64decode(s,validate=False)
+          decoded=[None]*7
+          for i in (0,2,3,4,5,6): decoded[i]=decode(parts[i])
+          bad=parts[1]
+          candidates=[(None,bad)] if len(bad)==12000 else [(p,bad[:p]+bad[p+1:]) for p in range(len(bad))] if len(bad)==12001 else []
+          solution=None
+          for pos,cand in candidates:
+              try: out=decoded[0]+decode(cand)+b"".join(decoded[2:])
+              except Exception: continue
+              if hashlib.sha256(out).hexdigest()==expected:
+                  solution=out; print("repaired_pos",pos); break
+          if solution is None: raise SystemExit("Unable to reconstruct exact V4.1 ZIP")
           pathlib.Path("/tmp/rs-v41.zip").write_bytes(solution)
           PY
           unzip -t /tmp/rs-v41.zip
           unzip -q /tmp/rs-v41.zip -d rs-local-storage-v41
-          test -f rs-local-storage-v41/rsapp/build.gradle.kts
-          test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
-          test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
-          echo '=== RS AI calls in AiActivity.kt ==='
-          grep -nE 'cleanUp|loadModel|InferenceEngine|state' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt || true
-          echo '=== AiWebBridge.kt ==='
-          nl -ba rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt | sed -n '1,320p'
 
-      - name: Repair V4.1 Java source literal
+      - name: Apply V4.1.1 source hardening
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java')
-          s = p.read_text()
-          bad = 'replace("' + chr(10) + '","<br>")'
-          good = r'replace("\n","<br>")'
-          count = s.count(bad)
-          if count != 1:
-              raise SystemExit(f'Expected exactly one broken newline literal, found {count}')
-          s = s.replace(bad, good)
-          p.write_text(s)
-          if bad in s or good not in s:
-              raise SystemExit('Java newline literal repair verification failed')
-          print('Repaired HotspotServerService.java newline replacement literal')
+          root=Path('rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage')
+          p=root/'HotspotServerService.java'; s=p.read_text()
+          bad='replace("'+chr(10)+'","<br>")'; good=r'replace("\n","<br>")'
+          if s.count(bad)!=1: raise SystemExit(f'broken newline target count={s.count(bad)}')
+          s=s.replace(bad,good)
+          old='void protectRoot(File f)throws Exception{if(f.getCanonicalFile().equals(storageRoot().getCanonicalFile()))throw new SecurityException();}'
+          new='void protectRoot(File f)throws Exception{File c=f.getCanonicalFile();if(c.equals(storageRoot().getCanonicalFile()))throw new SecurityException("A raiz do armazenamento é protegida");File media=library.mediaRoot().getCanonicalFile(),movies=library.moviesRoot().getCanonicalFile(),series=library.seriesRoot().getCanonicalFile(),meta=new File(media,".rs").getCanonicalFile();if(c.equals(media)||c.equals(movies)||c.equals(series)||c.equals(meta))throw new SecurityException("A estrutura da Biblioteca RS Media é permanente e não pode ser apagada, movida ou renomeada");}'
+          if s.count(old)!=1: raise SystemExit('protectRoot target missing')
+          p.write_text(s.replace(old,new))
+          p=root/'MediaLibrary.java'; s=p.read_text()
+          old='public void prepareRoots(){moviesRoot().mkdirs();seriesRoot().mkdirs();new File(mediaRoot(),".rs").mkdirs();}'
+          new='public void prepareRoots(){ensureDirectory(mediaRoot());ensureDirectory(moviesRoot());ensureDirectory(seriesRoot());ensureDirectory(new File(mediaRoot(),".rs"));}\n    private void ensureDirectory(File dir){if(dir.exists()){if(!dir.isDirectory())throw new IllegalStateException("O caminho protegido da Biblioteca não é uma pasta: "+dir.getAbsolutePath());return;}if(!dir.mkdirs()&&!dir.isDirectory())throw new IllegalStateException("Não foi possível criar a pasta da Biblioteca: "+dir.getAbsolutePath());}'
+          if s.count(old)!=1: raise SystemExit('prepareRoots target missing')
+          p.write_text(s.replace(old,new))
+          p=root/'MainActivity.java'; s=p.read_text()
+          old='AlertDialog d=new AlertDialog.Builder(this).setTitle(existing==null?"Novo cliente":"Editar cliente").setView(box).setPositiveButton("Guardar",null).setNegativeButton("Cancelar",null).create();if(existing!=null)d.setButton(AlertDialog.BUTTON_NEUTRAL,"Eliminar",(x,w)->{});final UserStore.Client ex=existing;'
+          new='AlertDialog.Builder builder=new AlertDialog.Builder(this).setTitle(existing==null?"Novo cliente":"Editar cliente").setView(box).setPositiveButton("Guardar",null).setNegativeButton("Cancelar",null);if(existing!=null)builder.setNeutralButton("Eliminar",null);AlertDialog d=builder.create();final UserStore.Client ex=existing;'
+          if s.count(old)!=1: raise SystemExit('client dialog target missing')
+          p.write_text(s.replace(old,new))
+          p=root/'AiActivity.kt'; s=p.read_text()
+          s=s.replace('import android.os.Bundle\n','import android.os.Bundle\nimport android.content.Intent\n')
+          needle='private fun models()=(modelsDir().listFiles{f->f.isFile&&f.extension.equals("gguf",true)}?:emptyArray()).sortedByDescending{it.lastModified()}\n'
+          repl=needle+'    private fun errorText(t:Throwable):String = t.message?.takeIf{it.isNotBlank()} ?: t.cause?.message?.takeIf{it.isNotBlank()} ?: t.javaClass.simpleName.ifBlank{"Falha desconhecida do runtime"}\n'
+          if s.count(needle)!=1: raise SystemExit('models target missing')
+          s=s.replace(needle,repl)
+          top='val titles=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(12),0,0,0)};titles.addView(txt("RS AI",28f,Color.WHITE).apply{setTypeface(typeface,Typeface.BOLD)});titles.addView(txt("Gestor técnico do modelo · llama.cpp",12f,muted));top.addView(titles,LinearLayout.LayoutParams(0,-2,1f));root.addView(top)'
+          top2='val titles=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(12),0,0,0)};titles.addView(txt("RS AI",28f,Color.WHITE).apply{setTypeface(typeface,Typeface.BOLD)});titles.addView(txt("Gestor técnico do modelo · llama.cpp",12f,muted));top.addView(titles,LinearLayout.LayoutParams(0,-2,1f));val menuBtn=btn("☰").apply{contentDescription="Abrir navegação";setOnClickListener{showNav(this)}};top.addView(menuBtn,LinearLayout.LayoutParams(dp(52),dp(46)));root.addView(top)'
+          if s.count(top)!=1: raise SystemExit('AI top bar target missing')
+          s=s.replace(top,top2)
+          s=s.replace('status.text=e.message','status.text="Erro: ${errorText(e)}"').replace('status.text="Erro: ${e.message}"','status.text="Erro: ${errorText(e)}"')
+          old='private fun modelFilename(m:GgufMetadata):String{val n=m.basic.name?.replace(Regex("[^A-Za-z0-9._-]"),"_")?.take(80);return (if(n.isNullOrBlank())"model_${System.currentTimeMillis()}" else n)+".gguf"}'
+          new='private fun modelFilename(m:GgufMetadata):String{val raw=m.basic.name?.replace(Regex("[^A-Za-z0-9._-]"),"_")?.take(80);val n=if(raw.isNullOrBlank())"model_${System.currentTimeMillis()}" else raw;return if(n.endsWith(".gguf",true))n else "$n.gguf"}\n    private fun showNav(anchor:android.view.View){PopupMenu(this,anchor).apply{menu.add("Painel / Servidor").setOnMenuItemClickListener{startActivity(Intent(this@AiActivity,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));true};menu.add("RS AI · atual").isEnabled=false;show()}}'
+          if s.count(old)!=1: raise SystemExit('model filename target missing')
+          p.write_text(s.replace(old,new))
           PY
-          nl -ba rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java | sed -n '220,235p'
 
       - name: Clone pinned llama.cpp
         run: |
@@ -110,29 +99,27 @@ jobs:
           cd llama.cpp
           git checkout 8ef78e644f559db4e8716b59bf76b8e11619337d
 
-      - name: Make model cleanup safe before first GGUF load
+      - name: Harden llama.cpp Android runtime for 8 GB devices
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('llama.cpp/examples/llama.android/lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt')
-          s = p.read_text()
-          needle = '                else -> throw IllegalStateException("Cannot unload model in ${state.javaClass.simpleName}")'
-          replacement = '''                is InferenceEngine.State.Initialized -> {
-                    // No model is loaded yet. Import/reload callers may safely request cleanup.
-                    Log.i(TAG, "No model loaded; cleanup skipped.")
-                    Unit
-                }
-
-                else -> throw IllegalStateException("Cannot unload model in ${state.javaClass.simpleName}")'''
-          if s.count(needle) != 1:
-              raise SystemExit(f'Expected one cleanup guard, found {s.count(needle)}')
-          s = s.replace(needle, replacement)
+          p=Path('llama.cpp/examples/llama.android/lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt')
+          s=p.read_text()
+          needle='                else -> throw IllegalStateException("Cannot unload model in ${state.javaClass.simpleName}")'
+          replacement='''                is InferenceEngine.State.Initialized -> {\n                    Log.i(TAG, "No model loaded; cleanup skipped.")\n                    Unit\n                }\n\n                else -> throw IllegalStateException("Cannot unload model in ${state.javaClass.simpleName}")'''
+          if s.count(needle)!=1: raise SystemExit('cleanup guard target missing')
+          p.write_text(s.replace(needle,replacement))
+          p=Path('llama.cpp/examples/llama.android/lib/src/main/java/com/arm/aichat/InferenceEngine.kt')
+          s=p.read_text().replace('class UnsupportedArchitectureException : Exception()','class UnsupportedArchitectureException : Exception("O modelo GGUF não é suportado por esta versão do runtime llama.cpp")')
           p.write_text(s)
-          assert 'No model loaded; cleanup skipped.' in s
-          print('Patched InferenceEngineImpl.cleanUp(): Initialized is now a safe no-op')
+          p=Path('llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          s=p.read_text()
+          if 'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;' not in s: raise SystemExit('context target missing')
+          s=s.replace('constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;','constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;').replace('constexpr int   BATCH_SIZE              = 512;','constexpr int   BATCH_SIZE              = 256;')
+          p.write_text(s)
           PY
 
-      - name: Inject RS Local Storage V4.1 module
+      - name: Inject RS Local Storage V4.1.1 module
         run: |
           cp -R rs-local-storage-v41/rsapp llama.cpp/examples/llama.android/rsapp
           printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
@@ -143,24 +130,26 @@ jobs:
           chmod +x gradlew
           ./gradlew :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
 
-      - name: Build V4.1 AI Fix APK
+      - name: Build V4.1.1 APK
         working-directory: llama.cpp/examples/llama.android
         env:
           ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/29.0.13113456
         run: ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
 
-      - name: Inspect APK
+      - name: Validate APK integrity
         run: |
           set -euxo pipefail
           APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 12
-          cp "$APK" RS-Local-Storage-v4.1-AI-Fix.apk
-          sha256sum RS-Local-Storage-v4.1-AI-Fix.apk
-          unzip -t RS-Local-Storage-v4.1-AI-Fix.apk >/dev/null
+          unzip -t "$APK" >/dev/null
+          cp "$APK" RS-Local-Storage-v4.1.1-Hardened.apk
+          sha256sum RS-Local-Storage-v4.1.1-Hardened.apk | tee RS-Local-Storage-v4.1.1-Hardened.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: RS-Local-Storage-v4.1-AI-Fix-APK
-          path: RS-Local-Storage-v4.1-AI-Fix.apk
+          name: RS-Local-Storage-v4.1.1-Hardened-APK
+          path: |
+            RS-Local-Storage-v4.1.1-Hardened.apk
+            RS-Local-Storage-v4.1.1-Hardened.sha256
           if-no-files-found: error
