@@ -33,9 +33,9 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: RS-Local-Storage-v4.2.0-FINAL-APK
+          name: RS-Local-Storage-v4.2.1-HOTFIX-APK
           path: |
-            RS-Local-Storage-v4.2.0-FINAL.apk
-            RS-Local-Storage-v4.2.0-FINAL.sha256
+            RS-Local-Storage-v4.2.1-HOTFIX.apk
+            RS-Local-Storage-v4.2.1-HOTFIX.sha256
           if-no-files-found: error
           retention-days: 7
