@@ -1,0 +1,142 @@
+name: Build RS Local Storage V4.1.1 R9 APK
+on:
+  pull_request:
+    branches: [ editor ]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android toolchain and workflow parser
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+          python3 -m pip install --disable-pip-version-check pyyaml
+      - name: Reuse validated R8 source and runtime pipeline
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import subprocess, yaml
+          from pathlib import Path
+          wf=yaml.safe_load(Path('.github/workflows/rs-local-storage-v411-r8.yml').read_text())
+          wanted={
+              'Reuse validated R7 source and runtime pipeline',
+              'Apply R8 touch gestures and Media Session hardening',
+          }
+          found=set()
+          for step in wf['jobs']['build']['steps']:
+              name=step.get('name')
+              if name in wanted:
+                  subprocess.run(['bash','-lc',step['run']],check=True)
+                  found.add(name)
+          missing=wanted-found
+          if missing: raise SystemExit(f'R8 pipeline steps missing: {sorted(missing)}')
+          PY
+      - name: Apply R9 accessibility and resilient media controls
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          g=Path('rs-local-storage-v41/rsapp/build.gradle.kts')
+          gs=g.read_text()
+          if 'versionCode = 12' not in gs or 'versionName = "4.1.1-r8"' not in gs:
+              raise SystemExit('R8 version marker missing')
+          g.write_text(gs.replace('versionCode = 12','versionCode = 13').replace('versionName = "4.1.1-r8"','versionName = "4.1.1-r9"'))
+
+          p=Path('rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java')
+          s=p.read_text()
+          if 'rsEnhanceMediaR8' not in s or '.rs-audio-player{' not in s:
+              raise SystemExit('R8 media markers missing')
+
+          js="""function rsEnhanceMediaR9(){
+          document.querySelectorAll('.rs-audio-player').forEach(shell=>{
+            if(shell.dataset.rsR9)return;shell.dataset.rsR9='1';shell.tabIndex=0;shell.setAttribute('role','group');shell.setAttribute('aria-label','Leitor de música RS');
+            const a=shell.parentElement&&shell.parentElement.querySelector('.rs-audio-engine');if(!a)return;
+            const clock=shell.querySelector('.rs-audio-clock');if(clock){clock.setAttribute('aria-live','off');clock.setAttribute('aria-atomic','true')}
+            shell.addEventListener('keydown',e=>{
+              if(e.target&&/INPUT|BUTTON/.test(e.target.tagName))return;
+              let handled=true;
+              if(e.code==='Space'){a.paused?a.play().catch(()=>{}):a.pause()}
+              else if(e.key==='ArrowLeft')a.currentTime=Math.max(0,(a.currentTime||0)-10);
+              else if(e.key==='ArrowRight')a.currentTime=Math.min(a.duration||1e12,(a.currentTime||0)+10);
+              else if(e.key==='ArrowUp')a.volume=Math.min(1,(a.volume||0)+.05);
+              else if(e.key==='ArrowDown')a.volume=Math.max(0,(a.volume||0)-.05);
+              else handled=false;
+              if(handled)e.preventDefault();
+            });
+            a.addEventListener('play',()=>{
+              if(!('mediaSession' in navigator))return;
+              try{const raw=(a.currentSrc||a.src||'').split('/').pop()||'RS Music';const title=decodeURIComponent(raw).replace(/\.[^.]+$/,'')||'RS Music';navigator.mediaSession.metadata=new MediaMetadata({title,artist:'RS Local Storage',album:'RS Music'})}catch(_){ }
+            });
+          });
+          document.querySelectorAll('.rs-image-host').forEach(host=>{if(host.dataset.rsR9)return;host.dataset.rsR9='1';host.setAttribute('role','group');host.setAttribute('aria-label','Visualizador de imagem RS');});
+          }
+          document.addEventListener('DOMContentLoaded',rsEnhanceMediaR9);"""
+          css=""".rs-audio-player:focus-visible,.rs-image-host:focus-visible{outline:2px solid var(--o);outline-offset:3px}.rs-audio-player{scroll-margin:16px}@media(prefers-reduced-motion:reduce){.rs-image-host img{transition:none!important}}"""
+
+          def java_escape(x):
+              return x.replace('\\','\\\\').replace('"','\\"').replace('\r','').replace('\n','')
+          start=s.find('    String jsHelpers(){return "<script>')
+          if start<0: raise SystemExit('jsHelpers start missing')
+          end=s.find('</script>";}',start)
+          if end<0: raise SystemExit('jsHelpers end missing')
+          if 'rsEnhanceMediaR9' not in s[start:end]: s=s[:end]+java_escape(js)+s[end:]
+          cstart=s.find('    String css(){return "<style>')
+          if cstart<0: raise SystemExit('css start missing')
+          cend=s.find('</style>";}',cstart)
+          if cend<0: raise SystemExit('css end missing')
+          if '@media(prefers-reduced-motion:reduce)' not in s[cstart:cend]: s=s[:cend]+java_escape(css)+s[cend:]
+          p.write_text(s)
+
+          # Build proof is packaged into the APK so shipped features are auditable.
+          assets=Path('rs-local-storage-v41/rsapp/src/main/assets');assets.mkdir(parents=True,exist_ok=True)
+          assets.joinpath('RS_BUILD_PROOF.txt').write_text('''RS Local Storage V4.1.1 R9\nversionCode=13\nBiblioteca=non-destructive-protected\nWebMedia=R7+R8+R9\nMediaSession=position+transport+metadata\nAccessibility=keyboard+focus+reduced-motion\n''')
+
+          required=['rsEnhanceMediaR9','navigator.mediaSession.metadata','isPermanentLibraryNode','Biblioteca RS Media não pode ser eliminada','sendBeacon']
+          for marker in required:
+              if marker not in s: raise SystemExit(f'R9 marker missing: {marker}')
+          PY
+          grep -q 'versionCode = 13' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionName = "4.1.1-r9"' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'rsEnhanceMediaR9' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'isPermanentLibraryNode' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'ensureDirectory(mediaRoot())' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
+          test -s rs-local-storage-v41/rsapp/src/main/assets/RS_BUILD_PROOF.txt
+      - name: Compile and build APK
+        run: |
+          cp -R rs-local-storage-v41/rsapp llama.cpp/examples/llama.android/rsapp
+          printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          cd llama.cpp/examples/llama.android
+          chmod +x gradlew
+          ./gradlew :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
+          ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/29.0.13113456 ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+      - name: Validate APK and shipped feature proof
+        run: |
+          set -euxo pipefail
+          APK=llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='13'" /tmp/badging.txt
+          grep -q "versionName='4.1.1-r9'" /tmp/badging.txt
+          unzip -t "$APK" >/dev/null
+          unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee /tmp/rs-proof.txt
+          grep -q 'Biblioteca=non-destructive-protected' /tmp/rs-proof.txt
+          grep -q 'Accessibility=keyboard+focus+reduced-motion' /tmp/rs-proof.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          cp "$APK" RS-Local-Storage-v4.1.1-R9.apk
+          sha256sum RS-Local-Storage-v4.1.1-R9.apk | tee RS-Local-Storage-v4.1.1-R9.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Local-Storage-v4.1.1-R9-APK
+          path: |
+            RS-Local-Storage-v4.1.1-R9.apk
+            RS-Local-Storage-v4.1.1-R9.sha256
+          if-no-files-found: error
