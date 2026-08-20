@@ -1,4 +1,4 @@
-name: Build RS Local Storage V4.2.3 Complete UI APK
+name: Build RS Local Storage V4.2.4 Final Answer UI APK
 
 on:
   push:
@@ -57,18 +57,18 @@ jobs:
           test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
           test -f llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
 
-      - name: Apply V4.2.3 complete source and runtime patch
+      - name: Apply V4.2.4 final-answer source and runtime patch
         run: |
           set -euxo pipefail
           base64 -d rs-v42/apply_v42.py.gz.b64 | gunzip > /tmp/apply_v42.py
           python3 -m py_compile /tmp/apply_v42.py
           python3 /tmp/apply_v42.py
 
-      - name: Verify V4.2.3 source invariants
+      - name: Verify V4.2.4 source invariants
         run: |
           set -euxo pipefail
-          grep -q 'versionCode = 19' rs-local-storage-v41/rsapp/build.gradle.kts
-          grep -q 'versionName = "4.2.3"' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionCode = 20' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionName = "4.2.4"' rs-local-storage-v41/rsapp/build.gradle.kts
           grep -q 'adjustResize' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
           grep -q 'android:extractNativeLibs="true"' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
           grep -q 'useLegacyPackaging = true' rs-local-storage-v41/rsapp/build.gradle.kts
@@ -80,6 +80,12 @@ jobs:
           grep -q 'rsInitAiV422' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'generateStreaming' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
           grep -q 'visibleAnswer' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'lastIndexOf("</think>"' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q '/no_think' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'selectedName.contains("qwen3")' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'answer_token' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'aiEvent(out,"final",answer)' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'Pensamento concluído' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'stopGeneration' llama.cpp/examples/llama.android/lib/src/main/java/com/arm/aichat/InferenceEngine.kt
           grep -q 'showStoragePermissionDialog' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MainActivity.java
           grep -q 'Environment.isExternalStorageManager' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
@@ -88,7 +94,7 @@ jobs:
           grep -q 'rsStageInput' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'PdfRenderer' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'servePdfPage' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
-          grep -q 'rs-ui-v423' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'rs-ui-v424' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'sectionHead' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MainActivity.java
           grep -q 'RS CONTROL CENTER' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MainActivity.java
           grep -q 'rsGlobalMenu' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
@@ -108,7 +114,7 @@ jobs:
           grep -q 'aichat_recent_log' llama.cpp/examples/llama.android/lib/src/main/cpp/logging.h
           test -s rs-local-storage-v41/rsapp/src/main/assets/RS_BUILD_PROOF.txt
 
-      - name: Compile JVM sources and build V4.2.3 APK
+      - name: Compile JVM sources and build V4.2.4 APK
         run: |
           set -euxo pipefail
           rm -rf llama.cpp/examples/llama.android/rsapp
@@ -130,8 +136,8 @@ jobs:
           # Package/version are read from the compiled binary AndroidManifest.xml.
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='com.rs.localstorage'" /tmp/badging.txt
-          grep -q "versionCode='19'" /tmp/badging.txt
-          grep -q "versionName='4.2.3'" /tmp/badging.txt
+          grep -q "versionCode='20'" /tmp/badging.txt
+          grep -q "versionName='4.2.4'" /tmp/badging.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/manifest-tree.txt
           grep -q 'android:extractNativeLibs.*0xffffffff' /tmp/manifest-tree.txt
 
@@ -148,13 +154,13 @@ jobs:
 
           # Build proof is packaged as an asset and confirms the exact V4.2 feature source set.
           unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee /tmp/rs-proof.txt
-          grep -q 'RS Local Storage V4.2.3 COMPLETE UI' /tmp/rs-proof.txt
-          grep -q 'versionCode=19' /tmp/rs-proof.txt
+          grep -q 'RS Local Storage V4.2.4 FINAL ANSWER UI' /tmp/rs-proof.txt
+          grep -q 'versionCode=20' /tmp/rs-proof.txt
           grep -q 'Biblioteca=permission-gated+non-destructive+unreadable-is-error' /tmp/rs-proof.txt
           grep -q 'AndroidNavigation=global-right-menu+section-aware+a11y' /tmp/rs-proof.txt
           grep -q 'WebNavigation=global-dropdown+role-aware+responsive' /tmp/rs-proof.txt
-          grep -q 'AI=gguf-magic-validation+non-null-errors+native-diagnostics+ndjson-streaming+final-answer-filter' /tmp/rs-proof.txt
-          grep -q 'ChatUI=responsive-chatgpt-style+process-vs-answer+stop+copy+regenerate+safe-code-rendering' /tmp/rs-proof.txt
+          grep -q 'AI=gguf-magic-validation+non-null-errors+native-diagnostics+ndjson-streaming+qwen-nothink+close-only-think-filter+authoritative-final-event' /tmp/rs-proof.txt
+          grep -q 'ChatUI=responsive-chatgpt-style+collapsed-process+final-answer-only+stop+copy+regenerate+safe-code-rendering' /tmp/rs-proof.txt
           grep -q 'Runtime=pinned-llama.cpp+extracted-native-libs+cpu-backend-guard+native-log-tail' /tmp/rs-proof.txt
           grep -q 'Transfers=persistent-upload-queue+xhr-byte-progress+folder-picker+tracked-downloads+conflict-policy' /tmp/rs-proof.txt
           grep -q 'Media=image-zoom+audio-player+media-session+custom-file-video+android-pdf-renderer' /tmp/rs-proof.txt
@@ -189,16 +195,16 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signature.txt
           grep -q 'Verified' /tmp/signature.txt
 
-          cp "$APK" RS-Local-Storage-v4.2.3-COMPLETE.apk
-          sha256sum RS-Local-Storage-v4.2.3-COMPLETE.apk | tee RS-Local-Storage-v4.2.3-COMPLETE.sha256
-          test -s RS-Local-Storage-v4.2.3-COMPLETE.apk
-          test -s RS-Local-Storage-v4.2.3-COMPLETE.sha256
+          cp "$APK" RS-Local-Storage-v4.2.4-FINAL-ANSWER.apk
+          sha256sum RS-Local-Storage-v4.2.4-FINAL-ANSWER.apk | tee RS-Local-Storage-v4.2.4-FINAL-ANSWER.sha256
+          test -s RS-Local-Storage-v4.2.4-FINAL-ANSWER.apk
+          test -s RS-Local-Storage-v4.2.4-FINAL-ANSWER.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: RS-Local-Storage-v4.2.3-COMPLETE-APK
+          name: RS-Local-Storage-v4.2.4-FINAL-ANSWER-APK
           path: |
-            RS-Local-Storage-v4.2.3-COMPLETE.apk
-            RS-Local-Storage-v4.2.3-COMPLETE.sha256
+            RS-Local-Storage-v4.2.4-FINAL-ANSWER.apk
+            RS-Local-Storage-v4.2.4-FINAL-ANSWER.sha256
           if-no-files-found: error
           retention-days: 7
