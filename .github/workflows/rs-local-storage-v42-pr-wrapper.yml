@@ -1,4 +1,4 @@
-name: RS Local Storage V4.2.4 PR Build
+name: RS Local Storage V4.2.5 PR Build
 
 on:
   pull_request:
@@ -18,7 +18,7 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
-      - name: Execute V4.2.4 final-answer pipeline
+      - name: Execute V4.2.5 natural-speech pipeline
         run: |
           set -euxo pipefail
           python3 -m pip install --disable-pip-version-check pyyaml
@@ -33,9 +33,9 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: RS-Local-Storage-v4.2.4-FINAL-ANSWER-APK
+          name: RS-Local-Storage-v4.2.5-NATURAL-SPEECH-APK
           path: |
-            RS-Local-Storage-v4.2.4-FINAL-ANSWER.apk
-            RS-Local-Storage-v4.2.4-FINAL-ANSWER.sha256
+            RS-Local-Storage-v4.2.5-NATURAL-SPEECH.apk
+            RS-Local-Storage-v4.2.5-NATURAL-SPEECH.sha256
           if-no-files-found: error
           retention-days: 7
