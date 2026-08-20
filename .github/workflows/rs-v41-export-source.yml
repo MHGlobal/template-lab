@@ -1,0 +1,70 @@
+name: Export RS Local Storage V4.1 Source
+
+on:
+  push:
+    branches:
+      - rs-local-storage-v41-build
+    paths:
+      - '.github/workflows/rs-v41-export-source.yml'
+  pull_request:
+    branches:
+      - editor
+    paths:
+      - '.github/workflows/rs-v41-export-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct V4.1 source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, pathlib, re
+          expected = "5187a6739125213e871661059630434fd10b53f42369319fa1e7496b20177d1a"
+          parts = []
+          for i in range(7):
+              raw = pathlib.Path(f"rs-v41-part-{i:02d}").read_text(encoding="utf-8", errors="ignore")
+              parts.append(re.sub(r"[^A-Za-z0-9+/=]", "", raw))
+          def decode(s):
+              s += "=" * ((-len(s)) % 4)
+              return base64.b64decode(s, validate=False)
+          decoded = [None] * 7
+          for i in (0, 2, 3, 4, 5, 6):
+              decoded[i] = decode(parts[i])
+          bad = parts[1]
+          candidates = [(None, bad)] if len(bad) == 12000 else [(pos, bad[:pos] + bad[pos+1:]) for pos in range(len(bad))] if len(bad) == 12001 else []
+          solution = None
+          for pos, cand in candidates:
+              try:
+                  out = decoded[0] + decode(cand) + b"".join(decoded[2:])
+              except Exception:
+                  continue
+              if hashlib.sha256(out).hexdigest() == expected:
+                  solution = out
+                  print('repaired_pos', pos)
+                  break
+          if solution is None:
+              raise SystemExit('Unable to reconstruct exact V4.1 ZIP')
+          pathlib.Path('/tmp/rs-v41.zip').write_bytes(solution)
+          PY
+          mkdir -p /tmp/rs-v41-source
+          unzip -q /tmp/rs-v41.zip -d /tmp/rs-v41-source
+          test -d /tmp/rs-v41-source/rsapp
+          find /tmp/rs-v41-source -maxdepth 8 -type f | sort | head -250
+
+      - name: Upload reconstructed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Local-Storage-v4.1-Source
+          path: /tmp/rs-v41-source
+          if-no-files-found: error
+          retention-days: 1

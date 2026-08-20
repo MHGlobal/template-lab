@@ -1,0 +1,74 @@
+name: Build RS Local Storage V4.1.1 R10b APK
+on:
+  pull_request:
+    branches: [ editor ]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android toolchain and parser
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+          python3 -m pip install --disable-pip-version-check pyyaml
+      - name: Build R10 from canonical branch source
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import subprocess, yaml
+          from pathlib import Path
+          wf=yaml.safe_load(Path('.github/workflows/rs-local-storage-v411-r10.yml').read_text())
+          wanted=[
+              'Reuse validated R9 source and runtime pipeline',
+              'Apply R10 native Android navigation',
+              'Compile and build APK',
+          ]
+          steps={s.get('name'):s.get('run') for s in wf['jobs']['build']['steps'] if s.get('name')}
+          for name in wanted:
+              run=steps.get(name)
+              if not run: raise SystemExit(f'R10 step missing: {name}')
+              subprocess.run(['bash','-lc',run],check=True)
+          PY
+      - name: Validate R10 APK robustly
+        run: |
+          set -euxo pipefail
+          APK=llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='14'" /tmp/badging.txt
+          grep -q "versionName='4.1.1-r10'" /tmp/badging.txt
+          unzip -t "$APK" >/dev/null
+          unzip -p "$APK" assets/RS_BUILD_PROOF.txt > /tmp/rs-proof.txt
+          cat /tmp/rs-proof.txt
+          grep -q 'Biblioteca=non-destructive-protected' /tmp/rs-proof.txt
+          grep -q 'AndroidNavigation=native-fixed-menu+8-destinations' /tmp/rs-proof.txt
+          python3 - "$APK" <<'PY'
+          import sys, zipfile
+          apk=sys.argv[1]
+          with zipfile.ZipFile(apk) as z:
+              dex_names=[n for n in z.namelist() if n.startswith('classes') and n.endswith('.dex')]
+              if not dex_names: raise SystemExit('No DEX files found in APK')
+              dex=b''.join(z.read(n) for n in dex_names)
+          for marker in (b'MainNavigation', b'File Storage', b'RS Cinema'):
+              if marker not in dex: raise SystemExit(f'DEX marker missing: {marker!r}')
+          print('Native Android navigation markers verified in packaged DEX')
+          PY
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          cp "$APK" RS-Local-Storage-v4.1.1-R10.apk
+          sha256sum RS-Local-Storage-v4.1.1-R10.apk | tee RS-Local-Storage-v4.1.1-R10.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Local-Storage-v4.1.1-R10-APK
+          path: |
+            RS-Local-Storage-v4.1.1-R10.apk
+            RS-Local-Storage-v4.1.1-R10.sha256
+          if-no-files-found: error
