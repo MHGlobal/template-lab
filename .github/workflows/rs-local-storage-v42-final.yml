@@ -67,9 +67,11 @@ jobs:
       - name: Verify V4.2 source invariants
         run: |
           set -euxo pipefail
-          grep -q 'versionCode = 16' rs-local-storage-v41/rsapp/build.gradle.kts
-          grep -q 'versionName = "4.2.0"' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionCode = 17' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionName = "4.2.1"' rs-local-storage-v41/rsapp/build.gradle.kts
           grep -q 'adjustResize' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
+          grep -q 'android:extractNativeLibs="true"' rs-local-storage-v41/rsapp/src/main/AndroidManifest.xml
+          grep -q 'useLegacyPackaging = true' rs-local-storage-v41/rsapp/build.gradle.kts
           grep -q 'Diagnóstico do runtime' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt
           grep -q 'validateModelFile' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
           grep -q '/api/ai/diagnostics' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
@@ -84,6 +86,10 @@ jobs:
           grep -q 'ensureDirectory(mediaRoot())' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
           grep -q 'DEFAULT_CONTEXT_SIZE    = 4096' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
           grep -q 'BATCH_SIZE              = 256' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q 'backend_summary()' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q 'has_cpu_backend()' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q 'nativeRuntimeInfo' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q 'aichat_recent_log' llama.cpp/examples/llama.android/lib/src/main/cpp/logging.h
           test -s rs-local-storage-v41/rsapp/src/main/assets/RS_BUILD_PROOF.txt
 
       - name: Compile JVM sources and build V4.2 APK
@@ -108,8 +114,10 @@ jobs:
           # Package/version are read from the compiled binary AndroidManifest.xml.
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='com.rs.localstorage'" /tmp/badging.txt
-          grep -q "versionCode='16'" /tmp/badging.txt
-          grep -q "versionName='4.2.0'" /tmp/badging.txt
+          grep -q "versionCode='17'" /tmp/badging.txt
+          grep -q "versionName='4.2.1'" /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/manifest-tree.txt
+          grep -q 'android:extractNativeLibs.*0xffffffff' /tmp/manifest-tree.txt
 
           # The APK itself must be an intact ZIP and contain the ARM64 native runtime.
           unzip -t "$APK" >/dev/null
@@ -124,13 +132,13 @@ jobs:
 
           # Build proof is packaged as an asset and confirms the exact V4.2 feature source set.
           unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee /tmp/rs-proof.txt
-          grep -q 'RS Local Storage V4.2.0' /tmp/rs-proof.txt
-          grep -q 'versionCode=16' /tmp/rs-proof.txt
+          grep -q 'RS Local Storage V4.2.1' /tmp/rs-proof.txt
+          grep -q 'versionCode=17' /tmp/rs-proof.txt
           grep -q 'Biblioteca=non-destructive-protected' /tmp/rs-proof.txt
           grep -q 'AndroidNavigation=R11-native-grouped+server-aware+a11y' /tmp/rs-proof.txt
           grep -q 'WebNavigation=global-dropdown+role-aware' /tmp/rs-proof.txt
           grep -q 'AI=gguf-magic-validation+non-null-errors+native-diagnostics' /tmp/rs-proof.txt
-          grep -q 'Runtime=pinned-llama.cpp+ctx4096+batch256+init-error-state+native-return-codes' /tmp/rs-proof.txt
+          grep -q 'Runtime=pinned-llama.cpp+extracted-native-libs+cpu-backend-guard+native-log-tail' /tmp/rs-proof.txt
           grep -q 'Media=image-zoom+audio-player+media-session+custom-file-video' /tmp/rs-proof.txt
           grep -q 'Users=admin-edit+password+usage' /tmp/rs-proof.txt
           grep -q 'Progress=sendBeacon+pagehide+keepalive' /tmp/rs-proof.txt
@@ -162,16 +170,16 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signature.txt
           grep -q 'Verified' /tmp/signature.txt
 
-          cp "$APK" RS-Local-Storage-v4.2.0-FINAL.apk
-          sha256sum RS-Local-Storage-v4.2.0-FINAL.apk | tee RS-Local-Storage-v4.2.0-FINAL.sha256
-          test -s RS-Local-Storage-v4.2.0-FINAL.apk
-          test -s RS-Local-Storage-v4.2.0-FINAL.sha256
+          cp "$APK" RS-Local-Storage-v4.2.1-HOTFIX.apk
+          sha256sum RS-Local-Storage-v4.2.1-HOTFIX.apk | tee RS-Local-Storage-v4.2.1-HOTFIX.sha256
+          test -s RS-Local-Storage-v4.2.1-HOTFIX.apk
+          test -s RS-Local-Storage-v4.2.1-HOTFIX.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: RS-Local-Storage-v4.2.0-FINAL-APK
+          name: RS-Local-Storage-v4.2.1-HOTFIX-APK
           path: |
-            RS-Local-Storage-v4.2.0-FINAL.apk
-            RS-Local-Storage-v4.2.0-FINAL.sha256
+            RS-Local-Storage-v4.2.1-HOTFIX.apk
+            RS-Local-Storage-v4.2.1-HOTFIX.sha256
           if-no-files-found: error
           retention-days: 7
