@@ -54,13 +54,11 @@ jobs:
           p=Path('rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java')
           s=p.read_text()
 
-          # R5: expired-session counts remain accurate.
           old='void cleanupSessions(){long now=System.currentTimeMillis();for(Map.Entry<String,Session>e:new ArrayList<>(sessions.entrySet()))if(e.getValue().expires<now){sessions.remove(e.getKey());streams.removeSession(e.getKey());}}'
           new='void cleanupSessions(){long now=System.currentTimeMillis();boolean changed=false;for(Map.Entry<String,Session>e:new ArrayList<>(sessions.entrySet()))if(e.getValue().expires<now){sessions.remove(e.getKey());streams.removeSession(e.getKey());changed=true;}if(changed)updateCounts();}'
           if old in s:s=s.replace(old,new)
           elif 'if(changed)updateCounts()' not in s: raise SystemExit('session cleanup marker missing')
 
-          # R6: defence-in-depth for the generated RS Media library structure.
           helper='''    boolean isPermanentLibraryNode(File f)throws IOException{\n        File c=f.getCanonicalFile(),m=mediaRoot().getCanonicalFile();\n        return c.equals(m)||c.equals(new File(m,"Filmes").getCanonicalFile())||c.equals(new File(m,"Series").getCanonicalFile())||c.equals(new File(m,".rs").getCanonicalFile());\n    }\n'''
           if 'boolean isPermanentLibraryNode(File f)' not in s:
               marker='    void protectRoot(File f)throws Exception{'
@@ -76,23 +74,17 @@ jobs:
               if upload_marker not in s: raise SystemExit('upload marker missing')
               s=s.replace(upload_marker,upload_guard,1)
 
-          # Recursive deletion may never cross a permanent library node, even if reused elsewhere later.
           delete_old='void deleteRecursive(File f)throws IOException{if(f.isDirectory())'
           delete_new='void deleteRecursive(File f)throws IOException{if(isPermanentLibraryNode(f))throw new SecurityException("A Biblioteca RS Media não pode ser eliminada.");if(f.isDirectory())'
           if delete_new not in s:
               if delete_old not in s: raise SystemExit('deleteRecursive marker missing')
               s=s.replace(delete_old,delete_new,1)
 
-          # Context menu: never advertise destructive actions for structural library folders.
-          if "protectedItem=/\\/RS Media" not in s:
-              marker='dl=item.dataset.download;const back=document.createElement'
-              repl="dl=item.dataset.download,protectedItem=/\\/RS Media(?:\\/(?:Filmes|Series|\\.rs))?$/.test(p);const back=document.createElement"
-              if marker in s:s=s.replace(marker,repl,1)
-          destructive="if(isDir)add('Nova subpasta',()=>mkdirPrompt(p,c));add('Renomear',()=>renamePrompt(p,n,c));add('Copiar',()=>copyPrompt(p,c));add('Mover',()=>movePrompt(p,c));add('Eliminar',()=>deleteConfirm(p,c),true);"
-          safe="if(isDir)add('Nova subpasta',()=>mkdirPrompt(p,c));if(!protectedItem){add('Renomear',()=>renamePrompt(p,n,c));add('Copiar',()=>copyPrompt(p,c));add('Mover',()=>movePrompt(p,c));add('Eliminar',()=>deleteConfirm(p,c),true);}"
-          if destructive in s:s=s.replace(destructive,safe,1)
+          # R4 already marks permanent library nodes in the context menu. Assert it instead of
+          # injecting a second regular expression into a Java string (which caused R6 attempt 1 to fail).
+          if "protectedNode=item.dataset.protected==='1'" not in s or "if(!protectedNode){" not in s:
+              raise SystemExit('R4 protected context menu marker missing')
 
-          # W3C Beacon/Page Visibility based progress persistence for mobile browsers.
           pat=re.compile(r"function save\(\)\{if\(!isFinite\(p\.duration\)\)return;fetch\('/api/progress',\{method:'POST',headers:\{'Content-Type':'application/x-www-form-urlencoded'\},body:'csrf=.*?\}\)\}setInterval\(save,10000\);window\.addEventListener\('beforeunload',save\);",re.S)
           m=pat.search(s)
           if m:
@@ -110,6 +102,7 @@ jobs:
           grep -q 'versionName = "4.1.1-r6"' rs-local-storage-v41/rsapp/build.gradle.kts
           grep -q 'isPermanentLibraryNode' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'Biblioteca RS Media não pode ser substituída por upload' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q "protectedNode=item.dataset.protected==='1'" rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q "sendBeacon('/api/progress'" rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q "visibilityState==='hidden'" rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
           grep -q 'ensureDirectory(mediaRoot())' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
