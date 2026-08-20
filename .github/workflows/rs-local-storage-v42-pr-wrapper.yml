@@ -1,0 +1,41 @@
+name: RS Local Storage V4.2 PR Build
+
+on:
+  pull_request:
+    branches: [ rs-local-storage-v42-ci-wrapper-final ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Execute V4.2 final pipeline
+        run: |
+          set -euxo pipefail
+          python3 -m pip install --disable-pip-version-check pyyaml
+          python3 - <<'PY'
+          import subprocess, yaml
+          from pathlib import Path
+          wf = yaml.safe_load(Path('.github/workflows/rs-local-storage-v42-final.yml').read_text())
+          for step in wf['jobs']['build']['steps']:
+              run = step.get('run')
+              if run:
+                  subprocess.run(['bash','-lc',run], check=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Local-Storage-v4.2.0-FINAL-APK
+          path: |
+            RS-Local-Storage-v4.2.0-FINAL.apk
+            RS-Local-Storage-v4.2.0-FINAL.sha256
+          if-no-files-found: error
+          retention-days: 7
