@@ -1,0 +1,144 @@
+name: Build RS Local Storage V4.1.1 R3 APK
+
+on:
+  pull_request:
+    branches: [ editor ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK, NDK and CMake
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Reconstruct and patch V4.1.1 R3
+        run: |
+          set -euxo pipefail
+          mkdir -p rs-local-storage-v41
+          python3 - <<'PY'
+          import base64,hashlib,pathlib,re
+          expected='5187a6739125213e871661059630434fd10b53f42369319fa1e7496b20177d1a'
+          ps=[re.sub(r'[^A-Za-z0-9+/=]','',pathlib.Path(f'rs-v41-part-{i:02d}').read_text(errors='ignore')) for i in range(7)]
+          dec=lambda s: base64.b64decode(s+'='*((-len(s))%4),validate=False)
+          ds=[None]*7
+          for i in (0,2,3,4,5,6): ds[i]=dec(ps[i])
+          cs=[ps[1]] if len(ps[1])==12000 else [ps[1][:p]+ps[1][p+1:] for p in range(len(ps[1]))] if len(ps[1])==12001 else []
+          out=None
+          for c in cs:
+              try:x=ds[0]+dec(c)+b''.join(ds[2:])
+              except:continue
+              if hashlib.sha256(x).hexdigest()==expected:out=x;break
+          if out is None:raise SystemExit('reconstruction failed')
+          pathlib.Path('/tmp/rs-v41.zip').write_bytes(out)
+          PY
+          unzip -t /tmp/rs-v41.zip
+          unzip -q /tmp/rs-v41.zip -d rs-local-storage-v41
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage')
+          p=root/'HotspotServerService.java';t=p.read_text();bad='replace("'+chr(10)+'","<br>")';good=r'replace("\n","<br>")'
+          if t.count(bad)!=1:raise SystemExit('newline patch missing')
+          t=t.replace(bad,good)
+          a='void protectRoot(File f)throws Exception{if(f.getCanonicalFile().equals(storageRoot().getCanonicalFile()))throw new SecurityException();}'
+          b='boolean isProtectedLibraryStructure(File f)throws Exception{File c=f.getCanonicalFile(),media=library.mediaRoot().getCanonicalFile(),movies=library.moviesRoot().getCanonicalFile(),series=library.seriesRoot().getCanonicalFile(),meta=new File(media,".rs").getCanonicalFile();return c.equals(media)||c.equals(movies)||c.equals(series)||c.equals(meta);}\n    void protectRoot(File f)throws Exception{File c=f.getCanonicalFile();if(c.equals(storageRoot().getCanonicalFile()))throw new SecurityException("A raiz do armazenamento é protegida");if(isProtectedLibraryStructure(c))throw new SecurityException("A estrutura da Biblioteca RS Media é permanente e não pode ser apagada, copiada, movida ou renomeada");}'
+          if t.count(a)!=1:raise SystemExit('protect patch missing')
+          t=t.replace(a,b)
+          a='append("\' data-download=\'").append(attr(dl)).append("\' data-csrf=\'").append(attr(s.csrf)).append("\'><span class=\'type ")'
+          b='append("\' data-download=\'").append(attr(dl)).append("\' data-csrf=\'").append(attr(s.csrf)).append("\' data-protected=\'").append(isProtectedLibraryStructure(f)?"1":"0").append("\'><span class=\'type ")'
+          if t.count(a)!=1:raise SystemExit('ui marker missing')
+          t=t.replace(a,b)
+          a="const p=item.dataset.path,n=item.dataset.name,c=item.dataset.csrf,isDir=item.dataset.dir==='1',href=item.getAttribute('href'),dl=item.dataset.download;"
+          b="const p=item.dataset.path,n=item.dataset.name,c=item.dataset.csrf,isDir=item.dataset.dir==='1',protectedNode=item.dataset.protected==='1',href=item.getAttribute('href'),dl=item.dataset.download;"
+          if t.count(a)!=1:raise SystemExit('context marker missing')
+          t=t.replace(a,b)
+          a="if(isDir)add('Nova subpasta',()=>mkdirPrompt(p,c));add('Renomear',()=>renamePrompt(p,n,c));add('Copiar',()=>copyPrompt(p,c));add('Mover',()=>movePrompt(p,c));add('Eliminar',()=>deleteConfirm(p,c),true);"
+          b="if(isDir)add('Nova subpasta',()=>mkdirPrompt(p,c));if(!protectedNode){add('Renomear',()=>renamePrompt(p,n,c));add('Copiar',()=>copyPrompt(p,c));add('Mover',()=>movePrompt(p,c));add('Eliminar',()=>deleteConfirm(p,c),true)}"
+          if t.count(a)!=1:raise SystemExit('context actions missing')
+          t=t.replace(a,b)
+          a='String securityHeaders(){return "X-Content-Type-Options: nosniff\\r\\nReferrer-Policy: no-referrer\\r\\nX-Frame-Options: SAMEORIGIN\\r\\nContent-Security-Policy: default-src \'self\'; style-src \'self\' \'unsafe-inline\'; script-src \'self\' \'unsafe-inline\'; img-src \'self\' data: blob:; media-src \'self\' blob:; frame-src \'self\'; connect-src \'self\'\\r\\n";}'
+          b='String securityHeaders(){return "X-Content-Type-Options: nosniff\\r\\nReferrer-Policy: no-referrer\\r\\nX-Frame-Options: SAMEORIGIN\\r\\nPermissions-Policy: camera=(), microphone=(), geolocation=()\\r\\nCross-Origin-Resource-Policy: same-origin\\r\\nContent-Security-Policy: default-src \'self\'; style-src \'self\' \'unsafe-inline\'; script-src \'self\' \'unsafe-inline\'; img-src \'self\' data: blob:; media-src \'self\' blob:; frame-src \'self\'; connect-src \'self\'\\r\\n";}'
+          if t.count(a)!=1:raise SystemExit('headers patch missing')
+          t=t.replace(a,b)
+          st=t.index("function save(){if(!isFinite(p.duration))return;fetch('/api/progress'");en=t.index("document.addEventListener('keydown',e=>",st)
+          block=r'''function progressBody(){return 'csrf="+s.csrf+"&id="+id+"&pos='+Math.floor(p.currentTime*1000)+'&dur='+Math.floor(p.duration*1000)}function save(){if(!isFinite(p.duration))return;fetch('/api/progress',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:progressBody(),keepalive:true}).catch(()=>{})}function saveBeacon(){if(!isFinite(p.duration))return;const data=new Blob([progressBody()],{type:'application/x-www-form-urlencoded'});if(!navigator.sendBeacon||!navigator.sendBeacon('/api/progress',data))save()}setInterval(save,10000);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')saveBeacon()});window.addEventListener('pagehide',saveBeacon);if('mediaSession'in navigator){try{navigator.mediaSession.setActionHandler('play',()=>p.play());navigator.mediaSession.setActionHandler('pause',()=>p.pause());navigator.mediaSession.setActionHandler('seekbackward',d=>seek(-(d.seekOffset||10)));navigator.mediaSession.setActionHandler('seekforward',d=>seek(d.seekOffset||10));navigator.mediaSession.setActionHandler('seekto',d=>{if(d.seekTime!=null)p.currentTime=Math.max(0,Math.min(p.duration||d.seekTime,d.seekTime))})}catch(_){}}'''
+          t=t[:st]+block+t[en:];p.write_text(t)
+          p=root/'MediaLibrary.java';t=p.read_text();a='public void prepareRoots(){moviesRoot().mkdirs();seriesRoot().mkdirs();new File(mediaRoot(),".rs").mkdirs();}';b='public void prepareRoots(){ensureDirectory(mediaRoot());ensureDirectory(moviesRoot());ensureDirectory(seriesRoot());ensureDirectory(new File(mediaRoot(),".rs"));}\n    private void ensureDirectory(File dir){if(dir.exists()){if(!dir.isDirectory())throw new IllegalStateException("O caminho protegido da Biblioteca não é uma pasta: "+dir.getAbsolutePath());return;}if(!dir.mkdirs()&&!dir.isDirectory())throw new IllegalStateException("Não foi possível criar a pasta da Biblioteca: "+dir.getAbsolutePath());}'
+          if t.count(a)!=1:raise SystemExit('library patch missing')
+          p.write_text(t.replace(a,b))
+          p=root/'MainActivity.java';t=p.read_text();a='AlertDialog d=new AlertDialog.Builder(this).setTitle(existing==null?"Novo cliente":"Editar cliente").setView(box).setPositiveButton("Guardar",null).setNegativeButton("Cancelar",null).create();if(existing!=null)d.setButton(AlertDialog.BUTTON_NEUTRAL,"Eliminar",(x,w)->{});final UserStore.Client ex=existing;';b='AlertDialog.Builder builder=new AlertDialog.Builder(this).setTitle(existing==null?"Novo cliente":"Editar cliente").setView(box).setPositiveButton("Guardar",null).setNegativeButton("Cancelar",null);if(existing!=null)builder.setNeutralButton("Eliminar",null);AlertDialog d=builder.create();final UserStore.Client ex=existing;'
+          if t.count(a)!=1:raise SystemExit('dialog patch missing')
+          p.write_text(t.replace(a,b))
+          p=root/'AiActivity.kt';t=p.read_text().replace('import android.os.Bundle\n','import android.os.Bundle\nimport android.content.Intent\n');n='private fun models()=(modelsDir().listFiles{f->f.isFile&&f.extension.equals("gguf",true)}?:emptyArray()).sortedByDescending{it.lastModified()}\n';r=n+'    private fun errorText(t:Throwable):String = t.message?.takeIf{it.isNotBlank()} ?: t.cause?.message?.takeIf{it.isNotBlank()} ?: t.javaClass.simpleName.ifBlank{"Falha desconhecida do runtime"}\n'
+          if t.count(n)!=1:raise SystemExit('models patch missing')
+          t=t.replace(n,r);a='val titles=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(12),0,0,0)};titles.addView(txt("RS AI",28f,Color.WHITE).apply{setTypeface(typeface,Typeface.BOLD)});titles.addView(txt("Gestor técnico do modelo · llama.cpp",12f,muted));top.addView(titles,LinearLayout.LayoutParams(0,-2,1f));root.addView(top)';b='val titles=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(12),0,0,0)};titles.addView(txt("RS AI",28f,Color.WHITE).apply{setTypeface(typeface,Typeface.BOLD)});titles.addView(txt("Gestor técnico do modelo · llama.cpp",12f,muted));top.addView(titles,LinearLayout.LayoutParams(0,-2,1f));val menuBtn=btn("☰").apply{contentDescription="Abrir navegação";setOnClickListener{showNav(this)}};top.addView(menuBtn,LinearLayout.LayoutParams(dp(52),dp(46)));root.addView(top)'
+          if t.count(a)!=1:raise SystemExit('AI nav patch missing')
+          t=t.replace(a,b).replace('status.text=e.message','status.text="Erro: ${errorText(e)}"').replace('status.text="Erro: ${e.message}"','status.text="Erro: ${errorText(e)}"');a='private fun modelFilename(m:GgufMetadata):String{val n=m.basic.name?.replace(Regex("[^A-Za-z0-9._-]"),"_")?.take(80);return (if(n.isNullOrBlank())"model_${System.currentTimeMillis()}" else n)+".gguf"}';b='private fun modelFilename(m:GgufMetadata):String{val raw=m.basic.name?.replace(Regex("[^A-Za-z0-9._-]"),"_")?.take(80);val n=if(raw.isNullOrBlank())"model_${System.currentTimeMillis()}" else raw;return if(n.endsWith(".gguf",true))n else "$n.gguf"}\n    private fun showNav(anchor:android.view.View){PopupMenu(this,anchor).apply{menu.add("Painel / Servidor").setOnMenuItemClickListener{startActivity(Intent(this@AiActivity,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));true};menu.add("RS AI · atual").isEnabled=false;show()}}'
+          if t.count(a)!=1:raise SystemExit('filename patch missing')
+          p.write_text(t.replace(a,b))
+          p=Path('rs-local-storage-v41/rsapp/build.gradle.kts');t=p.read_text().replace('versionCode = 5','versionCode = 7').replace('versionName = "4.1.0"','versionName = "4.1.1-r3"');p.write_text(t)
+          PY
+      - name: Clone and harden pinned llama.cpp
+        run: |
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git llama.cpp
+          cd llama.cpp && git checkout 8ef78e644f559db4e8716b59bf76b8e11619337d && cd ..
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('llama.cpp/examples/llama.android/lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt');t=p.read_text();a='                else -> throw IllegalStateException("Cannot unload model in ${state.javaClass.simpleName}")';b='''                is InferenceEngine.State.Initialized -> {\n                    Log.i(TAG, "No model loaded; cleanup skipped.")\n                    Unit\n                }\n\n                else -> throw IllegalStateException("Cannot unload model in ${state.javaClass.simpleName}")'''
+          if t.count(a)!=1:raise SystemExit('cleanup patch missing')
+          t=t.replace(a,b);a='''                is InferenceEngine.State.Error -> {\n                    Log.i(TAG, "Resetting error states...")\n                    _state.value = InferenceEngine.State.Initialized\n                    Log.i(TAG, "States reset!")\n                    Unit\n                }''';b='''                is InferenceEngine.State.Error -> {\n                    Log.i(TAG, "Releasing partial model resources after an error...")\n                    runCatching { unload() }.onFailure { Log.w(TAG, "Partial cleanup failed", it) }\n                    _readyForSystemPrompt = false\n                    _state.value = InferenceEngine.State.Initialized\n                    Log.i(TAG, "Error state reset and native resources released.")\n                    Unit\n                }'''
+          if t.count(a)!=1:raise SystemExit('error cleanup missing')
+          p.write_text(t.replace(a,b));p=Path('llama.cpp/examples/llama.android/lib/src/main/java/com/arm/aichat/InferenceEngine.kt');p.write_text(p.read_text().replace('class UnsupportedArchitectureException : Exception()','class UnsupportedArchitectureException : Exception("O modelo GGUF não é suportado por esta versão do runtime llama.cpp")'))
+          p=Path('llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp');t=p.read_text().replace('constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;','constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;').replace('constexpr int   BATCH_SIZE              = 512;','constexpr int   BATCH_SIZE              = 256;');a='''static llama_model                      * g_model;\nstatic llama_context                    * g_context;\nstatic llama_batch                        g_batch;\nstatic common_chat_templates_ptr          g_chat_templates;\nstatic common_sampler                   * g_sampler;''';b='''static llama_model                      * g_model = nullptr;\nstatic llama_context                    * g_context = nullptr;\nstatic llama_batch                        g_batch;\nstatic bool                               g_batch_initialized = false;\nstatic common_chat_templates_ptr          g_chat_templates;\nstatic common_sampler                   * g_sampler = nullptr;'''
+          if t.count(a)!=1:raise SystemExit('globals patch missing')
+          t=t.replace(a,b);a='''    g_batch = llama_batch_init(BATCH_SIZE, 0, 1);\n    g_chat_templates = common_chat_templates_init(g_model, "");\n    g_sampler = new_sampler(DEFAULT_SAMPLER_TEMP);\n    return 0;''';b='''    g_batch = llama_batch_init(BATCH_SIZE, 0, 1);\n    g_batch_initialized = true;\n    g_chat_templates = common_chat_templates_init(g_model, "");\n    g_sampler = new_sampler(DEFAULT_SAMPLER_TEMP);\n    if (!g_sampler) { LOGe("%s: sampler initialization failed", __func__); return 2; }\n    return 0;'''
+          if t.count(a)!=1:raise SystemExit('prepare patch missing')
+          t=t.replace(a,b);a='''    // Reset long-term & short-term states\n    reset_long_term_states();\n    reset_short_term_states();\n\n    // Free up resources\n    common_sampler_free(g_sampler);\n    g_chat_templates.reset();\n    llama_batch_free(g_batch);\n    llama_free(g_context);\n    llama_model_free(g_model);''';b='''    chat_msgs.clear();\n    system_prompt_position = 0;\n    current_position = 0;\n    reset_short_term_states();\n    if (g_sampler) { common_sampler_free(g_sampler); g_sampler = nullptr; }\n    g_chat_templates.reset();\n    if (g_batch_initialized) { llama_batch_free(g_batch); g_batch_initialized = false; }\n    if (g_context) { llama_free(g_context); g_context = nullptr; }\n    if (g_model) { llama_model_free(g_model); g_model = nullptr; }'''
+          if t.count(a)!=1:raise SystemExit('unload patch missing')
+          p.write_text(t.replace(a,b))
+          PY
+      - name: Verify R3 invariants
+        run: |
+          grep -q 'versionCode = 7' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'isProtectedLibraryStructure' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'navigator.sendBeacon' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'Permissions-Policy' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'ensureDirectory(mediaRoot())' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
+          grep -q 'g_batch_initialized = false' llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+      - name: Inject module and compile
+        run: |
+          cp -R rs-local-storage-v41/rsapp llama.cpp/examples/llama.android/rsapp
+          printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          cd llama.cpp/examples/llama.android
+          chmod +x gradlew
+          ./gradlew :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
+          ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/29.0.13113456 ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+      - name: Validate APK integrity and signature
+        run: |
+          set -euxo pipefail
+          APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='7'" /tmp/badging.txt
+          grep -q "versionName='4.1.1-r3'" /tmp/badging.txt
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          cp "$APK" RS-Local-Storage-v4.1.1-R3.apk
+          sha256sum RS-Local-Storage-v4.1.1-R3.apk | tee RS-Local-Storage-v4.1.1-R3.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Local-Storage-v4.1.1-R3-APK
+          path: |
+            RS-Local-Storage-v4.1.1-R3.apk
+            RS-Local-Storage-v4.1.1-R3.sha256
+          if-no-files-found: error
