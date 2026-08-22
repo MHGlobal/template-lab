@@ -69,6 +69,7 @@ jobs:
       - name: Build ThreeUI dynamic overlay
         working-directory: rs-v43/rs-dynamic
         run: |
+          npm pkg set 'devDependencies.@vitejs/plugin-react=5.1.4'
           npm install --no-audit --no-fund
           npm run build
           test -s dist/app.js
