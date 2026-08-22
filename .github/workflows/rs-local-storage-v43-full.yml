@@ -3,6 +3,8 @@ name: Build RS Local Storage V4.3 Full APK
 on:
   push:
     branches: [ rs-local-storage-v43-dynamic-ui ]
+  pull_request:
+    branches: [ rs-local-storage-v42-ci-wrapper-final ]
 
 permissions:
   contents: read
