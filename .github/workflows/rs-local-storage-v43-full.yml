@@ -1,0 +1,147 @@
+name: Build RS Local Storage V4.3 Full APK
+
+on:
+  push:
+    branches: [ rs-local-storage-v43-dynamic-ui ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android toolchain and workflow parser
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+          python3 -m pip install --disable-pip-version-check pyyaml
+
+      - name: Materialize validated V4.2.5 complete source and llama runtime
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import subprocess, yaml
+          from pathlib import Path
+          wf = yaml.safe_load(Path('.github/workflows/rs-local-storage-v411-r11.yml').read_text())
+          wanted = {'Reuse validated R10 source pipeline','Apply R11 navigation UX and accessibility hardening'}
+          found=set()
+          for step in wf['jobs']['build']['steps']:
+              if step.get('name') in wanted:
+                  subprocess.run(['bash','-lc',step['run']],check=True)
+                  found.add(step['name'])
+          missing=wanted-found
+          if missing: raise SystemExit(f'Missing source stages: {sorted(missing)}')
+          PY
+          base64 -d rs-v42/apply_v42.py.gz.b64 | gunzip > /tmp/apply_v42.py
+          python3 -m py_compile /tmp/apply_v42.py
+          python3 /tmp/apply_v42.py
+          test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          test -f rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          test -f llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+
+      - name: Apply V4.2.6-compatible and V4.3 source overlay
+        run: |
+          set -euxo pipefail
+          cat rs-v43/bootstrap.part-* | base64 -d | gunzip > /tmp/rs-v43-bootstrap.py
+          python3 -m py_compile /tmp/rs-v43-bootstrap.py
+          python3 /tmp/rs-v43-bootstrap.py
+          test -f rs-v43/rs-dynamic/package.json
+          test -f rs-v43/rs-dynamic/src/main.jsx
+
+      - name: Build ThreeUI dynamic overlay
+        working-directory: rs-v43/rs-dynamic
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          test -s dist/app.js
+          test -s dist/style.css
+
+      - name: Package Dynamic UI locally inside APK
+        run: |
+          set -euxo pipefail
+          rm -rf rs-local-storage-v41/rsapp/src/main/assets/rs-dynamic
+          mkdir -p rs-local-storage-v41/rsapp/src/main/assets/rs-dynamic
+          cp -a rs-v43/rs-dynamic/dist/. rs-local-storage-v41/rsapp/src/main/assets/rs-dynamic/
+          grep -R -q 'StreamConvergenceBackground' rs-v43/rs-dynamic/src
+          grep -q '@designcodeio/threeui' rs-v43/rs-dynamic/package.json
+
+      - name: Verify V4.3 source invariants
+        run: |
+          set -euxo pipefail
+          grep -q 'versionCode = 30' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'versionName = "4.3.0"' rs-local-storage-v41/rsapp/build.gradle.kts
+          grep -q 'generateStreamingDetailed' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/AiWebBridge.kt
+          grep -q 'reasoning_token' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'answer_token' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q '◇ Refleti sobre isto' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'serveDynamicAsset' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q '/rs-dynamic/app.js' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q '/api/ai/speech/audio' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'isPermanentLibraryNode' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'adminClientSave' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'transferStatus' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'servePdfPage' rs-local-storage-v41/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+          grep -q 'RS_V43_BASELINE=4.2.6-lineage' rs-local-storage-v41/rsapp/src/main/assets/RS_BUILD_PROOF.txt
+
+      - name: Compile and build full ARM64 APK
+        run: |
+          set -euxo pipefail
+          rm -rf llama.cpp/examples/llama.android/rsapp
+          cp -R rs-local-storage-v41/rsapp llama.cpp/examples/llama.android/rsapp
+          if ! grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts; then
+            printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          fi
+          cd llama.cpp/examples/llama.android
+          chmod +x gradlew
+          ./gradlew :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
+          ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/29.0.13113456 ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+
+      - name: Validate complete APK
+        run: |
+          set -euxo pipefail
+          APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.rs.localstorage'" /tmp/badging.txt
+          grep -q "versionCode='30'" /tmp/badging.txt
+          grep -q "versionName='4.3.0'" /tmp/badging.txt
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | tee /tmp/apk-files.txt
+          grep -q 'lib/arm64-v8a/libai-chat.so' /tmp/apk-files.txt
+          grep -q 'assets/rs-dynamic/app.js' /tmp/apk-files.txt
+          grep -q 'assets/rs-dynamic/style.css' /tmp/apk-files.txt
+          unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee /tmp/proof.txt
+          grep -q 'RS_V43_AI_STREAM=reasoning_token+answer_token+final+done' /tmp/proof.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signature.txt
+          grep -q 'Verified' /tmp/signature.txt
+          SIZE=$(stat -c%s "$APK")
+          test "$SIZE" -gt 30000000
+          cp "$APK" RS-Local-Storage-v4.3.0-FULL.apk
+          sha256sum RS-Local-Storage-v4.3.0-FULL.apk | tee RS-Local-Storage-v4.3.0-FULL.sha256
+          printf 'APK_SIZE_BYTES=%s\n' "$SIZE" | tee RS-Local-Storage-v4.3.0-FULL.size.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Local-Storage-v4.3.0-FULL-APK
+          path: |
+            RS-Local-Storage-v4.3.0-FULL.apk
+            RS-Local-Storage-v4.3.0-FULL.sha256
+            RS-Local-Storage-v4.3.0-FULL.size.txt
+          if-no-files-found: error
+          retention-days: 14
