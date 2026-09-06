@@ -31,13 +31,13 @@ jobs:
           path: private-src
           persist-credentials: false
 
-      - name: Materialize private RS Storage 4.7.1 delivery
+      - name: Materialize private RS Storage 4.7.1 final delivery
         shell: bash
         run: |
           set -euo pipefail
           echo "RS_STORAGE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
-          test -f private-src/scripts/materialize_v471_delivery.py
-          python3 private-src/scripts/materialize_v471_delivery.py private-src
+          test -f private-src/scripts/materialize_v471_final.py
+          python3 private-src/scripts/materialize_v471_final.py private-src
           python3 private-src/scripts/apply_v471_e2e_move_gate.py private-src
           grep -q 'versionCode = 91' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
           grep -q 'versionName = "4.7.1"' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
