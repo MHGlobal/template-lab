@@ -1,0 +1,77 @@
+name: RS Storage 4.7.1 Compile Diagnostics
+
+on:
+  push:
+    branches: [ rs-storage-v47-actions ]
+    paths:
+      - '.github/workflows/rs-storage-v471-compile-diagnostics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile-diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: build/v4.7-public-runner
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Materialize
+        run: |
+          python3 private-src/scripts/materialize_v471_final.py private-src
+          python3 private-src/scripts/apply_v471_e2e_move_gate.py private-src
+      - name: Prepare llama Android
+        run: |
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git llama.cpp
+          git -C llama.cpp checkout 8ef78e644f559db4e8716b59bf76b8e11619337d
+          python3 private-src/scripts/apply_llama_rs_compat.py llama.cpp
+          python3 private-src/scripts/apply_v434_load_progress.py llama.cpp
+          python3 private-src/scripts/apply_v450_llama_runtime.py llama.cpp
+          rm -rf llama.cpp/examples/llama.android/rsapp
+          cp -R private-src/source/current-v4.3.0/rsapp llama.cpp/examples/llama.android/rsapp
+          grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts || printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          chmod +x llama.cpp/examples/llama.android/gradlew
+          cat >> llama.cpp/examples/llama.android/gradle.properties <<'GP'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          org.gradle.workers.max=2
+          org.gradle.parallel=false
+          kotlin.compiler.execution.strategy=in-process
+          GP
+      - name: Compile and capture exact failure
+        id: compile
+        continue-on-error: true
+        working-directory: llama.cpp/examples/llama.android
+        shell: bash
+        run: |
+          set +e
+          ./gradlew :rsapp:testDebugUnitTest :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon 2>&1 | tee "$GITHUB_WORKSPACE/gradle-compile.log"
+          code=${PIPESTATUS[0]}
+          echo "$code" > "$GITHUB_WORKSPACE/gradle-exit-code.txt"
+          exit "$code"
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Storage-v471-compile-diagnostics
+          path: |
+            gradle-compile.log
+            gradle-exit-code.txt
+          if-no-files-found: error
+      - name: Enforce compile success
+        if: steps.compile.outcome != 'success'
+        run: exit 1
