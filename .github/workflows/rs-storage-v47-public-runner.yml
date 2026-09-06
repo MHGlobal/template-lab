@@ -1,0 +1,161 @@
+name: RS Storage 4.7 ARM64 Public Runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-storage-v47-actions ]
+    paths:
+      - '.github/workflows/rs-storage-v47-public-runner.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-storage-v47-public-runner
+  cancel-in-progress: true
+
+jobs:
+  build-v47:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout public runner repository
+        uses: actions/checkout@v4
+
+      - name: Checkout private RS-Storage 4.7 source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: build/v4.7-public-runner
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify private source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f private-src/source/current-v4.3.0/rsapp/build.gradle.kts
+          grep -q 'versionCode = 90' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
+          grep -q 'versionName = "4.7.0"' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
+          echo "RS_STORAGE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: private-src/source/current-v4.3.0/dynamic-ui/package-lock.json
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK, NDK and CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Run RS FILE 4.7 and cross-module audits
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/private-src/source/current-v4.3.0"
+          python3 private-src/scripts/audit_rsfile_v470_major.py "$ROOT"
+          python3 private-src/scripts/audit_rsfile_current_f.py "$ROOT"
+          python3 private-src/scripts/audit_rsfile_gesture_current_f.py "$ROOT"
+          node --check "$ROOT/rsapp/src/main/assets/rs-ai/app.js"
+          python3 private-src/scripts/validate_rsia_runtime_js.py "$ROOT"
+          python3 private-src/scripts/validate_rsia_ui.py "$ROOT"
+
+      - name: Build Dynamic UI
+        shell: bash
+        working-directory: private-src/source/current-v4.3.0/dynamic-ui
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+          test -s dist/app.js
+          test -s dist/style.css
+          rm -rf ../rsapp/src/main/assets/rs-dynamic
+          mkdir -p ../rsapp/src/main/assets/rs-dynamic
+          cp -a dist/. ../rsapp/src/main/assets/rs-dynamic/
+
+      - name: Clone and patch pinned llama.cpp
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git llama.cpp
+          git -C llama.cpp checkout 8ef78e644f559db4e8716b59bf76b8e11619337d
+          python3 private-src/scripts/apply_llama_rs_compat.py llama.cpp
+          python3 private-src/scripts/apply_v434_load_progress.py llama.cpp
+          python3 private-src/scripts/apply_v450_llama_runtime.py llama.cpp
+          rm -rf llama.cpp/examples/llama.android/rsapp
+          cp -R private-src/source/current-v4.3.0/rsapp llama.cpp/examples/llama.android/rsapp
+          grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts || printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          chmod +x llama.cpp/examples/llama.android/gradlew
+          cat >> llama.cpp/examples/llama.android/gradle.properties <<'GP'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          org.gradle.workers.max=2
+          org.gradle.parallel=false
+          kotlin.compiler.execution.strategy=in-process
+          GP
+
+      - name: Compile tests Kotlin and Java
+        shell: bash
+        working-directory: llama.cpp/examples/llama.android
+        run: |
+          set -euo pipefail
+          ./gradlew :rsapp:testDebugUnitTest :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
+
+      - name: Assemble RS Storage 4.7 ARM64 APK
+        shell: bash
+        working-directory: llama.cpp/examples/llama.android
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13113456
+        run: |
+          set -euo pipefail
+          ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+
+      - name: Validate packaged APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
+          OUT="RS-Storage-v4.7.0-arm64.apk"
+          test -s "$APK"
+          test "$(stat -c '%s' "$APK")" -gt 30000000
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "versionCode='90'" apk-badging.txt
+          grep -q "versionName='4.7.0'" apk-badging.txt
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libai-chat.so'
+          ABIS="$(unzip -l "$APK" | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u | xargs)"
+          test "$ABIS" = "arm64-v8a"
+          unzip -l "$APK" | grep -q 'assets/rs-ai/app.js'
+          unzip -l "$APK" | grep -q 'assets/rs-dynamic/'
+          unzip -p "$APK" assets/rs-ai/app.js | grep -q '/api/ai/chat'
+          unzip -p "$APK" assets/rs-ai/app.js | grep -q '/api/ai/stop'
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK" | tee apksigner.txt
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee SHA256SUMS.txt
+          stat -c '%s' "$OUT" | tee APK_SIZE_BYTES.txt
+          printf 'version=4.7.0\nversionCode=90\nabi=arm64-v8a\nrs_storage_commit=%s\n' "$RS_STORAGE_COMMIT" | tee BUILD_REPORT.txt
+
+      - name: Upload RS Storage 4.7 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Storage-v4.7.0-ARM64
+          path: |
+            RS-Storage-v4.7.0-arm64.apk
+            SHA256SUMS.txt
+            APK_SIZE_BYTES.txt
+            BUILD_REPORT.txt
+            apk-badging.txt
+            apksigner.txt
+          if-no-files-found: error
+          retention-days: 30
