@@ -39,6 +39,7 @@ jobs:
           set -euo pipefail
           python3 private-src/scripts/materialize_v471_final.py private-src | tee materialize-v471.txt
           grep -q 'RS_STORAGE_V471_FINAL_MATERIALIZED' materialize-v471.txt
+          grep -q 'RS_FILE_E2E_CLI=npm-test' materialize-v471.txt
           git -C private-src diff --check
 
       - name: Validate private RS Storage 4.7.1 source
@@ -49,6 +50,7 @@ jobs:
           grep -q 'versionCode = 91' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
           grep -q 'versionName = "4.7.1"' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
           test -s private-src/tests/e2e/rsfile-v471-e2e.mjs
+          test -x private-src/scripts/run_v471_e2e.sh
           test -s private-src/scripts/audit_v471_release.py
           test -s private-src/scripts/validate_embedded_rsfile_js.py
 
@@ -81,14 +83,14 @@ jobs:
           python3 private-src/scripts/validate_rsia_runtime_js.py "$ROOT"
           python3 private-src/scripts/validate_rsia_ui.py "$ROOT"
 
-      - name: Run RS FILE Chromium E2E runtime gate
+      - name: Run RS FILE Chromium E2E runtime gate via npm test
         shell: bash
         working-directory: private-src/tests/e2e
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
-          RSFILE_RUNTIME_DIR=/tmp/rsfile-v471-js node rsfile-v471-e2e.mjs | tee "$GITHUB_WORKSPACE/rsfile-e2e.txt"
+          npm test | tee "$GITHUB_WORKSPACE/rsfile-e2e.txt"
           grep -q 'E2E_PASS=36' "$GITHUB_WORKSPACE/rsfile-e2e.txt"
 
       - name: Build Dynamic UI
@@ -166,14 +168,14 @@ jobs:
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee SHA256SUMS.txt
           stat -c '%s' "$OUT" | tee APK_SIZE_BYTES.txt
-          printf 'version=4.7.1\nversionCode=91\nabi=arm64-v8a\nrs_storage_commit=%s\nrs_file_e2e=36\n' "$RS_STORAGE_COMMIT" | tee BUILD_REPORT.txt
+          printf 'version=4.7.1\nversionCode=91\nabi=arm64-v8a\nrs_storage_commit=%s\nrs_file_e2e=36\ncli_e2e=npm-test\n' "$RS_STORAGE_COMMIT" | tee BUILD_REPORT.txt
 
-      - name: Re-run critical RS FILE gate after packaging
+      - name: Re-run critical RS FILE gate after packaging via npm test
         shell: bash
         working-directory: private-src/tests/e2e
         run: |
           set -euo pipefail
-          RSFILE_RUNTIME_DIR=/tmp/rsfile-v471-js node rsfile-v471-e2e.mjs | tee "$GITHUB_WORKSPACE/rsfile-e2e-postbuild.txt"
+          npm test | tee "$GITHUB_WORKSPACE/rsfile-e2e-postbuild.txt"
           grep -q 'E2E_PASS=36' "$GITHUB_WORKSPACE/rsfile-e2e-postbuild.txt"
 
       - name: Upload RS Storage 4.7.1 APK
