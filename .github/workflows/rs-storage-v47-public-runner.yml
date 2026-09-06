@@ -1,7 +1,7 @@
 name: RS Storage 4.7.1 ARM64 Public Runner
 
 # Runner-only workflow. Private RS Storage source remains in MHGlobal/RS-Storage.
-# Trigger 2026-09-06: verified private payload complete; run final 4.7.1 delivery gate.
+# Trigger 2026-09-06: private Agent literal compile fix applied; rerun full 4.7.1 delivery gate.
 on:
   workflow_dispatch:
   push:
