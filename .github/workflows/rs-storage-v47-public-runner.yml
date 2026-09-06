@@ -1,4 +1,4 @@
-name: RS Storage 4.7.1 ARM64 Public Runner
+name: RS Storage 4.7.2 ARM64 Public Runner
 
 # Runner-only workflow. Private RS Storage source remains in MHGlobal/RS-Storage.
 # The public repository never receives private application source.
@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-v471:
+  build-v472:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -33,25 +33,27 @@ jobs:
           path: private-src
           persist-credentials: false
 
-      - name: Materialize verified private RS Storage 4.7.1 payload
+      - name: Materialize verified private RS Storage 4.7.1 base and 4.7.2 improvement
         shell: bash
         run: |
           set -euo pipefail
           python3 private-src/scripts/materialize_v471_final.py private-src | tee materialize-v471.txt
           grep -q 'RS_STORAGE_V471_FINAL_MATERIALIZED' materialize-v471.txt
           grep -q 'RS_FILE_E2E_CLI=npm-test' materialize-v471.txt
+          python3 private-src/scripts/apply_v472_fileop_isolation.py private-src/source/current-v4.3.0 | tee materialize-v472.txt
+          grep -q 'RS_STORAGE_V472_FILEOPS_ISOLATION_APPLIED' materialize-v472.txt
           git -C private-src diff --check
 
-      - name: Validate private RS Storage 4.7.1 source
+      - name: Validate private RS Storage 4.7.2 source
         shell: bash
         run: |
           set -euo pipefail
           echo "RS_STORAGE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
-          grep -q 'versionCode = 91' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
-          grep -q 'versionName = "4.7.1"' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
+          grep -q 'versionCode = 92' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
+          grep -q 'versionName = "4.7.2"' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
           test -s private-src/tests/e2e/rsfile-v471-e2e.mjs
           test -x private-src/scripts/run_v471_e2e.sh
-          test -s private-src/scripts/audit_v471_release.py
+          test -s private-src/scripts/audit_v472_release.py
           test -s private-src/scripts/validate_embedded_rsfile_js.py
 
       - uses: actions/setup-java@v5
@@ -72,13 +74,13 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
 
-      - name: Run 4.7.1 source and embedded-runtime gates
+      - name: Run 4.7.2 source and embedded-runtime gates
         shell: bash
         run: |
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE/private-src/source/current-v4.3.0"
-          python3 private-src/scripts/audit_v471_release.py "$ROOT"
-          python3 private-src/scripts/validate_embedded_rsfile_js.py "$ROOT" --out /tmp/rsfile-v471-js
+          python3 private-src/scripts/audit_v472_release.py "$ROOT"
+          python3 private-src/scripts/validate_embedded_rsfile_js.py "$ROOT" --out /tmp/rsfile-v472-js
           node --check "$ROOT/rsapp/src/main/assets/rs-ai/app.js"
           python3 private-src/scripts/validate_rsia_runtime_js.py "$ROOT"
           python3 private-src/scripts/validate_rsia_ui.py "$ROOT"
@@ -134,8 +136,9 @@ jobs:
           ./gradlew :rsapp:testDebugUnitTest :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
           test -d rsapp/build/test-results/testDebugUnitTest
           grep -R 'tests="' rsapp/build/test-results/testDebugUnitTest | tee "$GITHUB_WORKSPACE/junit-results.txt"
+          grep -R 'RsFileOperationQueueTest' rsapp/build/test-results/testDebugUnitTest >/dev/null
 
-      - name: Assemble RS Storage 4.7.1 ARM64 APK
+      - name: Assemble RS Storage 4.7.2 ARM64 APK
         shell: bash
         working-directory: llama.cpp/examples/llama.android
         env:
@@ -149,26 +152,26 @@ jobs:
         run: |
           set -euo pipefail
           APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
-          OUT="RS-Storage-v4.7.1-arm64.apk"
+          OUT="RS-Storage-v4.7.2-arm64.apk"
           test -s "$APK"
           test "$(stat -c '%s' "$APK")" -gt 30000000
           unzip -t "$APK" >/dev/null
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
-          grep -q "versionCode='91'" apk-badging.txt
-          grep -q "versionName='4.7.1'" apk-badging.txt
+          grep -q "versionCode='92'" apk-badging.txt
+          grep -q "versionName='4.7.2'" apk-badging.txt
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libai-chat.so'
           ABIS="$(unzip -l "$APK" | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u | xargs)"
           test "$ABIS" = "arm64-v8a"
           unzip -l "$APK" | grep -q 'assets/rs-ai/app.js'
           unzip -l "$APK" | grep -q 'assets/rs-dynamic/'
-          unzip -p "$APK" assets/rs-ai/app.js | grep -q 'RS IA 4.7.1'
+          unzip -p "$APK" assets/rs-ai/app.js | grep -q 'RS IA 4.7.2'
           unzip -p "$APK" assets/rs-ai/app.js | grep -q '/api/ai/agent'
           unzip -p "$APK" assets/rs-ai/app.js | grep -q '/api/ai/stop'
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee SHA256SUMS.txt
           stat -c '%s' "$OUT" | tee APK_SIZE_BYTES.txt
-          printf 'version=4.7.1\nversionCode=91\nabi=arm64-v8a\nrs_storage_commit=%s\nrs_file_e2e=36\ncli_e2e=npm-test\n' "$RS_STORAGE_COMMIT" | tee BUILD_REPORT.txt
+          printf 'version=4.7.2\nversionCode=92\nabi=arm64-v8a\nrs_storage_commit=%s\nrs_file_e2e=36\nfileop_queue=2x8\nfileop_preflight=cancellable\n' "$RS_STORAGE_COMMIT" | tee BUILD_REPORT.txt
 
       - name: Re-run critical RS FILE gate after packaging via npm test
         shell: bash
@@ -178,18 +181,19 @@ jobs:
           npm test | tee "$GITHUB_WORKSPACE/rsfile-e2e-postbuild.txt"
           grep -q 'E2E_PASS=36' "$GITHUB_WORKSPACE/rsfile-e2e-postbuild.txt"
 
-      - name: Upload RS Storage 4.7.1 APK
+      - name: Upload RS Storage 4.7.2 APK
         uses: actions/upload-artifact@v4
         with:
-          name: RS-Storage-v4.7.1-ARM64
+          name: RS-Storage-v4.7.2-ARM64
           path: |
-            RS-Storage-v4.7.1-arm64.apk
+            RS-Storage-v4.7.2-arm64.apk
             SHA256SUMS.txt
             APK_SIZE_BYTES.txt
             BUILD_REPORT.txt
             apk-badging.txt
             apksigner.txt
             materialize-v471.txt
+            materialize-v472.txt
             rsfile-e2e.txt
             rsfile-e2e-postbuild.txt
             junit-results.txt
