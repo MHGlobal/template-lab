@@ -1,5 +1,6 @@
 name: RS Storage 4.7.1 ARM64 Public Runner
 
+# Runner-only workflow. Private RS Storage source remains in MHGlobal/RS-Storage.
 on:
   workflow_dispatch:
   push:
