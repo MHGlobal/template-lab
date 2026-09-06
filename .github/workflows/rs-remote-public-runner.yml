@@ -1,0 +1,205 @@
+name: RS Remote 0.2 Public Runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-remote-actions ]
+    paths:
+      - '.github/workflows/rs-remote-public-runner.yml'
+      - 'runner/rs-remote-request.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-remote-public-runner
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout public runner repository
+        uses: actions/checkout@v4
+
+      - name: Checkout private RS-Remote source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Remote
+          ref: build/public-runner
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify requested private source
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED="$(tr -d '\r\n ' < runner/rs-remote-request.txt)"
+          ACTUAL="$(git -C private-src rev-parse HEAD)"
+          test -n "$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+          test -x private-src/source/android/gradlew
+          test -f private-src/source/android/settings.gradle.kts
+          test -f private-src/source/android/app/build.gradle.kts
+          grep -q 'applicationId = "com.rsremote"' private-src/source/android/app/build.gradle.kts
+          grep -q 'compileSdk = 36' private-src/source/android/app/build.gradle.kts
+          grep -q 'versionCode = 2' private-src/source/android/app/build.gradle.kts
+          grep -q 'versionName = "0.2.0-dev"' private-src/source/android/app/build.gradle.kts
+          grep -q 'const val NAME = "RSRP"' private-src/source/android/app/src/main/java/com/rsremote/protocol/RsProtocol.kt
+          echo "RS_REMOTE_COMMIT=$ACTUAL" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Test, lint and assemble Android
+        working-directory: private-src/source/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace --no-daemon
+
+      - name: Validate APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find private-src/source/android/app/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
+          OUT="RS-Remote-Android-v0.2.0-dev.apk"
+          test -n "$APK"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee android-badging.txt
+          grep -q "package: name='com.rsremote'" android-badging.txt
+          grep -q "versionCode='2'" android-badging.txt
+          grep -q "versionName='0.2.0-dev'" android-badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK" | tee android-apksigner.txt
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee SHA256SUMS-ANDROID.txt
+          stat -c '%s' "$OUT" | tee ANDROID_SIZE_BYTES.txt
+          printf 'source_repo=MHGlobal/RS-Remote\nsource_branch=build/public-runner\nsource_commit=%s\nversion=0.2.0-dev\nversionCode=2\nprotocol=0.1\nrunner_repo=MHGlobal/template-lab\nrunner_branch=rs-remote-actions\n' "$RS_REMOTE_COMMIT" | tee ANDROID_BUILD_REPORT.txt
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Remote-Android-v0.2.0-dev
+          path: |
+            RS-Remote-Android-v0.2.0-dev.apk
+            SHA256SUMS-ANDROID.txt
+            ANDROID_SIZE_BYTES.txt
+            ANDROID_BUILD_REPORT.txt
+            android-badging.txt
+            android-apksigner.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-host:
+    name: Windows Host Self-Contained
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout public runner repository
+        uses: actions/checkout@v4
+
+      - name: Checkout private RS-Remote source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Remote
+          ref: build/public-runner
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify requested private source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = (Get-Content 'runner/rs-remote-request.txt' -Raw).Trim()
+          $actual = (git -C private-src rev-parse HEAD).Trim()
+          if ([string]::IsNullOrWhiteSpace($expected)) { throw 'Missing requested RS-Remote commit' }
+          if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.sln')) { throw 'Missing RSRemote.sln' }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/ControlServer.cs')) { throw 'Missing ControlServer' }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/InputService.cs')) { throw 'Missing InputService' }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/FileService.cs')) { throw 'Missing FileService' }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/DesktopCaptureService.cs')) { throw 'Missing DesktopCaptureService' }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Protocol/SessionProtocol.cs')) { throw 'Missing SessionProtocol' }
+          "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore private-src/source/windows/RSRemote.sln --runtime win-x64
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build private-src/source/windows/RSRemote.sln --configuration Release --no-restore --verbosity normal
+
+      - name: Publish dependency-free single-file Host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output publish/windows `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:PublishReadyToRun=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+
+      - name: Validate standalone Host EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'publish/windows/RSRemote.Host.exe'
+          $out = 'RS-Remote-Host-v0.2.0-win-x64.exe'
+          if (-not (Test-Path $source)) { throw "Expected $source" }
+          $length = (Get-Item $source).Length
+          if ($length -lt 20MB) { throw "Self-contained EXE unexpectedly small: $length bytes" }
+          Copy-Item $source $out
+          $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path 'SHA256SUMS-WINDOWS.txt' -Value "$hash  $out"
+          Set-Content -Path 'WINDOWS_SIZE_BYTES.txt' -Value $length
+          Set-Content -Path 'WINDOWS_BUILD_REPORT.txt' -Value @(
+            'source_repo=MHGlobal/RS-Remote',
+            'source_branch=build/public-runner',
+            "source_commit=$env:RS_REMOTE_COMMIT",
+            'version=0.2.0',
+            'protocol=0.1',
+            'selfContained=true',
+            'singleFile=true',
+            'externalDotNetRuntimeRequired=false',
+            'runner_repo=MHGlobal/template-lab',
+            'runner_branch=rs-remote-actions'
+          )
+
+      - name: Upload Windows Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Remote-Windows-Host-v0.2.0-SelfContained
+          path: |
+            RS-Remote-Host-v0.2.0-win-x64.exe
+            SHA256SUMS-WINDOWS.txt
+            WINDOWS_SIZE_BYTES.txt
+            WINDOWS_BUILD_REPORT.txt
+          if-no-files-found: error
+          retention-days: 30
