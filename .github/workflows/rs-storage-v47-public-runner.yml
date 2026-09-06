@@ -33,6 +33,14 @@ jobs:
           path: private-src
           persist-credentials: false
 
+      - name: Materialize verified private RS Storage 4.7.1 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 private-src/scripts/materialize_v471_final.py private-src | tee materialize-v471.txt
+          grep -q 'RS_STORAGE_V471_FINAL_MATERIALIZED' materialize-v471.txt
+          git -C private-src diff --check
+
       - name: Validate private RS Storage 4.7.1 source
         shell: bash
         run: |
@@ -40,7 +48,9 @@ jobs:
           echo "RS_STORAGE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
           grep -q 'versionCode = 91' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
           grep -q 'versionName = "4.7.1"' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
-          git -C private-src diff --check
+          test -s private-src/tests/e2e/rsfile-v471-e2e.mjs
+          test -s private-src/scripts/audit_v471_release.py
+          test -s private-src/scripts/validate_embedded_rsfile_js.py
 
       - uses: actions/setup-java@v5
         with:
@@ -177,6 +187,7 @@ jobs:
             BUILD_REPORT.txt
             apk-badging.txt
             apksigner.txt
+            materialize-v471.txt
             rsfile-e2e.txt
             rsfile-e2e-postbuild.txt
             junit-results.txt
