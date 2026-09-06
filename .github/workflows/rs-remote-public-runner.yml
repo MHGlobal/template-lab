@@ -29,7 +29,7 @@ jobs:
         with:
           repository: MHGlobal/RS-Remote
           ref: build/public-runner
-          token: ${{ secrets.RS_REMOTE_READ_TOKEN }}
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
           path: private-src
           persist-credentials: false
 
@@ -118,7 +118,7 @@ jobs:
         with:
           repository: MHGlobal/RS-Remote
           ref: build/public-runner
-          token: ${{ secrets.RS_REMOTE_READ_TOKEN }}
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
           path: private-src
           persist-credentials: false
 
