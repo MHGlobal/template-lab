@@ -1,7 +1,7 @@
 name: RS Storage 4.7.1 ARM64 Public Runner
 
 # Runner-only workflow. Private RS Storage source remains in MHGlobal/RS-Storage.
-# Trigger 2026-09-06: unified RS FILE runtime gate expanded to 36 executed E2E checks.
+# The public repository never receives private application source.
 on:
   workflow_dispatch:
   push:
@@ -33,14 +33,11 @@ jobs:
           path: private-src
           persist-credentials: false
 
-      - name: Materialize private RS Storage 4.7.1 final delivery
+      - name: Validate private RS Storage 4.7.1 source
         shell: bash
         run: |
           set -euo pipefail
           echo "RS_STORAGE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
-          test -f private-src/scripts/materialize_v471_final.py
-          python3 private-src/scripts/materialize_v471_final.py private-src
-          python3 private-src/scripts/apply_v471_e2e_move_gate.py private-src
           grep -q 'versionCode = 91' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
           grep -q 'versionName = "4.7.1"' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
           git -C private-src diff --check
