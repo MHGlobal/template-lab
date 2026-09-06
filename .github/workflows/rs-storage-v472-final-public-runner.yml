@@ -1,0 +1,204 @@
+name: RS Storage 4.7.2 Final Unified Runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-storage-v471-audit-runner ]
+    paths: [ '.github/workflows/rs-storage-v472-final-public-runner.yml' ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-storage-v472-final-unified-runner
+  cancel-in-progress: true
+
+jobs:
+  build-v472-final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout private canonical 4.7.1
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: fix/v4.7-audit-blockers
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+      - name: Checkout private 4.7.2 patches
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: release/v4.7.1-unified-loop
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: patch-src
+          persist-credentials: false
+      - name: Record private commits
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "RS_STORAGE_BASE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "RS_STORAGE_PATCH_COMMIT=$(git -C patch-src rev-parse HEAD)" >> "$GITHUB_ENV"
+          for f in apply_v472_fileop_isolation.py apply_v472_preview_policy.py fix_v472_generated_literals.py audit_v472_release.py rsfile_v472_required_gate.mjs; do test -s "patch-src/scripts/$f"; done
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Materialize 4.7.1 and apply complete 4.7.2 patchset
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ROOT=source/current-v4.3.0
+          chmod +x scripts/materialize_v471_release.sh
+          scripts/materialize_v471_release.sh "$ROOT" | tee ../v471-materialize.txt
+          cp ../patch-src/scripts/apply_v472_fileop_isolation.py scripts/
+          cp ../patch-src/scripts/apply_v472_preview_policy.py scripts/
+          cp ../patch-src/scripts/fix_v472_generated_literals.py scripts/
+          cp ../patch-src/scripts/audit_v472_release.py scripts/
+          cp ../patch-src/scripts/rsfile_v472_required_gate.mjs scripts/
+          python3 scripts/apply_v472_fileop_isolation.py "$ROOT" | tee ../v472-fileops.txt
+          python3 scripts/apply_v472_preview_policy.py "$ROOT" | tee ../v472-preview.txt
+          python3 scripts/fix_v472_generated_literals.py "$ROOT" | tee ../v472-literals.txt
+          python3 scripts/audit_v472_release.py "$ROOT" | tee ../v472-static-audit.txt
+          grep -q 'versionCode = 92' "$ROOT/rsapp/build.gradle.kts"
+          grep -q 'versionName = "4.7.2"' "$ROOT/rsapp/build.gradle.kts"
+          ! grep -q 'MODELO PADRÃO' "$ROOT/rsapp/src/main/java/com/rs/localstorage/AiActivity.kt"
+          node --check "$ROOT/rsapp/src/main/assets/rs-ai/app.js"
+          node --check scripts/rsfile_v471_runtime_gate.mjs
+          node --check scripts/rsfile_v472_required_gate.mjs
+      - name: Install Playwright Chromium
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: RS FILE runtime gates pre-build
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node scripts/rsfile_v471_runtime_gate.mjs source/current-v4.3.0 | tee ../RSFILE_RUNTIME_BASE_PREBUILD.txt
+          node scripts/rsfile_v472_required_gate.mjs source/current-v4.3.0 | tee ../RSFILE_REQUIRED_12_PREBUILD.txt
+          grep -q '10/10 RS FILE browser/runtime behaviors passed' ../RSFILE_RUNTIME_BASE_PREBUILD.txt
+          grep -q 'REQUIRED_GATE_PASS=12/12' ../RSFILE_REQUIRED_12_PREBUILD.txt
+      - name: Build Dynamic UI
+        working-directory: private-src/source/current-v4.3.0/dynamic-ui
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm pkg set 'devDependencies.@vitejs/plugin-react=5.1.4'
+          npm install --no-audit --no-fund
+          npm run build
+          test -s dist/app.js && test -s dist/style.css
+          rm -rf ../rsapp/src/main/assets/rs-dynamic && mkdir -p ../rsapp/src/main/assets/rs-dynamic
+          cp -a dist/. ../rsapp/src/main/assets/rs-dynamic/
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK NDK CMake
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Prepare pinned llama.cpp Android tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git llama.cpp
+          git -C llama.cpp checkout 8ef78e644f559db4e8716b59bf76b8e11619337d
+          python3 private-src/scripts/apply_llama_rs_compat.py llama.cpp
+          python3 private-src/scripts/apply_v434_load_progress.py llama.cpp
+          python3 private-src/scripts/apply_v450_llama_runtime.py llama.cpp
+          rm -rf llama.cpp/examples/llama.android/rsapp
+          cp -R private-src/source/current-v4.3.0/rsapp llama.cpp/examples/llama.android/rsapp
+          grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts || printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          chmod +x llama.cpp/examples/llama.android/gradlew
+          cat >> llama.cpp/examples/llama.android/gradle.properties <<'GP'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          org.gradle.workers.max=2
+          org.gradle.parallel=false
+          kotlin.compiler.execution.strategy=in-process
+          GP
+      - name: Unit tests and Kotlin Java compile
+        working-directory: llama.cpp/examples/llama.android
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./gradlew :rsapp:testDebugUnitTest :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
+      - name: Verify executed RS FILE JVM gates
+        shell: bash
+        run: |
+          set -euxo pipefail
+          DIR=llama.cpp/examples/llama.android/rsapp/build/test-results/testDebugUnitTest
+          for cls in FileTypeResolverTest RsFileOperationQueueTest RsFilePreviewPolicyTest; do
+            XML="$DIR/TEST-com.rs.localstorage.$cls.xml"
+            test -s "$XML"
+            grep -q 'failures="0"' "$XML"
+            grep -q 'errors="0"' "$XML"
+            cp "$XML" "RSFILE_${cls}.xml"
+          done
+          grep -q 'tests="2"' RSFILE_RsFileOperationQueueTest.xml
+          grep -q 'tests="2"' RSFILE_RsFilePreviewPolicyTest.xml
+      - name: Assemble 4.7.2 ARM64 APK
+        working-directory: llama.cpp/examples/llama.android
+        shell: bash
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13113456
+        run: |
+          set -euxo pipefail
+          ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+      - name: RS FILE runtime gates post-build
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node scripts/rsfile_v471_runtime_gate.mjs source/current-v4.3.0 | tee ../RSFILE_RUNTIME_BASE_POSTBUILD.txt
+          node scripts/rsfile_v472_required_gate.mjs source/current-v4.3.0 | tee ../RSFILE_REQUIRED_12_POSTBUILD.txt
+          grep -q '10/10 RS FILE browser/runtime behaviors passed' ../RSFILE_RUNTIME_BASE_POSTBUILD.txt
+          grep -q 'REQUIRED_GATE_PASS=12/12' ../RSFILE_REQUIRED_12_POSTBUILD.txt
+      - name: Validate APK and stage evidence
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK=llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk
+          OUT=RS-Storage-v4.7.2-arm64.apk
+          test -s "$APK" && test "$(stat -c '%s' "$APK")" -gt 30000000
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "versionCode='92'" apk-badging.txt
+          grep -q "versionName='4.7.2'" apk-badging.txt
+          ABIS="$(unzip -l "$APK" | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u | xargs)"
+          test "$ABIS" = "arm64-v8a"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libai-chat.so'
+          unzip -l "$APK" | grep -q 'assets/rs-ai/app.js'
+          unzip -p "$APK" assets/rs-ai/app.js | grep -q 'RS IA 4.7.2'
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK" | tee apksigner.txt
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee SHA256SUMS.txt
+          stat -c '%s' "$OUT" | tee APK_SIZE_BYTES.txt
+          printf 'version=4.7.2\nversionCode=92\nabi=arm64-v8a\nbase_commit=%s\npatch_commit=%s\n' "$RS_STORAGE_BASE_COMMIT" "$RS_STORAGE_PATCH_COMMIT" | tee BUILD_REPORT.txt
+          cp v472-static-audit.txt V472_STATIC_AUDIT.txt
+      - name: Upload 4.7.2 APK and proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Storage-v4.7.2-ARM64-FINAL
+          path: |
+            RS-Storage-v4.7.2-arm64.apk
+            SHA256SUMS.txt
+            APK_SIZE_BYTES.txt
+            BUILD_REPORT.txt
+            apk-badging.txt
+            apksigner.txt
+            V472_STATIC_AUDIT.txt
+            RSFILE_RUNTIME_BASE_PREBUILD.txt
+            RSFILE_REQUIRED_12_PREBUILD.txt
+            RSFILE_RUNTIME_BASE_POSTBUILD.txt
+            RSFILE_REQUIRED_12_POSTBUILD.txt
+            RSFILE_FileTypeResolverTest.xml
+            RSFILE_RsFileOperationQueueTest.xml
+            RSFILE_RsFilePreviewPolicyTest.xml
+          if-no-files-found: error
+          retention-days: 30
