@@ -46,8 +46,8 @@ jobs:
           test -f private-src/source/android/app/build.gradle.kts
           grep -q 'applicationId = "com.rsremote"' private-src/source/android/app/build.gradle.kts
           grep -q 'compileSdk = 36' private-src/source/android/app/build.gradle.kts
-          grep -q 'versionCode = 3' private-src/source/android/app/build.gradle.kts
-          grep -q 'versionName = "0.3.0-dev"' private-src/source/android/app/build.gradle.kts
+          grep -q 'versionCode = 4' private-src/source/android/app/build.gradle.kts
+          grep -q 'versionName = "0.3.2"' private-src/source/android/app/build.gradle.kts
           grep -q 'const val NAME = "RSRP"' private-src/source/android/app/src/main/java/com/rsremote/protocol/RsProtocol.kt
           echo "RS_REMOTE_COMMIT=$ACTUAL" >> "$GITHUB_ENV"
 
@@ -77,26 +77,26 @@ jobs:
         run: |
           set -euo pipefail
           APK="$(find private-src/source/android/app/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
-          OUT="RS-Remote-Android-v0.3.0-dev.apk"
+          OUT="RS-Remote-Android-v0.3.2.apk"
           test -n "$APK"
           test -s "$APK"
           unzip -t "$APK" >/dev/null
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee android-badging.txt
           grep -q "package: name='com.rsremote'" android-badging.txt
-          grep -q "versionCode='3'" android-badging.txt
-          grep -q "versionName='0.3.0-dev'" android-badging.txt
+          grep -q "versionCode='4'" android-badging.txt
+          grep -q "versionName='0.3.2'" android-badging.txt
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK" | tee android-apksigner.txt
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee SHA256SUMS-ANDROID.txt
           stat -c '%s' "$OUT" | tee ANDROID_SIZE_BYTES.txt
-          printf 'source_repo=MHGlobal/RS-Remote\nsource_branch=build/public-runner\nsource_commit=%s\nversion=0.3.0-dev\nversionCode=3\nprotocol=0.1\nrunner_repo=MHGlobal/template-lab\nrunner_branch=rs-remote-actions\n' "$RS_REMOTE_COMMIT" | tee ANDROID_BUILD_REPORT.txt
+          printf 'source_repo=MHGlobal/RS-Remote\nsource_branch=build/public-runner\nsource_commit=%s\nversion=0.3.2\nversionCode=4\nprotocol=0.1\nrunner_repo=MHGlobal/template-lab\nrunner_branch=rs-remote-actions\n' "$RS_REMOTE_COMMIT" | tee ANDROID_BUILD_REPORT.txt
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: RS-Remote-Android-v0.3.0-dev
+          name: RS-Remote-Android-v0.3.2
           path: |
-            RS-Remote-Android-v0.3.0-dev.apk
+            RS-Remote-Android-v0.3.2.apk
             SHA256SUMS-ANDROID.txt
             ANDROID_SIZE_BYTES.txt
             ANDROID_BUILD_REPORT.txt
@@ -175,7 +175,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $source = 'publish/windows/RSRemote.Host.exe'
-          $out = 'RS-Remote-Host-v0.3.0-win-x64.exe'
+          $out = 'RS-Remote-Host-v0.3.2-win-x64.exe'
           if (-not (Test-Path $source)) { throw "Expected $source" }
           $length = (Get-Item $source).Length
           if ($length -lt 20MB) { throw "Self-contained EXE unexpectedly small: $length bytes" }
@@ -187,7 +187,7 @@ jobs:
             'source_repo=MHGlobal/RS-Remote',
             'source_branch=build/public-runner',
             "source_commit=$env:RS_REMOTE_COMMIT",
-            'version=0.3.0',
+            'version=0.3.2',
             'protocol=0.1',
             'selfContained=true',
             'singleFile=true',
@@ -199,9 +199,9 @@ jobs:
       - name: Upload Windows Host
         uses: actions/upload-artifact@v4
         with:
-          name: RS-Remote-Windows-Host-v0.3.0-SelfContained
+          name: RS-Remote-Windows-Host-v0.3.2-SelfContained
           path: |
-            RS-Remote-Host-v0.3.0-win-x64.exe
+            RS-Remote-Host-v0.3.2-win-x64.exe
             SHA256SUMS-WINDOWS.txt
             WINDOWS_SIZE_BYTES.txt
             WINDOWS_BUILD_REPORT.txt
