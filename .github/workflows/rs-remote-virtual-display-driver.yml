@@ -1,0 +1,121 @@
+name: RS Remote Virtual Display WDK Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-remote-actions ]
+    paths:
+      - '.github/workflows/rs-remote-virtual-display-driver.yml'
+      - 'runner/rs-remote-request.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-remote-virtual-display-driver
+  cancel-in-progress: true
+
+jobs:
+  virtual-display-driver:
+    name: Windows IddCx Driver Release x64
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout public runner repository
+        uses: actions/checkout@v4
+
+      - name: Checkout private RS-Remote source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Remote
+          ref: build/public-runner
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify requested source and driver tree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = (Get-Content 'runner/rs-remote-request.txt' -Raw).Trim()
+          $actual = (git -C private-src rev-parse HEAD).Trim()
+          if ([string]::IsNullOrWhiteSpace($expected)) { throw 'Missing requested RS-Remote commit' }
+          if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
+          $root = 'private-src/source/windows/RSRemote.VirtualDisplay.Driver'
+          @('Driver.cpp','Driver.h','RSRemoteVirtualDisplay.inf','RSRemoteVirtualDisplay.vcxproj','README.md') | ForEach-Object {
+            if (-not (Test-Path (Join-Path $root $_))) { throw "Missing driver source: $_" }
+          }
+          $inf = Get-Content (Join-Path $root 'RSRemoteVirtualDisplay.inf') -Raw
+          if ($inf -notmatch 'Class=Display') { throw 'Driver INF is not Display class' }
+          if ($inf -notmatch 'IndirectKmd') { throw 'IndirectKmd filter missing' }
+          if ($inf -notmatch 'DeviceGroupId') { throw 'Unique DeviceGroupId missing' }
+          $cpp = Get-Content (Join-Path $root 'Driver.cpp') -Raw
+          if ($cpp -notmatch 'IddCxAdapterInitAsync') { throw 'IddCx adapter initialization missing' }
+          if ($cpp -notmatch 'IddCxMonitorCreate') { throw 'IddCx monitor creation missing' }
+          if ($cpp -notmatch 'IddCxSwapChainReleaseAndAcquireBuffer') { throw 'IddCx swap-chain processing missing' }
+          "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install matching Windows SDK and WDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget install --id Microsoft.WindowsSDK.10.0.28000 --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          winget install --id Microsoft.WindowsWDK.10.0.28000 --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+
+      - name: Locate Visual Studio MSBuild
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw 'vswhere.exe not found' }
+          $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($msbuild) -or -not (Test-Path $msbuild)) { throw 'MSBuild.exe not found' }
+          "MSBUILD_EXE=$msbuild" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Using MSBuild: $msbuild"
+          Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Include" -Directory | Select-Object -ExpandProperty Name
+
+      - name: Build UMDF IddCx driver Release x64
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $project = 'private-src/source/windows/RSRemote.VirtualDisplay.Driver/RSRemoteVirtualDisplay.vcxproj'
+          & $env:MSBUILD_EXE $project /restore /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Driver build failed with exit code $LASTEXITCODE" }
+
+      - name: Validate driver outputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'private-src/source/windows/RSRemote.VirtualDisplay.Driver'
+          $dll = Get-ChildItem $root -Recurse -Filter 'RSRemoteVirtualDisplay.dll' | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if ($null -eq $dll -or -not (Test-Path $dll.FullName)) { throw 'RSRemoteVirtualDisplay.dll was not produced' }
+          $inf = Join-Path $root 'RSRemoteVirtualDisplay.inf'
+          $cat = Get-ChildItem $root -Recurse -Filter 'RSRemoteVirtualDisplay.cat' | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path 'driver-package' | Out-Null
+          Copy-Item $dll.FullName 'driver-package/RSRemoteVirtualDisplay.dll'
+          Copy-Item $inf 'driver-package/RSRemoteVirtualDisplay.inf'
+          if ($null -ne $cat) { Copy-Item $cat.FullName 'driver-package/RSRemoteVirtualDisplay.cat' }
+          $files = Get-ChildItem 'driver-package' -File
+          $files | ForEach-Object { "{0}  {1}" -f ((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()), $_.Name } | Set-Content 'driver-package/SHA256SUMS.txt'
+          Set-Content 'driver-package/DRIVER_BUILD_REPORT.txt' -Value @(
+            'source_repo=MHGlobal/RS-Remote',
+            'source_branch=build/public-runner',
+            "source_commit=$env:RS_REMOTE_COMMIT",
+            'productVersion=1.0.0-rc4',
+            'component=RS Remote Virtual Monitor',
+            'architecture=x64',
+            'driverModel=UMDF2+IddCx',
+            'wdk=10.0.28000',
+            'signMode=off-ci-compile-gate',
+            "catalogGenerated=$([bool](Test-Path 'driver-package/RSRemoteVirtualDisplay.cat'))",
+            'productionInstallable=false-until-production-signed'
+          )
+          Get-Content 'driver-package/SHA256SUMS.txt'
+
+      - name: Upload unsigned CI driver package
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Remote-Virtual-Display-v1.0.0-rc4-UNSIGNED-CI
+          path: driver-package/
+          if-no-files-found: error
+          retention-days: 30
