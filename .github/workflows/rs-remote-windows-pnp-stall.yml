@@ -1,0 +1,169 @@
+name: RS Remote Windows PnP Stall Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-remote-actions ]
+    paths:
+      - '.github/workflows/rs-remote-windows-pnp-stall.yml'
+      - 'runner/rs-remote-windows-hotfix-request.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-remote-windows-pnp-stall
+  cancel-in-progress: true
+
+jobs:
+  pnp-stall:
+    name: Virtual Display PnP Stall Does Not Freeze UI
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout public runner repository
+        uses: actions/checkout@v4
+
+      - name: Checkout private RS-Remote source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Remote
+          ref: build/public-runner
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify requested source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = (Get-Content 'runner/rs-remote-windows-hotfix-request.txt' -Raw).Trim()
+          $actual = (git -C private-src rev-parse HEAD).Trim()
+          if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
+          $virtual = Get-Content 'private-src/source/windows/RSRemote.Host/VirtualDisplayComponent.cs' -Raw
+          if ($virtual -notmatch 'GetStatusAsync') { throw 'Async virtual display status missing' }
+          if ($virtual -notmatch 'Kill\(entireProcessTree: true\)') { throw 'PnP timeout kill path missing' }
+          "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore and publish Host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet restore private-src/source/windows/RSRemote.sln --runtime win-x64
+          dotnet publish private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output publish/windows `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:PublishReadyToRun=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+
+      - name: Create deliberately hung pnputil shim and packaged-component sentinel
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publish = (Resolve-Path 'publish/windows').Path
+          $component = Join-Path $publish 'components\virtual-display'
+          New-Item -ItemType Directory -Force -Path $component | Out-Null
+          Set-Content -Path (Join-Path $component 'RSRemoteVirtualDisplay.inf') -Value '; CI sentinel only - never distributed'
+          $fake = Join-Path $publish 'pnputil.exe'
+          $source = @'
+          using System;
+          using System.IO;
+          using System.Threading;
+          public static class Program
+          {
+              [STAThread]
+              public static void Main(string[] args)
+              {
+                  var marker = Environment.GetEnvironmentVariable("RSREMOTE_PNP_FAKE_MARKER");
+                  if (!string.IsNullOrWhiteSpace(marker)) File.AppendAllText(marker, "called\n");
+                  Thread.Sleep(TimeSpan.FromSeconds(15));
+              }
+          }
+          '@
+          Add-Type -TypeDefinition $source -Language CSharp -OutputAssembly $fake -OutputType ConsoleApplication
+          if (-not (Test-Path $fake)) { throw 'Could not build pnputil stall shim' }
+
+      - name: Exercise Components refresh while PnP is hung
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          $exe = (Resolve-Path 'publish/windows/RSRemote.Host.exe').Path
+          $marker = Join-Path $env:RUNNER_TEMP 'rsremote-pnp-called.txt'
+          Remove-Item $marker -Force -ErrorAction SilentlyContinue
+          $env:RSREMOTE_PNP_FAKE_MARKER = $marker
+          $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+          try {
+              for ($i = 0; $i -lt 40; $i++) {
+                  Start-Sleep -Milliseconds 250
+                  if ($process.HasExited) { throw "Host exited early with $($process.ExitCode)" }
+                  $process.Refresh()
+                  if ($process.MainWindowHandle -ne 0) { break }
+              }
+              if ($process.MainWindowHandle -eq 0) { throw 'Host did not create a main window' }
+              $root = [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
+              if ($null -eq $root) { throw 'Could not bind UI Automation to Host window' }
+
+              $componentsCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Components')
+              $components = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $componentsCond)
+              if ($null -eq $components) { throw 'Components tab not found by UI Automation' }
+              $selection = $components.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
+              $selection.Select()
+              Start-Sleep -Milliseconds 500
+
+              $refreshCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Refresh status')
+              $refresh = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $refreshCond)
+              if ($null -eq $refresh) { throw 'Virtual Display Refresh status button not found' }
+              $invoke = $refresh.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+              $invoke.Invoke()
+
+              $shimCalled = $false
+              for ($i = 0; $i -lt 16; $i++) {
+                  Start-Sleep -Milliseconds 250
+                  if (Test-Path $marker) { $shimCalled = $true; break }
+              }
+              if (-not $shimCalled) { throw 'PnP stall shim was not exercised; test is invalid' }
+
+              $badStreak = 0
+              for ($i = 0; $i -lt 28; $i++) {
+                  Start-Sleep -Milliseconds 250
+                  if ($process.HasExited) { throw "Host exited while PnP was stalled: $($process.ExitCode)" }
+                  $process.Refresh()
+                  if ($process.Responding) { $badStreak = 0 } else { $badStreak++ }
+                  if ($badStreak -ge 8) { throw 'Host remained Not Responding for at least 2 seconds while pnputil was hung' }
+              }
+              Write-Host 'PnP stall path exercised and Host UI remained responsive.'
+          }
+          finally {
+              if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+              Remove-Item Env:RSREMOTE_PNP_FAKE_MARKER -ErrorAction SilentlyContinue
+          }
+
+      - name: Record PnP stall gate
+        shell: pwsh
+        run: |
+          Set-Content -Path 'PNP_STALL_GATE.txt' -Value @(
+            "source_commit=$env:RS_REMOTE_COMMIT",
+            'pnpShimExercised=true',
+            'uiResponsiveDuringPnPHang=true',
+            'expectedPnPTimeoutSeconds=5'
+          )
+
+      - name: Upload gate report
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Remote-Windows-RC4.2-PnP-Stall-Gate
+          path: PNP_STALL_GATE.txt
+          if-no-files-found: error
+          retention-days: 30
