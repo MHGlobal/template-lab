@@ -1,0 +1,176 @@
+name: RS Storage 4.7.6 Android Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-storage-v476-production-runner ]
+    paths: [ '.github/workflows/rs-storage-v476-android-diagnostic.yml' ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-storage-v476-android-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ROOT: source/current-v4.3.0
+      LLAMA_REV: 8ef78e644f559db4e8716b59bf76b8e11619337d
+      NDK_VERSION: 29.0.13113456
+      CMAKE_VERSION: 3.31.6
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout canonical 4.7.1 baseline
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: fix/v4.7-audit-blockers
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout 4.7.6 patch line
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: release/v4.7.6-production-completion
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: patch-src
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Materialize 4.7.6 Android source
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x scripts/materialize_v471_release.sh
+          mkdir -p scripts/v475_payload scripts/v476_payload
+          for f in \
+            apply_v472_fileop_isolation.py \
+            apply_v472_preview_policy.py \
+            apply_v472_folder_memory.py \
+            fix_v472_generated_literals.py \
+            audit_v472_release.py \
+            apply_v473_professional_runtime.py \
+            apply_v473_tests.py \
+            audit_v473_professional_runtime.py \
+            apply_v474_runtime_remediation.py \
+            apply_v474_tests.py \
+            apply_v474_compile_fix.py \
+            audit_v474_release.py \
+            apply_v475_production_polish.py \
+            audit_v475_production.py \
+            apply_v476_production_completion.py \
+            audit_v476_production.py \
+            patch_v471_llama_cmake.py; do
+            cp "../patch-src/scripts/$f" "scripts/$f"
+          done
+          cp ../patch-src/scripts/v475_payload/main.jsx scripts/v475_payload/main.jsx
+          cp ../patch-src/scripts/v475_payload/style.css scripts/v475_payload/style.css
+          cp ../patch-src/scripts/v476_payload/main.jsx scripts/v476_payload/main.jsx
+          cp ../patch-src/scripts/v476_payload/style.css scripts/v476_payload/style.css
+          scripts/materialize_v471_release.sh "$ROOT"
+          python3 scripts/apply_v472_fileop_isolation.py "$ROOT"
+          python3 scripts/apply_v472_preview_policy.py "$ROOT"
+          python3 scripts/apply_v472_folder_memory.py "$ROOT"
+          python3 scripts/fix_v472_generated_literals.py "$ROOT"
+          python3 scripts/apply_v473_professional_runtime.py "$ROOT"
+          python3 scripts/apply_v473_tests.py "$ROOT"
+          python3 scripts/apply_v474_runtime_remediation.py "$ROOT"
+          python3 scripts/apply_v474_tests.py "$ROOT"
+          python3 scripts/apply_v474_compile_fix.py "$ROOT"
+          python3 scripts/apply_v475_production_polish.py "$ROOT"
+          python3 scripts/apply_v476_production_completion.py "$ROOT"
+          python3 scripts/audit_v476_production.py "$ROOT"
+          grep -q 'versionCode = 96' "$ROOT/rsapp/build.gradle.kts"
+          grep -q 'versionName = "4.7.6"' "$ROOT/rsapp/build.gradle.kts"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' 'ndk;29.0.13113456' 'cmake;3.31.6'
+
+      - name: Prepare pinned llama.cpp Android tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp.git llama.cpp
+          git -C llama.cpp fetch --depth=1 origin "$LLAMA_REV"
+          git -C llama.cpp checkout --detach "$LLAMA_REV"
+          python3 private-src/scripts/apply_llama_rs_compat.py llama.cpp
+          python3 private-src/scripts/apply_v434_load_progress.py llama.cpp
+          python3 private-src/scripts/apply_v450_llama_runtime.py llama.cpp
+          python3 private-src/scripts/patch_v471_llama_cmake.py llama.cpp
+          rm -rf llama.cpp/examples/llama.android/rsapp
+          cp -R private-src/$ROOT/rsapp llama.cpp/examples/llama.android/rsapp
+          grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts || printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          chmod +x llama.cpp/examples/llama.android/gradlew
+          cat >> llama.cpp/examples/llama.android/gradle.properties <<'GP'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          org.gradle.workers.max=2
+          org.gradle.parallel=false
+          kotlin.compiler.execution.strategy=in-process
+          GP
+
+      - name: Capture Android JVM compile and tests
+        id: android_jvm
+        continue-on-error: true
+        working-directory: llama.cpp/examples/llama.android
+        shell: bash
+        env:
+          RS_LLAMA_SRC: ${{ github.workspace }}/llama.cpp
+        run: |
+          set -o pipefail
+          ./gradlew \
+            :rsapp:testDebugUnitTest \
+            :rsapp:compileDebugKotlin \
+            :rsapp:compileDebugJavaWithJavac \
+            --stacktrace --info --no-daemon 2>&1 | tee ../../../ANDROID_JVM_V476.log
+
+      - name: Collect Android diagnostic files
+        if: always()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p android-diagnostic/test-results android-diagnostic/reports
+          cp ANDROID_JVM_V476.log android-diagnostic/ANDROID_JVM_V476.log || true
+          if [ -d llama.cpp/examples/llama.android/rsapp/build/test-results ]; then
+            cp -R llama.cpp/examples/llama.android/rsapp/build/test-results/. android-diagnostic/test-results/
+          fi
+          if [ -d llama.cpp/examples/llama.android/rsapp/build/reports/tests ]; then
+            cp -R llama.cpp/examples/llama.android/rsapp/build/reports/tests/. android-diagnostic/reports/
+          fi
+          find android-diagnostic -maxdepth 4 -type f -print | sort | tee android-diagnostic/FILES.txt
+          printf 'outcome=%s\nbase=%s\npatch=%s\n' '${{ steps.android_jvm.outcome }}' "$(git -C private-src rev-parse HEAD)" "$(git -C patch-src rev-parse HEAD)" > android-diagnostic/STATUS.txt
+
+      - name: Upload Android JVM diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Storage-v4.7.6-Android-JVM-Diagnostic
+          path: android-diagnostic/**
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail if Android JVM stage failed
+        if: steps.android_jvm.outcome == 'failure'
+        shell: bash
+        run: |
+          echo 'Android JVM stage failed; diagnostic artifact was uploaded.'
+          exit 1
