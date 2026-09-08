@@ -1,0 +1,323 @@
+name: RS Storage 4.7.9 Reported Bugs Production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-storage-v479-reported-bugs-runner ]
+    paths: [ '.github/workflows/rs-storage-v479-reported-bugs-production.yml' ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-storage-v479-reported-bugs-production
+  cancel-in-progress: true
+
+jobs:
+  build-v479:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ROOT: source/current-v4.3.0
+      LLAMA_REV: 8ef78e644f559db4e8716b59bf76b8e11619337d
+      NDK_VERSION: 29.0.13113456
+      CMAKE_VERSION: 3.31.6
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout canonical baseline
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: fix/v4.7-audit-blockers
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout v4.7.9 patch line
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: release/v4.7.9-reported-bugs
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: patch-src
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Record commits
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "RS_STORAGE_BASE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "RS_STORAGE_PATCH_COMMIT=$(git -C patch-src rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Materialize complete v4.7.9 source
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x scripts/materialize_v471_release.sh
+          mkdir -p scripts/v475_payload scripts/v476_payload
+          FILES='apply_v472_fileop_isolation.py apply_v472_preview_policy.py apply_v472_folder_memory.py fix_v472_generated_literals.py audit_v472_release.py rsfile_v472_required_gate.mjs apply_v473_professional_runtime.py apply_v473_tests.py audit_v473_professional_runtime.py apply_v474_runtime_remediation.py apply_v474_tests.py apply_v474_compile_fix.py audit_v474_release.py apply_v475_production_polish.py audit_v475_production.py apply_v476_production_completion.py audit_v476_production.py apply_v477_android_ui_rebuild.py apply_v477_android_product_shell.py fix_v477_android_product_shell_compile.py audit_v477_android_ui.py apply_v477_web_file_workspace.py fix_v477_web_file_workspace.py audit_v477_web_file_workspace.py rsfile_v477_real_runtime_gate.mjs apply_v478_product_refinement.py audit_v478_product_refinement.py apply_v478_web_identity.py audit_v478_web_identity.py fix_v478_android_runtime_quality.py audit_v478_android_runtime_quality.py apply_v478_rsfile_product_completion.py audit_v478_rsfile_product_completion.py rsfile_v478_real_runtime_gate.mjs apply_v479_reported_bugs.py audit_v479_reported_bugs.py rsfile_v479_overlay_runtime_gate.mjs patch_v471_llama_cmake.py'
+          for f in $FILES; do test -s "../patch-src/scripts/$f"; cp "../patch-src/scripts/$f" "scripts/$f"; done
+          cp ../patch-src/scripts/v475_payload/main.jsx scripts/v475_payload/main.jsx
+          cp ../patch-src/scripts/v475_payload/style.css scripts/v475_payload/style.css
+          cp ../patch-src/scripts/v476_payload/main.jsx scripts/v476_payload/main.jsx
+          cp ../patch-src/scripts/v476_payload/style.css scripts/v476_payload/style.css
+
+          scripts/materialize_v471_release.sh "$ROOT"
+          python3 scripts/apply_v472_fileop_isolation.py "$ROOT"
+          python3 scripts/apply_v472_preview_policy.py "$ROOT"
+          python3 scripts/apply_v472_folder_memory.py "$ROOT"
+          python3 scripts/fix_v472_generated_literals.py "$ROOT"
+          python3 scripts/audit_v472_release.py "$ROOT"
+          python3 scripts/apply_v473_professional_runtime.py "$ROOT"
+          python3 scripts/apply_v473_tests.py "$ROOT"
+          python3 scripts/audit_v473_professional_runtime.py "$ROOT"
+          python3 scripts/apply_v474_runtime_remediation.py "$ROOT"
+          python3 scripts/apply_v474_tests.py "$ROOT"
+          python3 scripts/apply_v474_compile_fix.py "$ROOT"
+          python3 scripts/audit_v474_release.py "$ROOT"
+          python3 scripts/apply_v475_production_polish.py "$ROOT"
+          python3 scripts/audit_v475_production.py "$ROOT"
+          python3 scripts/apply_v476_production_completion.py "$ROOT"
+          python3 scripts/audit_v476_production.py "$ROOT"
+
+          python3 scripts/apply_v477_android_ui_rebuild.py "$ROOT"
+          python3 scripts/apply_v477_android_product_shell.py "$ROOT"
+          python3 scripts/fix_v477_android_product_shell_compile.py "$ROOT"
+          python3 scripts/audit_v477_android_ui.py "$ROOT" | tee ../V477_ANDROID_AUDIT.txt
+          python3 scripts/apply_v477_web_file_workspace.py "$ROOT"
+          python3 scripts/fix_v477_web_file_workspace.py "$ROOT"
+          python3 scripts/audit_v477_web_file_workspace.py "$ROOT" | tee ../V477_WEB_AUDIT.txt
+          grep -q 'V477_ANDROID_UI_AUDIT=18/18' ../V477_ANDROID_AUDIT.txt
+          grep -q 'V477_WEB_FILE_AUDIT=21/21' ../V477_WEB_AUDIT.txt
+
+          python3 scripts/apply_v478_product_refinement.py "$ROOT" | tee ../V478_PRODUCT_APPLY.txt
+          python3 scripts/apply_v478_web_identity.py "$ROOT" | tee ../V478_WEB_IDENTITY_APPLY.txt
+          python3 scripts/fix_v478_android_runtime_quality.py "$ROOT" | tee ../V478_ANDROID_QUALITY_FIX.txt
+          python3 scripts/apply_v478_rsfile_product_completion.py "$ROOT" | tee ../V478_RSFILE_APPLY.txt
+          python3 scripts/audit_v478_product_refinement.py "$ROOT" | tee ../V478_PRODUCT_AUDIT.txt
+          python3 scripts/audit_v478_web_identity.py "$ROOT" | tee ../V478_WEB_IDENTITY_AUDIT.txt
+          python3 scripts/audit_v478_android_runtime_quality.py "$ROOT" | tee ../V478_ANDROID_QUALITY_AUDIT.txt
+          python3 scripts/audit_v478_rsfile_product_completion.py "$ROOT" | tee ../V478_RSFILE_AUDIT.txt
+          grep -q 'V478_PRODUCT_AUDIT=23/23' ../V478_PRODUCT_AUDIT.txt
+          grep -q 'V478_WEB_IDENTITY_AUDIT=5/5' ../V478_WEB_IDENTITY_AUDIT.txt
+          grep -q 'V478_ANDROID_RUNTIME_QUALITY_AUDIT=6/6' ../V478_ANDROID_QUALITY_AUDIT.txt
+          grep -q 'V478_RSFILE_PRODUCT_AUDIT=17/17' ../V478_RSFILE_AUDIT.txt
+
+          python3 scripts/apply_v479_reported_bugs.py "$ROOT" | tee ../V479_APPLY.txt
+          python3 scripts/audit_v479_reported_bugs.py "$ROOT" | tee ../V479_AUDIT.txt
+          grep -q 'V479_REPORTED_BUG_AUDIT=18/18' ../V479_AUDIT.txt
+          grep -q 'versionCode = 99' "$ROOT/rsapp/build.gradle.kts"
+          grep -q 'versionName = "4.7.9"' "$ROOT/rsapp/build.gradle.kts"
+
+      - name: Build production Web UI and install Playwright
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm --prefix private-src/$ROOT/dynamic-ui pkg set 'devDependencies.@vitejs/plugin-react=5.1.4'
+          npm --prefix private-src/$ROOT/dynamic-ui install --no-audit --no-fund
+          npm --prefix private-src/$ROOT/dynamic-ui run build
+          cd private-src
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+          test -s "$ROOT/dynamic-ui/dist/app.js"
+          test -s "$ROOT/dynamic-ui/dist/style.css"
+          test -s "$ROOT/dynamic-ui/dist/rs-file-v477-workspace.js"
+          test -s "$ROOT/dynamic-ui/dist/rs-file-v478-completion.js"
+          test -s "$ROOT/dynamic-ui/dist/rs-file-v479-overlays.js"
+          test -s "$ROOT/dynamic-ui/dist/rs-file-v479-overlays.css"
+
+      - name: Run inherited RS FILE behavior gate
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node scripts/rsfile_v472_required_gate.mjs "$ROOT" | tee ../RSFILE_REQUIRED_V479.txt
+          grep -q 'REQUIRED_GATE_PASS=12/12' ../RSFILE_REQUIRED_V479.txt
+
+      - name: Run v4.7.7 real-runtime regression gate
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node scripts/rsfile_v477_real_runtime_gate.mjs "$ROOT" | tee ../V477_REAL_RUNTIME_V479.txt
+          grep -q 'RSFILE_V477_REAL_RUNTIME_GATE=6/6' ../V477_REAL_RUNTIME_V479.txt
+
+      - name: Run v4.7.8 real-runtime regression gate
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node scripts/rsfile_v478_real_runtime_gate.mjs "$ROOT" | tee ../V478_REAL_RUNTIME_V479.txt
+          grep -q 'RSFILE_V478_REAL_RUNTIME_GATE=7/7' ../V478_REAL_RUNTIME_V479.txt
+
+      - name: Run v4.7.9 mobile overlay runtime gate
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node scripts/rsfile_v479_overlay_runtime_gate.mjs "$ROOT" | tee ../V479_OVERLAY_RUNTIME.txt
+          grep -q 'RSFILE_V479_OVERLAY_RUNTIME_GATE=6/6' ../V479_OVERLAY_RUNTIME.txt
+
+      - name: Package Web UI into Android assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf private-src/$ROOT/rsapp/src/main/assets/rs-dynamic
+          mkdir -p private-src/$ROOT/rsapp/src/main/assets/rs-dynamic
+          cp -a private-src/$ROOT/dynamic-ui/dist/. private-src/$ROOT/rsapp/src/main/assets/rs-dynamic/
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' 'ndk;29.0.13113456' 'cmake;3.31.6'
+
+      - name: Prepare pinned llama.cpp Android tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp.git llama.cpp
+          git -C llama.cpp fetch --depth=1 origin "$LLAMA_REV"
+          git -C llama.cpp checkout --detach "$LLAMA_REV"
+          python3 private-src/scripts/apply_llama_rs_compat.py llama.cpp
+          python3 private-src/scripts/apply_v434_load_progress.py llama.cpp
+          python3 private-src/scripts/apply_v450_llama_runtime.py llama.cpp
+          python3 private-src/scripts/patch_v471_llama_cmake.py llama.cpp
+          rm -rf llama.cpp/examples/llama.android/rsapp
+          cp -R private-src/$ROOT/rsapp llama.cpp/examples/llama.android/rsapp
+          grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts || printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          chmod +x llama.cpp/examples/llama.android/gradlew
+          cat >> llama.cpp/examples/llama.android/gradle.properties <<'GP'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          org.gradle.workers.max=2
+          org.gradle.parallel=false
+          kotlin.compiler.execution.strategy=in-process
+          GP
+
+      - name: JVM tests and Java Kotlin compile
+        working-directory: llama.cpp/examples/llama.android
+        shell: bash
+        env:
+          RS_LLAMA_SRC: ${{ github.workspace }}/llama.cpp
+        run: |
+          set -euxo pipefail
+          ./gradlew :rsapp:testDebugUnitTest :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
+
+      - name: Verify JVM behavior suites
+        shell: bash
+        run: |
+          set -euxo pipefail
+          DIR=llama.cpp/examples/llama.android/rsapp/build/test-results/testDebugUnitTest
+          for cls in FileTypeResolverTest RsFileOperationQueueTest RsFilePreviewPolicyTest RsAgentToolRegistryTest RsAgentWorkspaceBehaviorTest; do
+            XML="$DIR/TEST-com.rs.localstorage.$cls.xml"
+            test -s "$XML"
+            grep -q 'failures="0"' "$XML"
+            grep -q 'errors="0"' "$XML"
+            cp "$XML" "V479_${cls}.xml"
+          done
+
+      - name: Assemble ARM64 APK
+        working-directory: llama.cpp/examples/llama.android
+        shell: bash
+        env:
+          RS_LLAMA_SRC: ${{ github.workspace }}/llama.cpp
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13113456
+        run: |
+          set -euxo pipefail
+          ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+
+      - name: Re-run v4.7.9 gates post-build
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 scripts/audit_v479_reported_bugs.py "$ROOT" | tee ../V479_AUDIT_POSTBUILD.txt
+          node scripts/rsfile_v478_real_runtime_gate.mjs "$ROOT" | tee ../V478_REAL_RUNTIME_POSTBUILD_V479.txt
+          node scripts/rsfile_v479_overlay_runtime_gate.mjs "$ROOT" | tee ../V479_OVERLAY_RUNTIME_POSTBUILD.txt
+          grep -q 'V479_REPORTED_BUG_AUDIT=18/18' ../V479_AUDIT_POSTBUILD.txt
+          grep -q 'RSFILE_V478_REAL_RUNTIME_GATE=7/7' ../V478_REAL_RUNTIME_POSTBUILD_V479.txt
+          grep -q 'RSFILE_V479_OVERLAY_RUNTIME_GATE=6/6' ../V479_OVERLAY_RUNTIME_POSTBUILD.txt
+
+      - name: Validate APK identity ABI signing and embedded proof
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK=llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk
+          OUT=RS-Storage-v4.7.9-arm64.apk
+          test -s "$APK"
+          test "$(stat -c '%s' "$APK")" -gt 30000000
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.rs.localstorage'" apk-badging.txt
+          grep -q "versionCode='99'" apk-badging.txt
+          grep -q "versionName='4.7.9'" apk-badging.txt
+          grep -q "application-label:'RS Storage'" apk-badging.txt
+          ABIS="$(unzip -l "$APK" | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u | xargs)"
+          test "$ABIS" = "arm64-v8a"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libai-chat.so'
+          ! unzip -l "$APK" | grep -q 'lib/x86_64/'
+          unzip -l "$APK" | grep -q 'assets/rs-dynamic/rs-file-v479-overlays.js'
+          unzip -l "$APK" | grep -q 'assets/rs-dynamic/rs-file-v479-overlays.css'
+          unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee APK_BUILD_PROOF.txt
+          grep -q '^Release=4.7.9$' APK_BUILD_PROOF.txt
+          grep -q '^VersionCode=99$' APK_BUILD_PROOF.txt
+          grep -q '^VersionCoherence=4.7.9-99$' APK_BUILD_PROOF.txt
+          grep -q '^WebRuntimeIdentity=4.7.9$' APK_BUILD_PROOF.txt
+          grep -q '^ServerStateSource=service-runtime+broadcast$' APK_BUILD_PROOF.txt
+          grep -q '^ServerToggleSync=actual-running-state$' APK_BUILD_PROOF.txt
+          grep -q '^ServerStartupProgress=real-phases+eta$' APK_BUILD_PROOF.txt
+          grep -q '^ServerDetailsPlacement=state-statistics$' APK_BUILD_PROOF.txt
+          grep -q '^MediaScanProgress=shared-model-style-bar+real-phases$' APK_BUILD_PROOF.txt
+          grep -q '^RSFileContextOverlay=body-portal+viewport-fixed$' APK_BUILD_PROOF.txt
+          grep -q '^RSFileTransferOverlay=body-portal+viewport-fixed-visible$' APK_BUILD_PROOF.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee SHA256SUMS.txt
+          stat -c '%s' "$OUT" | tee APK_SIZE_BYTES.txt
+          printf 'version=4.7.9\nversionCode=99\nabi=arm64-v8a\nbase_commit=%s\npatch_commit=%s\nrunner=template-lab-public\nsigning=debug-apk\nrsfile_v478_gate=7/7\nrsfile_v479_overlay_gate=6/6\n' "$RS_STORAGE_BASE_COMMIT" "$RS_STORAGE_PATCH_COMMIT" | tee BUILD_REPORT.txt
+
+      - name: Upload v4.7.9 APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Storage-v4.7.9-ARM64-REPORTED-BUGS
+          path: |
+            RS-Storage-v4.7.9-arm64.apk
+            SHA256SUMS.txt
+            APK_SIZE_BYTES.txt
+            BUILD_REPORT.txt
+            apk-badging.txt
+            apksigner.txt
+            APK_BUILD_PROOF.txt
+            V479_APPLY.txt
+            V479_AUDIT.txt
+            V479_AUDIT_POSTBUILD.txt
+            V479_OVERLAY_RUNTIME.txt
+            V479_OVERLAY_RUNTIME_POSTBUILD.txt
+            V478_REAL_RUNTIME_V479.txt
+            V478_REAL_RUNTIME_POSTBUILD_V479.txt
+            RSFILE_REQUIRED_V479.txt
+            V477_REAL_RUNTIME_V479.txt
+            V479_FileTypeResolverTest.xml
+            V479_RsFileOperationQueueTest.xml
+            V479_RsFilePreviewPolicyTest.xml
+            V479_RsAgentToolRegistryTest.xml
+            V479_RsAgentWorkspaceBehaviorTest.xml
+          if-no-files-found: error
+          retention-days: 14
