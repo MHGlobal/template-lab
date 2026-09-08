@@ -62,7 +62,7 @@ jobs:
           winget install --id Microsoft.WindowsSDK.10.0.28000 --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
           winget install --id Microsoft.WindowsWDK.10.0.28000 --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 
-      - name: Locate Visual Studio MSBuild
+      - name: Locate Visual Studio MSBuild and WDK tools
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -70,8 +70,18 @@ jobs:
           if (-not (Test-Path $vswhere)) { throw 'vswhere.exe not found' }
           $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
           if ([string]::IsNullOrWhiteSpace($msbuild) -or -not (Test-Path $msbuild)) { throw 'MSBuild.exe not found' }
+
+          $toolsRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\Tools"
+          $infverif = Get-ChildItem $toolsRoot -Recurse -Filter 'InfVerif.exe' -ErrorAction Stop |
+            Where-Object { $_.FullName -match '\\x64\\InfVerif\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if ($null -eq $infverif) { throw 'x64 InfVerif.exe not found in the installed WDK' }
+
           "MSBUILD_EXE=$msbuild" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "INFVERIF_EXE=$($infverif.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Using MSBuild: $msbuild"
+          Write-Host "Using InfVerif: $($infverif.FullName)"
           Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Include" -Directory | Select-Object -ExpandProperty Name
 
       - name: Build UMDF IddCx driver Release x64
@@ -79,8 +89,24 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $project = 'private-src/source/windows/RSRemote.VirtualDisplay.Driver/RSRemoteVirtualDisplay.vcxproj'
-          & $env:MSBUILD_EXE $project /restore /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal
+          # The hosted WDK currently has a broken DPVerifierTask loader path for x86\InfVerif.dll
+          # in command-line builds. Skip only that automatic task; the next step runs the official
+          # x64 InfVerif.exe explicitly and fails the gate on any INF validation error.
+          & $env:MSBUILD_EXE $project /restore /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:SkipPackageVerification=true /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "Driver build failed with exit code $LASTEXITCODE" }
+
+      - name: Validate stamped INF with InfVerif
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'private-src/source/windows/RSRemote.VirtualDisplay.Driver'
+          $stamped = Get-ChildItem $root -Recurse -Filter 'RSRemoteVirtualDisplay.inf' |
+            Where-Object { $_.FullName -match 'x64[\\/]Release' } |
+            Select-Object -First 1
+          if ($null -eq $stamped) { throw 'Stamped Release INF was not produced' }
+          & $env:INFVERIF_EXE /u /v $stamped.FullName
+          if ($LASTEXITCODE -ne 0) { throw "InfVerif /u failed with exit code $LASTEXITCODE" }
+          "STAMPED_INF=$($stamped.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Validate driver outputs
         shell: pwsh
@@ -89,7 +115,8 @@ jobs:
           $root = 'private-src/source/windows/RSRemote.VirtualDisplay.Driver'
           $dll = Get-ChildItem $root -Recurse -Filter 'RSRemoteVirtualDisplay.dll' | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
           if ($null -eq $dll -or -not (Test-Path $dll.FullName)) { throw 'RSRemoteVirtualDisplay.dll was not produced' }
-          $inf = Join-Path $root 'RSRemoteVirtualDisplay.inf'
+          $inf = $env:STAMPED_INF
+          if ([string]::IsNullOrWhiteSpace($inf) -or -not (Test-Path $inf)) { throw 'Validated stamped INF is unavailable' }
           $cat = Get-ChildItem $root -Recurse -Filter 'RSRemoteVirtualDisplay.cat' | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
           New-Item -ItemType Directory -Force -Path 'driver-package' | Out-Null
           Copy-Item $dll.FullName 'driver-package/RSRemoteVirtualDisplay.dll'
@@ -106,6 +133,7 @@ jobs:
             'architecture=x64',
             'driverModel=UMDF2+IddCx',
             'wdk=10.0.28000',
+            'infVerification=InfVerif-/u-/v-explicit',
             'signMode=off-ci-compile-gate',
             "catalogGenerated=$([bool](Test-Path 'driver-package/RSRemoteVirtualDisplay.cat'))",
             'productionInstallable=false-until-production-signed'
