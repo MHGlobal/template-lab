@@ -1,4 +1,4 @@
-name: RS Remote Windows Runtime Hotfix Gate
+name: RS Remote Windows RC4.2 Runtime Gate
 
 on:
   workflow_dispatch:
@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: rs-remote-windows-runtime-hotfix
+  group: rs-remote-windows-runtime-rc42
   cancel-in-progress: true
 
 jobs:
   windows-runtime:
-    name: Windows Host Build + Runtime Responsiveness
+    name: Windows Host RC4.2 Build + Runtime Responsiveness
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -45,7 +45,7 @@ jobs:
             'private-src/source/windows/RSRemote.Host/MainWindow.Startup.cs',
             'private-src/source/windows/RSRemote.Host/HostDiagnostics.cs',
             'private-src/source/windows/RSRemote.Host/HostIconFactory.cs',
-            'private-src/source/windows/RSRemote.Host/Assets/rsremote.ico.b64',
+            'private-src/source/windows/RSRemote.Host/RSRemote.ico',
             'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.2.md'
           )
           foreach ($path in $required) { if (-not (Test-Path $path)) { throw "Missing RC4.2 contract file: $path" } }
@@ -71,6 +71,8 @@ jobs:
           $virtualUi = Get-Content 'private-src/source/windows/RSRemote.Host/MainWindow.VirtualDisplay.cs' -Raw
           if ($virtualUi -match 'TryRestoreVirtualDisplayAsync') { throw 'Virtual Display autoactivation still exists' }
           if ($virtualUi -notmatch 'GetQuickStatus\(\)') { throw 'Virtual Display UI does not use quick status' }
+          $render = [regex]::Match($virtualUi, 'protected override void OnContentRendered[\s\S]*?private void BuildVirtualDisplayUi').Value
+          if ($render -match 'GetStatusAsync|ActivateAsync|pnputil') { throw 'Heavy Virtual Display work remains on OnContentRendered' }
 
           $main = Get-Content 'private-src/source/windows/RSRemote.Host/MainWindow.xaml.cs' -Raw
           if ($main -match 'Dispatcher\.Invoke\(') { throw 'Synchronous Dispatcher.Invoke remains' }
@@ -81,10 +83,13 @@ jobs:
           if ($polisher -match 'LayoutUpdated') { throw 'Visual polisher still polls LayoutUpdated' }
           if ($identity -match 'LayoutUpdated') { throw 'Build identity still polls LayoutUpdated' }
 
+          $diag = Get-Content 'private-src/source/windows/RSRemote.Host/HostDiagnostics.cs' -Raw
+          if ($diag -notmatch 'Channel\.CreateBounded') { throw 'Diagnostics logger is not queued off UI thread' }
+          if ($diag -notmatch 'UiResponsivenessWatchdog') { throw 'UI watchdog implementation missing' }
+
           $project = Get-Content 'private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj' -Raw
           if ($project -notmatch '<Version>1.0.0-rc4.2</Version>') { throw 'Windows Host rc4.2 version mismatch' }
-          if ($project -notmatch '<ApplicationIcon>rsremote\.ico</ApplicationIcon>') { throw 'Embedded EXE icon is not configured' }
-          if ($project -notmatch 'GenerateRsRemoteApplicationIcon') { throw 'EXE icon generation target missing' }
+          if ($project -notmatch '<ApplicationIcon>RSRemote\.ico</ApplicationIcon>') { throw 'Embedded EXE icon is not configured' }
           "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - uses: actions/setup-dotnet@v4
@@ -202,6 +207,7 @@ jobs:
             'dispatcherSyncInvoke=false',
             'layoutUpdatedPolling=false',
             'cameraDecode=latest-frame-background',
+            'diagnostics=queued-background-logger,ui-watchdog',
             'embeddedApplicationIcon=true',
             'selfContained=true',
             'singleFile=true',
