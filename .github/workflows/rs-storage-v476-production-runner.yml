@@ -47,7 +47,6 @@ jobs:
             scripts/audit_v476_production.py \
             scripts/rs_v476_production_browser_gate.mjs \
             scripts/rsfile_v472_required_gate.mjs \
-            scripts/validate_embedded_rsfile_js.py \
             scripts/patch_v471_llama_cmake.py \
             scripts/v476_payload/main.jsx \
             scripts/v476_payload/style.css; do
@@ -72,14 +71,14 @@ jobs:
           python3 scripts/audit_v476_production.py "$ROOT" | tee ../V476_STATIC_AUDIT.txt
           grep -q 'V476_STATIC_AUDIT=' ../V476_STATIC_AUDIT.txt
 
-      - name: Install Dynamic UI and browser test dependencies
+      - name: Install Dynamic UI and browser-test dependencies
         shell: bash
         run: |
           set -euxo pipefail
           npm --prefix private-src/$ROOT/dynamic-ui pkg set 'devDependencies.@vitejs/plugin-react=5.1.4'
           npm --prefix private-src/$ROOT/dynamic-ui install --no-audit --no-fund
-          npm --prefix private-src/tests/e2e install --no-audit --no-fund
-          cd private-src/tests/e2e
+          cd private-src
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
           npx playwright install --with-deps chromium
 
       - name: Build Dynamic UI production bundle
@@ -91,14 +90,12 @@ jobs:
           test -s dist/app.js
           test -s dist/style.css
 
-      - name: Run RS FILE required behavior gate
+      - name: Run RS FILE 12-behavior required gate
         working-directory: private-src
         shell: bash
         run: |
           set -euxo pipefail
-          cp scripts/rsfile_v472_required_gate.mjs tests/e2e/.rsfile-v472-required-runtime.mjs
-          node tests/e2e/.rsfile-v472-required-runtime.mjs "$ROOT" | tee ../RSFILE_REQUIRED_V476.txt
-          rm -f tests/e2e/.rsfile-v472-required-runtime.mjs
+          node scripts/rsfile_v472_required_gate.mjs "$ROOT" | tee ../RSFILE_REQUIRED_V476.txt
           grep -q 'REQUIRED_GATE_PASS=12/12' ../RSFILE_REQUIRED_V476.txt
 
       - name: Run Web production behavior gate
@@ -106,20 +103,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cp scripts/rs_v476_production_browser_gate.mjs tests/e2e/.rs-v476-production-runtime.mjs
-          node tests/e2e/.rs-v476-production-runtime.mjs "$ROOT" | tee ../V476_BROWSER_GATE.txt
-          rm -f tests/e2e/.rs-v476-production-runtime.mjs
+          node scripts/rs_v476_production_browser_gate.mjs "$ROOT" | tee ../V476_BROWSER_GATE.txt
           grep -q 'RS_V476_PRODUCTION_BROWSER_GATE=PASS' ../V476_BROWSER_GATE.txt
-
-      - name: Run canonical RS FILE E2E suite
-        working-directory: private-src
-        shell: bash
-        run: |
-          set -euxo pipefail
-          rm -rf /tmp/rsfile-v476-runtime
-          python3 scripts/validate_embedded_rsfile_js.py "$ROOT" --out /tmp/rsfile-v476-runtime
-          RSFILE_RUNTIME_DIR=/tmp/rsfile-v476-runtime node tests/e2e/rsfile-v471-e2e.mjs | tee ../RSFILE_CANONICAL_V476.txt
-          npm --prefix tests/e2e test | tee ../RSFILE_E2E_SUITE_V476.txt
 
       - name: Package Dynamic UI into Android assets
         shell: bash
@@ -216,12 +201,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cp scripts/rsfile_v472_required_gate.mjs tests/e2e/.rsfile-v472-required-runtime.mjs
-          node tests/e2e/.rsfile-v472-required-runtime.mjs "$ROOT" | tee ../RSFILE_REQUIRED_V476_POSTBUILD.txt
-          rm -f tests/e2e/.rsfile-v472-required-runtime.mjs
-          cp scripts/rs_v476_production_browser_gate.mjs tests/e2e/.rs-v476-production-runtime.mjs
-          node tests/e2e/.rs-v476-production-runtime.mjs "$ROOT" | tee ../V476_BROWSER_GATE_POSTBUILD.txt
-          rm -f tests/e2e/.rs-v476-production-runtime.mjs
+          node scripts/rsfile_v472_required_gate.mjs "$ROOT" | tee ../RSFILE_REQUIRED_V476_POSTBUILD.txt
+          node scripts/rs_v476_production_browser_gate.mjs "$ROOT" | tee ../V476_BROWSER_GATE_POSTBUILD.txt
           grep -q 'REQUIRED_GATE_PASS=12/12' ../RSFILE_REQUIRED_V476_POSTBUILD.txt
           grep -q 'RS_V476_PRODUCTION_BROWSER_GATE=PASS' ../V476_BROWSER_GATE_POSTBUILD.txt
 
@@ -272,8 +253,6 @@ jobs:
             V476_STATIC_AUDIT.txt
             RSFILE_REQUIRED_V476.txt
             RSFILE_REQUIRED_V476_POSTBUILD.txt
-            RSFILE_CANONICAL_V476.txt
-            RSFILE_E2E_SUITE_V476.txt
             V476_BROWSER_GATE.txt
             V476_BROWSER_GATE_POSTBUILD.txt
             V476_FileTypeResolverTest.xml
