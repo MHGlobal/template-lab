@@ -42,33 +42,33 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($expected)) { throw 'Missing RC4.2 requested commit' }
           if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
 
-          $host = 'private-src/source/windows/RSRemote.Host'
-          $project = Get-Content "$host/RSRemote.Host.csproj" -Raw
+          $hostPath = 'private-src/source/windows/RSRemote.Host'
+          $project = Get-Content "$hostPath/RSRemote.Host.csproj" -Raw
           if ($project -notmatch '<Version>1.0.0-rc4.2</Version>') { throw 'Host version is not rc4.2' }
           if ($project -notmatch '<ApplicationIcon>RSRemote.ico</ApplicationIcon>') { throw 'EXE application icon missing' }
-          if (-not (Test-Path "$host/RSRemote.ico")) { throw 'RSRemote.ico missing' }
+          if (-not (Test-Path "$hostPath/RSRemote.ico")) { throw 'RSRemote.ico missing' }
           if (-not (Test-Path 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.2.md')) { throw 'RC4.2 manifest missing' }
 
-          $virtual = Get-Content "$host/VirtualDisplayComponent.cs" -Raw
+          $virtual = Get-Content "$hostPath/VirtualDisplayComponent.cs" -Raw
           if ($virtual -match 'GetAwaiter\(\)\.GetResult\(\)') { throw 'Synchronous virtual display wait still present' }
           if ($virtual -notmatch 'GetQuickStatus\(\)') { throw 'Quick no-PnP status path missing' }
           if ($virtual -notmatch 'GetStatusAsync') { throw 'Async virtual display status missing' }
           if ($virtual -notmatch 'Kill\(entireProcessTree: true\)') { throw 'PnP timeout process-tree kill missing' }
 
-          $virtualUi = Get-Content "$host/MainWindow.VirtualDisplay.cs" -Raw
+          $virtualUi = Get-Content "$hostPath/MainWindow.VirtualDisplay.cs" -Raw
           if ($virtualUi -match 'TryRestoreVirtualDisplayAsync') { throw 'Virtual display auto-restore still present' }
           if ($virtualUi -notmatch 'GetQuickStatus\(\)') { throw 'Render path is not quick-status only' }
 
-          $main = Get-Content "$host/MainWindow.xaml.cs" -Raw
+          $main = Get-Content "$hostPath/MainWindow.xaml.cs" -Raw
           if ($main -match 'Dispatcher\.Invoke\(') { throw 'Synchronous Dispatcher.Invoke remains in MainWindow' }
           if ($main -notmatch 'DecodeLatestCameraFramesAsync') { throw 'Latest-frame camera decoder missing' }
 
-          $polisher = Get-Content "$host/HostDynamicVisualPolisher.cs" -Raw
-          $identity = Get-Content "$host/HostBuildIdentity.cs" -Raw
+          $polisher = Get-Content "$hostPath/HostDynamicVisualPolisher.cs" -Raw
+          $identity = Get-Content "$hostPath/HostBuildIdentity.cs" -Raw
           if ($polisher -match 'LayoutUpdated') { throw 'Visual polisher still polls LayoutUpdated' }
           if ($identity -match 'LayoutUpdated') { throw 'Build identity still polls LayoutUpdated' }
 
-          $app = Get-Content "$host/App.xaml.cs" -Raw
+          $app = Get-Content "$hostPath/App.xaml.cs" -Raw
           if ($app -notmatch '--safe-mode') { throw 'Safe mode missing' }
           if ($app -match 'GetAwaiter\(\)\.GetResult\(\)') { throw 'Blocking shutdown wait remains in App' }
           if ($app -notmatch 'UiResponsivenessWatchdog') { throw 'UI watchdog missing' }
