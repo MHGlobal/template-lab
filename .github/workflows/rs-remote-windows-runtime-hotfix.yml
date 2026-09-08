@@ -1,0 +1,153 @@
+name: RS Remote Windows Runtime Hotfix Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-remote-actions ]
+    paths:
+      - '.github/workflows/rs-remote-windows-runtime-hotfix.yml'
+      - 'runner/rs-remote-request.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-remote-windows-runtime-hotfix
+  cancel-in-progress: true
+
+jobs:
+  windows-runtime:
+    name: Windows Host Build + Runtime Responsiveness
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout public runner repository
+        uses: actions/checkout@v4
+
+      - name: Checkout private RS-Remote source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Remote
+          ref: build/public-runner
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify requested source and hotfix contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = (Get-Content 'runner/rs-remote-request.txt' -Raw).Trim()
+          $actual = (git -C private-src rev-parse HEAD).Trim()
+          if ([string]::IsNullOrWhiteSpace($expected)) { throw 'Missing requested RS-Remote commit' }
+          if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/MainWindow.Startup.cs')) { throw 'Responsive startup implementation missing' }
+          if (-not (Test-Path 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.1.md')) { throw 'RC4.1 release manifest missing' }
+          $app = Get-Content 'private-src/source/windows/RSRemote.Host/App.xaml.cs' -Raw
+          if ($app -notmatch 'DisableAutomaticStartup\(\)') { throw 'Legacy UI-thread startup is not disabled' }
+          if ($app -notmatch 'Task\.Run\(HostCertificateProvider\.GetOrCreate\)') { throw 'Media certificate bootstrap is still on dispatcher' }
+          if ($app -notmatch 'Dispatcher\.BeginInvoke') { throw 'Tray actions are not asynchronously dispatched' }
+          $startup = Get-Content 'private-src/source/windows/RSRemote.Host/MainWindow.Startup.cs' -Raw
+          if ($startup -notmatch 'Task\.Run\(BuildStartupBootstrap\)') { throw 'Host bootstrap is not off dispatcher' }
+          if ($startup -notmatch 'WaitAsync\(TimeSpan\.FromSeconds\(20\)\)') { throw 'Startup bootstrap timeout gate missing' }
+          $project = Get-Content 'private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj' -Raw
+          if ($project -notmatch '<Version>1.0.0-rc4.1</Version>') { throw 'Windows Host hotfix version mismatch' }
+          "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore private-src/source/windows/RSRemote.sln --runtime win-x64
+
+      - name: Build Release x64
+        shell: pwsh
+        run: dotnet build private-src/source/windows/RSRemote.sln --configuration Release --no-restore --verbosity normal
+
+      - name: Run protocol, media and transfer regressions
+        shell: pwsh
+        run: dotnet run --project private-src/source/windows/RSRemote.RegressionTests/RSRemote.RegressionTests.csproj --configuration Release
+
+      - name: Publish self-contained single-file Host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output publish/windows `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:PublishReadyToRun=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+
+      - name: Runtime smoke test GUI responsiveness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path 'publish/windows/RSRemote.Host.exe').Path
+          $process = Start-Process -FilePath $exe -PassThru
+          $seenWindow = $false
+          $badStreak = 0
+          try {
+            for ($i = 0; $i -lt 40; $i++) {
+              Start-Sleep -Milliseconds 250
+              if ($process.HasExited) { throw "RS Remote Host exited during startup with code $($process.ExitCode)" }
+              $process.Refresh()
+              if ($process.MainWindowHandle -ne 0) { $seenWindow = $true }
+              if ($process.Responding) { $badStreak = 0 } else { $badStreak++ }
+              if ($badStreak -ge 8) { throw 'RS Remote Host remained Not Responding for at least 2 seconds during startup' }
+            }
+            if (-not $seenWindow) { throw 'RS Remote Host did not create a main window during the 10-second runtime smoke test' }
+          }
+          finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+      - name: Validate and stage standalone Host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'publish/windows/RSRemote.Host.exe'
+          $out = 'RS-Remote-Host-v1.0.0-rc4.1-win-x64.exe'
+          if (-not (Test-Path $source)) { throw "Expected $source" }
+          $length = (Get-Item $source).Length
+          if ($length -lt 20MB) { throw "Self-contained EXE unexpectedly small: $length bytes" }
+          $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $source)).ProductVersion
+          if ($version -notlike '1.0.0-rc4.1*') { throw "Unexpected ProductVersion: $version" }
+          Copy-Item $source $out
+          Copy-Item 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.1.md' 'RELEASE_MANIFEST_1.0.0-rc4.1.md'
+          $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path 'SHA256SUMS-WINDOWS.txt' -Value "$hash  $out"
+          Set-Content -Path 'WINDOWS_SIZE_BYTES.txt' -Value $length
+          Set-Content -Path 'WINDOWS_BUILD_REPORT.txt' -Value @(
+            'source_repo=MHGlobal/RS-Remote',
+            'source_branch=build/public-runner',
+            "source_commit=$env:RS_REMOTE_COMMIT",
+            'productVersion=1.0.0-rc4.1',
+            'runtimeSmoke=gui-responsive-10s',
+            'selfContained=true',
+            'singleFile=true',
+            'externalDotNetRuntimeRequired=false',
+            'authenticodeSigned=false',
+            'runner_repo=MHGlobal/template-lab',
+            'runner_branch=rs-remote-actions'
+          )
+
+      - name: Upload Windows hotfix Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Remote-Windows-Host-v1.0.0-rc4.1-SelfContained
+          path: |
+            RS-Remote-Host-v1.0.0-rc4.1-win-x64.exe
+            SHA256SUMS-WINDOWS.txt
+            WINDOWS_SIZE_BYTES.txt
+            WINDOWS_BUILD_REPORT.txt
+            RELEASE_MANIFEST_1.0.0-rc4.1.md
+          if-no-files-found: error
+          retention-days: 30
