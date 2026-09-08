@@ -1,0 +1,102 @@
+name: RS Storage 4.7.9 Materialization Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-storage-v479-reported-bugs-runner ]
+    paths: [ '.github/workflows/rs-storage-v479-materialization-diagnostic.yml' ]
+
+permissions:
+  contents: read
+
+jobs:
+  materialize-v479:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ROOT: source/current-v4.3.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout canonical baseline
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: fix/v4.7-audit-blockers
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Checkout v4.7.9 patch line
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: release/v4.7.9-reported-bugs
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: patch-src
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Materialize through v4.7.9
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x scripts/materialize_v471_release.sh
+          mkdir -p scripts/v475_payload scripts/v476_payload
+          FILES='apply_v472_fileop_isolation.py apply_v472_preview_policy.py apply_v472_folder_memory.py fix_v472_generated_literals.py audit_v472_release.py apply_v473_professional_runtime.py apply_v473_tests.py audit_v473_professional_runtime.py apply_v474_runtime_remediation.py apply_v474_tests.py apply_v474_compile_fix.py audit_v474_release.py apply_v475_production_polish.py audit_v475_production.py apply_v476_production_completion.py audit_v476_production.py apply_v477_android_ui_rebuild.py apply_v477_android_product_shell.py fix_v477_android_product_shell_compile.py audit_v477_android_ui.py apply_v477_web_file_workspace.py fix_v477_web_file_workspace.py audit_v477_web_file_workspace.py apply_v478_product_refinement.py audit_v478_product_refinement.py apply_v478_web_identity.py audit_v478_web_identity.py fix_v478_android_runtime_quality.py audit_v478_android_runtime_quality.py apply_v478_rsfile_product_completion.py audit_v478_rsfile_product_completion.py prepare_v479_materialization.py apply_v479_reported_bugs.py audit_v479_reported_bugs.py'
+          for f in $FILES; do test -s "../patch-src/scripts/$f"; cp "../patch-src/scripts/$f" "scripts/$f"; done
+          cp ../patch-src/scripts/v475_payload/main.jsx scripts/v475_payload/main.jsx
+          cp ../patch-src/scripts/v475_payload/style.css scripts/v475_payload/style.css
+          cp ../patch-src/scripts/v476_payload/main.jsx scripts/v476_payload/main.jsx
+          cp ../patch-src/scripts/v476_payload/style.css scripts/v476_payload/style.css
+          scripts/materialize_v471_release.sh "$ROOT"
+          python3 scripts/apply_v472_fileop_isolation.py "$ROOT"
+          python3 scripts/apply_v472_preview_policy.py "$ROOT"
+          python3 scripts/apply_v472_folder_memory.py "$ROOT"
+          python3 scripts/fix_v472_generated_literals.py "$ROOT"
+          python3 scripts/audit_v472_release.py "$ROOT"
+          python3 scripts/apply_v473_professional_runtime.py "$ROOT"
+          python3 scripts/apply_v473_tests.py "$ROOT"
+          python3 scripts/audit_v473_professional_runtime.py "$ROOT"
+          python3 scripts/apply_v474_runtime_remediation.py "$ROOT"
+          python3 scripts/apply_v474_tests.py "$ROOT"
+          python3 scripts/apply_v474_compile_fix.py "$ROOT"
+          python3 scripts/audit_v474_release.py "$ROOT"
+          python3 scripts/apply_v475_production_polish.py "$ROOT"
+          python3 scripts/audit_v475_production.py "$ROOT"
+          python3 scripts/apply_v476_production_completion.py "$ROOT"
+          python3 scripts/audit_v476_production.py "$ROOT"
+          python3 scripts/apply_v477_android_ui_rebuild.py "$ROOT"
+          python3 scripts/apply_v477_android_product_shell.py "$ROOT"
+          python3 scripts/fix_v477_android_product_shell_compile.py "$ROOT"
+          python3 scripts/audit_v477_android_ui.py "$ROOT" | tee ../V477_ANDROID_AUDIT.txt
+          python3 scripts/apply_v477_web_file_workspace.py "$ROOT"
+          python3 scripts/fix_v477_web_file_workspace.py "$ROOT"
+          python3 scripts/audit_v477_web_file_workspace.py "$ROOT" | tee ../V477_WEB_AUDIT.txt
+          python3 scripts/apply_v478_product_refinement.py "$ROOT"
+          python3 scripts/apply_v478_web_identity.py "$ROOT"
+          python3 scripts/fix_v478_android_runtime_quality.py "$ROOT"
+          python3 scripts/apply_v478_rsfile_product_completion.py "$ROOT"
+          python3 scripts/audit_v478_product_refinement.py "$ROOT" | tee ../V478_PRODUCT_AUDIT.txt
+          python3 scripts/audit_v478_web_identity.py "$ROOT" | tee ../V478_WEB_IDENTITY_AUDIT.txt
+          python3 scripts/audit_v478_android_runtime_quality.py "$ROOT" | tee ../V478_ANDROID_QUALITY_AUDIT.txt
+          python3 scripts/audit_v478_rsfile_product_completion.py "$ROOT" | tee ../V478_RSFILE_AUDIT.txt
+          python3 scripts/prepare_v479_materialization.py "$ROOT" | tee ../V479_PREP.txt
+          python3 scripts/apply_v479_reported_bugs.py "$ROOT" | tee ../V479_APPLY.txt
+          python3 scripts/audit_v479_reported_bugs.py "$ROOT" | tee ../V479_AUDIT.txt
+          grep -q 'V479_REPORTED_BUG_AUDIT=18/18' ../V479_AUDIT.txt
+          grep -q 'versionName = "4.7.9"' "$ROOT/rsapp/build.gradle.kts"
+          grep -q 'versionCode = 99' "$ROOT/rsapp/build.gradle.kts"
+      - name: Upload generated source on failure or success
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Storage-v4.7.9-materialized-source-diagnostic
+          path: |
+            private-src/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/MainActivity.java
+            private-src/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java
+            private-src/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/MediaLibrary.java
+            V479_PREP.txt
+            V479_APPLY.txt
+            V479_AUDIT.txt
+          if-no-files-found: warn
+          retention-days: 3
