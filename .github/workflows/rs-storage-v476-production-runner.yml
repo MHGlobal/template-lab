@@ -25,44 +25,125 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout private RS Storage 4.7.6 source
+      - name: Checkout private canonical 4.7.1 baseline
         uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: release/v4.7.6-production-completion
+          ref: fix/v4.7-audit-blockers
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           path: private-src
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Record source commit and required release files
+      - name: Checkout private 4.7.6 patch line
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: release/v4.7.6-production-completion
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: patch-src
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Record commits and verify patch contracts
         shell: bash
         run: |
           set -euxo pipefail
-          echo "RS_STORAGE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "RS_STORAGE_BASE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "RS_STORAGE_PATCH_COMMIT=$(git -C patch-src rev-parse HEAD)" >> "$GITHUB_ENV"
+          test -s private-src/scripts/materialize_v471_release.sh
           for f in \
-            scripts/materialize_v475_final.py \
-            scripts/materialize_v476_delivery.py \
-            scripts/apply_v476_production_completion.py \
-            scripts/audit_v476_production.py \
-            scripts/rs_v476_production_browser_gate.mjs \
-            scripts/rsfile_v472_required_gate.mjs \
-            scripts/patch_v471_llama_cmake.py \
-            scripts/v476_payload/main.jsx \
-            scripts/v476_payload/style.css; do
-            test -s "private-src/$f"
+            apply_v472_fileop_isolation.py \
+            apply_v472_preview_policy.py \
+            apply_v472_folder_memory.py \
+            fix_v472_generated_literals.py \
+            audit_v472_release.py \
+            rsfile_v472_required_gate.mjs \
+            apply_v473_professional_runtime.py \
+            apply_v473_tests.py \
+            audit_v473_professional_runtime.py \
+            apply_v474_runtime_remediation.py \
+            apply_v474_tests.py \
+            apply_v474_compile_fix.py \
+            audit_v474_release.py \
+            apply_v475_production_polish.py \
+            audit_v475_production.py \
+            apply_v476_production_completion.py \
+            audit_v476_production.py \
+            rs_v476_production_browser_gate.mjs \
+            patch_v471_llama_cmake.py; do
+            test -s "patch-src/scripts/$f"
           done
+          test -s patch-src/scripts/v475_payload/main.jsx
+          test -s patch-src/scripts/v475_payload/style.css
+          test -s patch-src/scripts/v476_payload/main.jsx
+          test -s patch-src/scripts/v476_payload/style.css
 
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
 
-      - name: Materialize audited 4.7.5 plus production-completion 4.7.6
+      - name: Materialize canonical 4.7.1 through production-completion 4.7.6
         working-directory: private-src
         shell: bash
         run: |
           set -euxo pipefail
-          python3 scripts/materialize_v476_delivery.py "$ROOT" | tee ../V476_MATERIALIZE.txt
+          chmod +x scripts/materialize_v471_release.sh
+          mkdir -p scripts/v475_payload scripts/v476_payload
+          for f in \
+            apply_v472_fileop_isolation.py \
+            apply_v472_preview_policy.py \
+            apply_v472_folder_memory.py \
+            fix_v472_generated_literals.py \
+            audit_v472_release.py \
+            rsfile_v472_required_gate.mjs \
+            apply_v473_professional_runtime.py \
+            apply_v473_tests.py \
+            audit_v473_professional_runtime.py \
+            apply_v474_runtime_remediation.py \
+            apply_v474_tests.py \
+            apply_v474_compile_fix.py \
+            audit_v474_release.py \
+            apply_v475_production_polish.py \
+            audit_v475_production.py \
+            apply_v476_production_completion.py \
+            audit_v476_production.py \
+            rs_v476_production_browser_gate.mjs \
+            patch_v471_llama_cmake.py; do
+            cp "../patch-src/scripts/$f" "scripts/$f"
+          done
+          cp ../patch-src/scripts/v475_payload/main.jsx scripts/v475_payload/main.jsx
+          cp ../patch-src/scripts/v475_payload/style.css scripts/v475_payload/style.css
+          cp ../patch-src/scripts/v476_payload/main.jsx scripts/v476_payload/main.jsx
+          cp ../patch-src/scripts/v476_payload/style.css scripts/v476_payload/style.css
+
+          {
+            echo '=== RS Storage 4.7.1 canonical baseline ==='
+            scripts/materialize_v471_release.sh "$ROOT"
+            echo '=== 4.7.2 file operations ==='
+            python3 scripts/apply_v472_fileop_isolation.py "$ROOT"
+            python3 scripts/apply_v472_preview_policy.py "$ROOT"
+            python3 scripts/apply_v472_folder_memory.py "$ROOT"
+            python3 scripts/fix_v472_generated_literals.py "$ROOT"
+            python3 scripts/audit_v472_release.py "$ROOT"
+            echo '=== 4.7.3 professional runtime ==='
+            python3 scripts/apply_v473_professional_runtime.py "$ROOT"
+            python3 scripts/apply_v473_tests.py "$ROOT"
+            python3 scripts/audit_v473_professional_runtime.py "$ROOT"
+            echo '=== 4.7.4 runtime remediation ==='
+            python3 scripts/apply_v474_runtime_remediation.py "$ROOT"
+            python3 scripts/apply_v474_tests.py "$ROOT"
+            python3 scripts/apply_v474_compile_fix.py "$ROOT"
+            python3 scripts/audit_v474_release.py "$ROOT"
+            echo '=== 4.7.5 production polish ==='
+            python3 scripts/apply_v475_production_polish.py "$ROOT"
+            python3 scripts/audit_v475_production.py "$ROOT"
+            echo '=== 4.7.6 production completion ==='
+            python3 scripts/apply_v476_production_completion.py "$ROOT"
+            python3 scripts/audit_v476_production.py "$ROOT"
+            echo 'RS_STORAGE_V476_DELIVERY_MATERIALIZED'
+          } | tee ../V476_MATERIALIZE.txt
+
           grep -q 'RS_STORAGE_V476_DELIVERY_MATERIALIZED' ../V476_MATERIALIZE.txt
           grep -q 'versionCode = 96' "$ROOT/rsapp/build.gradle.kts"
           grep -q 'versionName = "4.7.6"' "$ROOT/rsapp/build.gradle.kts"
@@ -235,7 +316,7 @@ jobs:
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee SHA256SUMS.txt
           stat -c '%s' "$OUT" | tee APK_SIZE_BYTES.txt
-          printf 'version=4.7.6\nversionCode=96\nabi=arm64-v8a\nrs_storage_commit=%s\nrunner=template-lab-public\nsigning=debug-apk\n' "$RS_STORAGE_COMMIT" | tee BUILD_REPORT.txt
+          printf 'version=4.7.6\nversionCode=96\nabi=arm64-v8a\nbase_commit=%s\npatch_commit=%s\nrunner=template-lab-public\nsigning=debug-apk\n' "$RS_STORAGE_BASE_COMMIT" "$RS_STORAGE_PATCH_COMMIT" | tee BUILD_REPORT.txt
 
       - name: Upload 4.7.6 APK and evidence
         uses: actions/upload-artifact@v4
