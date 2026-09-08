@@ -1,0 +1,285 @@
+name: RS Storage 4.7.6 Production Runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-storage-v476-production-runner ]
+    paths: [ '.github/workflows/rs-storage-v476-production-runner.yml' ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-storage-v476-production-runner
+  cancel-in-progress: true
+
+jobs:
+  build-v476:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ROOT: source/current-v4.3.0
+      LLAMA_REV: 8ef78e644f559db4e8716b59bf76b8e11619337d
+      NDK_VERSION: 29.0.13113456
+      CMAKE_VERSION: 3.31.6
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout private RS Storage 4.7.6 source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: release/v4.7.6-production-completion
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Record source commit and required release files
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "RS_STORAGE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
+          for f in \
+            scripts/materialize_v475_final.py \
+            scripts/materialize_v476_delivery.py \
+            scripts/apply_v476_production_completion.py \
+            scripts/audit_v476_production.py \
+            scripts/rs_v476_production_browser_gate.mjs \
+            scripts/rsfile_v472_required_gate.mjs \
+            scripts/validate_embedded_rsfile_js.py \
+            scripts/patch_v471_llama_cmake.py \
+            scripts/v476_payload/main.jsx \
+            scripts/v476_payload/style.css; do
+            test -s "private-src/$f"
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Materialize audited 4.7.5 plus production-completion 4.7.6
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 scripts/materialize_v476_delivery.py "$ROOT" | tee ../V476_MATERIALIZE.txt
+          grep -q 'RS_STORAGE_V476_DELIVERY_MATERIALIZED' ../V476_MATERIALIZE.txt
+          grep -q 'versionCode = 96' "$ROOT/rsapp/build.gradle.kts"
+          grep -q 'versionName = "4.7.6"' "$ROOT/rsapp/build.gradle.kts"
+          grep -q 'RS STORAGE · V4.7.6' "$ROOT/rsapp/src/main/java/com/rs/localstorage/MainActivity.java"
+          grep -q "data-rs-ui-version='4.7.6'" "$ROOT/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java"
+          python3 scripts/audit_v476_production.py "$ROOT" | tee ../V476_STATIC_AUDIT.txt
+          grep -q 'V476_STATIC_AUDIT=' ../V476_STATIC_AUDIT.txt
+
+      - name: Install Dynamic UI and browser test dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm --prefix private-src/$ROOT/dynamic-ui pkg set 'devDependencies.@vitejs/plugin-react=5.1.4'
+          npm --prefix private-src/$ROOT/dynamic-ui install --no-audit --no-fund
+          npm --prefix private-src/tests/e2e install --no-audit --no-fund
+          cd private-src/tests/e2e
+          npx playwright install --with-deps chromium
+
+      - name: Build Dynamic UI production bundle
+        working-directory: private-src/source/current-v4.3.0/dynamic-ui
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm run build
+          test -s dist/app.js
+          test -s dist/style.css
+
+      - name: Run RS FILE required behavior gate
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp scripts/rsfile_v472_required_gate.mjs tests/e2e/.rsfile-v472-required-runtime.mjs
+          node tests/e2e/.rsfile-v472-required-runtime.mjs "$ROOT" | tee ../RSFILE_REQUIRED_V476.txt
+          rm -f tests/e2e/.rsfile-v472-required-runtime.mjs
+          grep -q 'REQUIRED_GATE_PASS=12/12' ../RSFILE_REQUIRED_V476.txt
+
+      - name: Run Web production behavior gate
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp scripts/rs_v476_production_browser_gate.mjs tests/e2e/.rs-v476-production-runtime.mjs
+          node tests/e2e/.rs-v476-production-runtime.mjs "$ROOT" | tee ../V476_BROWSER_GATE.txt
+          rm -f tests/e2e/.rs-v476-production-runtime.mjs
+          grep -q 'RS_V476_PRODUCTION_BROWSER_GATE=PASS' ../V476_BROWSER_GATE.txt
+
+      - name: Run canonical RS FILE E2E suite
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/rsfile-v476-runtime
+          python3 scripts/validate_embedded_rsfile_js.py "$ROOT" --out /tmp/rsfile-v476-runtime
+          RSFILE_RUNTIME_DIR=/tmp/rsfile-v476-runtime node tests/e2e/rsfile-v471-e2e.mjs | tee ../RSFILE_CANONICAL_V476.txt
+          npm --prefix tests/e2e test | tee ../RSFILE_E2E_SUITE_V476.txt
+
+      - name: Package Dynamic UI into Android assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf private-src/$ROOT/rsapp/src/main/assets/rs-dynamic
+          mkdir -p private-src/$ROOT/rsapp/src/main/assets/rs-dynamic
+          cp -a private-src/$ROOT/dynamic-ui/dist/. private-src/$ROOT/rsapp/src/main/assets/rs-dynamic/
+          test -s private-src/$ROOT/rsapp/src/main/assets/rs-dynamic/app.js
+          test -s private-src/$ROOT/rsapp/src/main/assets/rs-dynamic/style.css
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK NDK and CMake
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            'platform-tools' \
+            'platforms;android-36' \
+            'build-tools;36.0.0' \
+            'ndk;29.0.13113456' \
+            'cmake;3.31.6'
+          test -d "$ANDROID_HOME/ndk/$NDK_VERSION"
+          test -d "$ANDROID_HOME/cmake/$CMAKE_VERSION"
+
+      - name: Prepare pinned llama.cpp Android tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp.git llama.cpp
+          git -C llama.cpp fetch --depth=1 origin "$LLAMA_REV"
+          git -C llama.cpp checkout --detach "$LLAMA_REV"
+          python3 private-src/scripts/apply_llama_rs_compat.py llama.cpp
+          python3 private-src/scripts/apply_v434_load_progress.py llama.cpp
+          python3 private-src/scripts/apply_v450_llama_runtime.py llama.cpp
+          python3 private-src/scripts/patch_v471_llama_cmake.py llama.cpp
+          rm -rf llama.cpp/examples/llama.android/rsapp
+          cp -R private-src/$ROOT/rsapp llama.cpp/examples/llama.android/rsapp
+          grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts || printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          chmod +x llama.cpp/examples/llama.android/gradlew
+          cat >> llama.cpp/examples/llama.android/gradle.properties <<'GP'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          org.gradle.workers.max=2
+          org.gradle.parallel=false
+          kotlin.compiler.execution.strategy=in-process
+          GP
+
+      - name: JVM tests and Java Kotlin compile
+        working-directory: llama.cpp/examples/llama.android
+        shell: bash
+        env:
+          RS_LLAMA_SRC: ${{ github.workspace }}/llama.cpp
+        run: |
+          set -euxo pipefail
+          ./gradlew \
+            :rsapp:testDebugUnitTest \
+            :rsapp:compileDebugKotlin \
+            :rsapp:compileDebugJavaWithJavac \
+            --stacktrace --no-daemon
+
+      - name: Verify core JVM behavior tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          DIR=llama.cpp/examples/llama.android/rsapp/build/test-results/testDebugUnitTest
+          for cls in FileTypeResolverTest RsFileOperationQueueTest RsFilePreviewPolicyTest RsAgentToolRegistryTest RsAgentWorkspaceBehaviorTest; do
+            XML="$DIR/TEST-com.rs.localstorage.$cls.xml"
+            test -s "$XML"
+            grep -q 'failures="0"' "$XML"
+            grep -q 'errors="0"' "$XML"
+            cp "$XML" "V476_${cls}.xml"
+          done
+
+      - name: Assemble 4.7.6 ARM64 APK
+        working-directory: llama.cpp/examples/llama.android
+        shell: bash
+        env:
+          RS_LLAMA_SRC: ${{ github.workspace }}/llama.cpp
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13113456
+        run: |
+          set -euxo pipefail
+          ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+
+      - name: Re-run behavioral gates after build
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp scripts/rsfile_v472_required_gate.mjs tests/e2e/.rsfile-v472-required-runtime.mjs
+          node tests/e2e/.rsfile-v472-required-runtime.mjs "$ROOT" | tee ../RSFILE_REQUIRED_V476_POSTBUILD.txt
+          rm -f tests/e2e/.rsfile-v472-required-runtime.mjs
+          cp scripts/rs_v476_production_browser_gate.mjs tests/e2e/.rs-v476-production-runtime.mjs
+          node tests/e2e/.rs-v476-production-runtime.mjs "$ROOT" | tee ../V476_BROWSER_GATE_POSTBUILD.txt
+          rm -f tests/e2e/.rs-v476-production-runtime.mjs
+          grep -q 'REQUIRED_GATE_PASS=12/12' ../RSFILE_REQUIRED_V476_POSTBUILD.txt
+          grep -q 'RS_V476_PRODUCTION_BROWSER_GATE=PASS' ../V476_BROWSER_GATE_POSTBUILD.txt
+
+      - name: Validate exact APK and embedded production proof
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK=llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk
+          OUT=RS-Storage-v4.7.6-arm64.apk
+          test -s "$APK"
+          test "$(stat -c '%s' "$APK")" -gt 30000000
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.rs.localstorage'" apk-badging.txt
+          grep -q "versionCode='96'" apk-badging.txt
+          grep -q "versionName='4.7.6'" apk-badging.txt
+          ABIS="$(unzip -l "$APK" | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u | xargs)"
+          test "$ABIS" = "arm64-v8a"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libai-chat.so'
+          ! unzip -l "$APK" | grep -q 'lib/x86_64/'
+          unzip -l "$APK" | grep -q 'assets/rs-dynamic/app.js'
+          unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee APK_BUILD_PROOF.txt
+          grep -q '^Release=4.7.6$' APK_BUILD_PROOF.txt
+          grep -q '^VersionCode=96$' APK_BUILD_PROOF.txt
+          grep -q '^ProductionCompletion=android-web-v2$' APK_BUILD_PROOF.txt
+          grep -q '^BehavioralGate=rsfile+production-browser$' APK_BUILD_PROOF.txt
+          grep -q '^SourcePayloadParity=required$' APK_BUILD_PROOF.txt
+          grep -q '^VersionCoherence=4.7.6-96$' APK_BUILD_PROOF.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee SHA256SUMS.txt
+          stat -c '%s' "$OUT" | tee APK_SIZE_BYTES.txt
+          printf 'version=4.7.6\nversionCode=96\nabi=arm64-v8a\nrs_storage_commit=%s\nrunner=template-lab-public\nsigning=debug-apk\n' "$RS_STORAGE_COMMIT" | tee BUILD_REPORT.txt
+
+      - name: Upload 4.7.6 APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Storage-v4.7.6-ARM64-PRODUCTION-AUDIT
+          path: |
+            RS-Storage-v4.7.6-arm64.apk
+            SHA256SUMS.txt
+            APK_SIZE_BYTES.txt
+            BUILD_REPORT.txt
+            apk-badging.txt
+            apksigner.txt
+            APK_BUILD_PROOF.txt
+            V476_MATERIALIZE.txt
+            V476_STATIC_AUDIT.txt
+            RSFILE_REQUIRED_V476.txt
+            RSFILE_REQUIRED_V476_POSTBUILD.txt
+            RSFILE_CANONICAL_V476.txt
+            RSFILE_E2E_SUITE_V476.txt
+            V476_BROWSER_GATE.txt
+            V476_BROWSER_GATE_POSTBUILD.txt
+            V476_FileTypeResolverTest.xml
+            V476_RsFileOperationQueueTest.xml
+            V476_RsFilePreviewPolicyTest.xml
+            V476_RsAgentToolRegistryTest.xml
+            V476_RsAgentWorkspaceBehaviorTest.xml
+          if-no-files-found: error
+          retention-days: 30
