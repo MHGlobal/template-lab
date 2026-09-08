@@ -130,7 +130,7 @@ jobs:
           python3 scripts/audit_v477_android_ui.py "$ROOT" | tee ../V477_ANDROID_AUDIT.txt
           python3 scripts/audit_v477_web_file_workspace.py "$ROOT" | tee ../V477_WEB_AUDIT.txt
           grep -q 'V477_ANDROID_UI_AUDIT=18/18' ../V477_ANDROID_AUDIT.txt
-          grep -q 'V477_WEB_FILE_AUDIT=19/19' ../V477_WEB_AUDIT.txt
+          grep -q 'V477_WEB_FILE_AUDIT=21/21' ../V477_WEB_AUDIT.txt
 
       - name: Install Web and browser-test dependencies
         shell: bash
@@ -168,13 +168,13 @@ jobs:
           node scripts/rsfile_v472_required_gate.mjs "$ROOT" | tee ../V477_RSFILE_LEGACY_REGRESSION.txt
           grep -q 'REQUIRED_GATE_PASS=12/12' ../V477_RSFILE_LEGACY_REGRESSION.txt
 
-      - name: Run general Web production browser gate
+      - name: Run 4.7.7 Web production browser gate
         working-directory: private-src
         shell: bash
         run: |
           set -euxo pipefail
           node scripts/rs_v476_production_browser_gate.mjs "$ROOT" | tee ../V477_WEB_PRODUCTION_BROWSER.txt
-          grep -q 'RS_V476_PRODUCTION_BROWSER_GATE=PASS' ../V477_WEB_PRODUCTION_BROWSER.txt
+          grep -q 'RS_V477_PRODUCTION_BROWSER_GATE=PASS' ../V477_WEB_PRODUCTION_BROWSER.txt
 
       - name: Package Dynamic UI into Android assets
         shell: bash
@@ -269,7 +269,7 @@ jobs:
           node scripts/rs_v476_production_browser_gate.mjs "$ROOT" | tee ../V477_WEB_PRODUCTION_BROWSER_POSTBUILD.txt
           grep -q 'RSFILE_V477_REAL_RUNTIME_GATE=6/6' ../V477_RSFILE_REAL_RUNTIME_POSTBUILD.txt
           grep -q 'REQUIRED_GATE_PASS=12/12' ../V477_RSFILE_LEGACY_REGRESSION_POSTBUILD.txt
-          grep -q 'RS_V476_PRODUCTION_BROWSER_GATE=PASS' ../V477_WEB_PRODUCTION_BROWSER_POSTBUILD.txt
+          grep -q 'RS_V477_PRODUCTION_BROWSER_GATE=PASS' ../V477_WEB_PRODUCTION_BROWSER_POSTBUILD.txt
 
       - name: Validate exact APK identity content and signing
         shell: bash
@@ -302,7 +302,7 @@ jobs:
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee SHA256SUMS.txt
           stat -c '%s' "$OUT" | tee APK_SIZE_BYTES.txt
-          printf 'version=4.7.7\nversionCode=97\nabi=arm64-v8a\nbase_commit=%s\npatch_commit=%s\nrunner=template-lab-public\nsigning=debug-apk\nreal_rsfile_gate=6/6\n' "$RS_STORAGE_BASE_COMMIT" "$RS_STORAGE_PATCH_COMMIT" | tee BUILD_REPORT.txt
+          printf 'version=4.7.7\nversionCode=97\nabi=arm64-v8a\nbase_commit=%s\npatch_commit=%s\nrunner=template-lab-public\nsigning=debug-apk\nreal_rsfile_gate=6/6\nweb_production_gate=4.7.7\n' "$RS_STORAGE_BASE_COMMIT" "$RS_STORAGE_PATCH_COMMIT" | tee BUILD_REPORT.txt
 
       - name: Upload 4.7.7 APK and evidence
         uses: actions/upload-artifact@v4
