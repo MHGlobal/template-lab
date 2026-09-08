@@ -75,7 +75,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path $component | Out-Null
           Set-Content -Path (Join-Path $component 'RSRemoteVirtualDisplay.inf') -Value '; CI sentinel only - never distributed'
           $fake = Join-Path $publish 'pnputil.exe'
-          $source = @'
+          $sourcePath = Join-Path $env:RUNNER_TEMP 'FakePnPUtil.cs'
+          @'
           using System;
           using System.IO;
           using System.Threading;
@@ -89,9 +90,15 @@ jobs:
                   Thread.Sleep(TimeSpan.FromSeconds(15));
               }
           }
-          '@
-          Add-Type -TypeDefinition $source -Language CSharp -OutputAssembly $fake -OutputType ConsoleApplication
-          if (-not (Test-Path $fake)) { throw 'Could not build pnputil stall shim' }
+          '@ | Set-Content -Path $sourcePath -Encoding UTF8
+          $cscCandidates = @(
+            "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+            "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+          )
+          $csc = $cscCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $csc) { throw 'Windows C# compiler not found for PnP stall shim' }
+          & $csc /nologo /target:exe /optimize+ "/out:$fake" $sourcePath
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $fake)) { throw 'Could not build pnputil stall shim' }
 
       - name: Exercise Components refresh while PnP is hung
         shell: pwsh
