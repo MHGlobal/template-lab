@@ -41,16 +41,21 @@ jobs:
           $actual = (git -C private-src rev-parse HEAD).Trim()
           if ([string]::IsNullOrWhiteSpace($expected)) { throw 'Missing requested RS-Remote hotfix commit' }
           if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
-          if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/MainWindow.Startup.cs')) { throw 'Responsive startup implementation missing' }
-          if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/HostDiagnostics.cs')) { throw 'Runtime diagnostics missing' }
-          if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/HostIconFactory.cs')) { throw 'RS Remote Windows icon implementation missing' }
-          if (-not (Test-Path 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.2.md')) { throw 'RC4.2 release manifest missing' }
+          $required = @(
+            'private-src/source/windows/RSRemote.Host/MainWindow.Startup.cs',
+            'private-src/source/windows/RSRemote.Host/HostDiagnostics.cs',
+            'private-src/source/windows/RSRemote.Host/HostIconFactory.cs',
+            'private-src/source/windows/RSRemote.Host/Assets/rsremote.ico.b64',
+            'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.2.md'
+          )
+          foreach ($path in $required) { if (-not (Test-Path $path)) { throw "Missing RC4.2 contract file: $path" } }
 
           $app = Get-Content 'private-src/source/windows/RSRemote.Host/App.xaml.cs' -Raw
           if ($app -notmatch 'DisableAutomaticStartup\(\)') { throw 'Legacy UI-thread startup is not disabled' }
           if ($app -notmatch '--safe-mode') { throw 'Safe mode missing' }
           if ($app -match 'GetAwaiter\(\)\.GetResult\(\)') { throw 'Blocking async wait remains in App' }
           if ($app -notmatch 'HostIconFactory\.CreateTrayIcon') { throw 'Tray is not using RS Remote icon' }
+          if ($app -notmatch 'UiResponsivenessWatchdog') { throw 'UI watchdog missing' }
 
           $startup = Get-Content 'private-src/source/windows/RSRemote.Host/MainWindow.Startup.cs' -Raw
           if ($startup -notmatch 'Task\.Run\(BuildStartupBootstrap\)') { throw 'Host bootstrap is not off dispatcher' }
@@ -78,6 +83,8 @@ jobs:
 
           $project = Get-Content 'private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj' -Raw
           if ($project -notmatch '<Version>1.0.0-rc4.2</Version>') { throw 'Windows Host rc4.2 version mismatch' }
+          if ($project -notmatch '<ApplicationIcon>\$\(IntermediateOutputPath\)rsremote\.ico</ApplicationIcon>') { throw 'Embedded EXE icon is not configured' }
+          if ($project -notmatch 'GenerateRsRemoteApplicationIcon') { throw 'EXE icon generation target missing' }
           "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - uses: actions/setup-dotnet@v4
@@ -92,7 +99,7 @@ jobs:
         shell: pwsh
         run: dotnet build private-src/source/windows/RSRemote.sln --configuration Release --no-restore --verbosity normal
 
-      - name: Run protocol, media and transfer regressions
+      - name: Run protocol media and transfer regressions
         shell: pwsh
         run: dotnet run --project private-src/source/windows/RSRemote.RegressionTests/RSRemote.RegressionTests.csproj --configuration Release
 
@@ -111,6 +118,20 @@ jobs:
             -p:PublishReadyToRun=false `
             -p:DebugType=None `
             -p:DebugSymbols=false
+
+      - name: Validate embedded RS Remote executable icon
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path 'publish/windows/RSRemote.Host.exe').Path
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
+          if ($null -eq $icon) { throw 'Published EXE has no associated icon' }
+          try {
+            if ($icon.Width -lt 16 -or $icon.Height -lt 16) { throw "Associated icon is unexpectedly small: $($icon.Width)x$($icon.Height)" }
+            Write-Host "Embedded icon validated: $($icon.Width)x$($icon.Height)"
+          }
+          finally { $icon.Dispose() }
 
       - name: Runtime smoke test normal GUI responsiveness
         shell: pwsh
@@ -131,9 +152,7 @@ jobs:
             }
             if (-not $seenWindow) { throw 'RS Remote Host did not create a main window during normal smoke test' }
           }
-          finally {
-            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
-          }
+          finally { if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } }
 
       - name: Runtime smoke test safe mode responsiveness
         shell: pwsh
@@ -155,9 +174,7 @@ jobs:
             }
             if (-not $seenWindow) { throw 'RS Remote Host did not create a main window in safe mode' }
           }
-          finally {
-            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
-          }
+          finally { if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } }
 
       - name: Validate and stage standalone Host
         shell: pwsh
@@ -185,6 +202,7 @@ jobs:
             'dispatcherSyncInvoke=false',
             'layoutUpdatedPolling=false',
             'cameraDecode=latest-frame-background',
+            'embeddedApplicationIcon=true',
             'selfContained=true',
             'singleFile=true',
             'externalDotNetRuntimeRequired=false',
