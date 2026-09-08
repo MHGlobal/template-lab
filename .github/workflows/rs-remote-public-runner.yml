@@ -48,10 +48,11 @@ jobs:
           test -f private-src/source/android/app/src/main/java/com/rsremote/session/MediaStreams.kt
           test -f private-src/source/android/app/src/main/java/com/rsremote/session/CameraMediaStream.kt
           test -f private-src/source/android/app/src/main/java/com/rsremote/session/MicrophoneMediaStream.kt
+          test -f private-src/source/android/app/src/main/java/com/rsremote/service/RemoteDeviceAccessibilityService.kt
           grep -q 'applicationId = "com.rsremote"' private-src/source/android/app/build.gradle.kts
           grep -q 'compileSdk = 36' private-src/source/android/app/build.gradle.kts
-          grep -q 'versionCode = 11' private-src/source/android/app/build.gradle.kts
-          grep -q 'versionName = "1.0.0-rc2"' private-src/source/android/app/build.gradle.kts
+          grep -q 'versionCode = 12' private-src/source/android/app/build.gradle.kts
+          grep -q 'versionName = "1.0.0-rc3"' private-src/source/android/app/build.gradle.kts
           grep -q 'isDebuggable = false' private-src/source/android/app/build.gradle.kts
           grep -q 'android:configChanges="keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize"' private-src/source/android/app/src/main/AndroidManifest.xml
           grep -q 'const val NAME = "RSRP"' private-src/source/android/app/src/main/java/com/rsremote/protocol/RsProtocol.kt
@@ -60,6 +61,7 @@ jobs:
           grep -q 'camera.stream.open' private-src/source/android/app/src/main/java/com/rsremote/session/CameraMediaStream.kt
           grep -q 'microphone.stream.open' private-src/source/android/app/src/main/java/com/rsremote/session/MicrophoneMediaStream.kt
           grep -q 'ClipboardImageMedia' private-src/source/android/app/src/main/java/com/rsremote/session/MediaStreams.kt
+          grep -q 'device.control.tap' private-src/source/android/app/src/main/java/com/rsremote/session/HostPushDispatcher.kt
           echo "RS_REMOTE_COMMIT=$ACTUAL" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v5
@@ -88,35 +90,35 @@ jobs:
         run: |
           set -euo pipefail
           APK="$(find private-src/source/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
-          OUT="RS-Remote-Android-v1.0.0-rc2.apk"
+          OUT="RS-Remote-Android-v1.0.0-rc3.apk"
           test -n "$APK"
           test -s "$APK"
           unzip -t "$APK" >/dev/null
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee android-badging.txt
           grep -q "package: name='com.rsremote'" android-badging.txt
-          grep -q "versionCode='11'" android-badging.txt
-          grep -q "versionName='1.0.0-rc2'" android-badging.txt
+          grep -q "versionCode='12'" android-badging.txt
+          grep -q "versionName='1.0.0-rc3'" android-badging.txt
           if grep -q 'application-debuggable' android-badging.txt; then
             echo 'Release APK is unexpectedly debuggable' >&2
             exit 1
           fi
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee android-apksigner.txt
           cp "$APK" "$OUT"
-          cp private-src/docs/RELEASE_MANIFEST_1.0.0-rc2.md RELEASE_MANIFEST_1.0.0-rc2.md
+          cp private-src/docs/RELEASE_MANIFEST_1.0.0-rc3.md RELEASE_MANIFEST_1.0.0-rc3.md
           sha256sum "$OUT" | tee SHA256SUMS-ANDROID.txt
           stat -c '%s' "$OUT" | tee ANDROID_SIZE_BYTES.txt
-          printf 'source_repo=MHGlobal/RS-Remote\nsource_branch=build/public-runner\nsource_commit=%s\nproductVersion=1.0.0-rc2\nversionCode=11\nprotocol=0.2\ndebuggable=false\nsigning=controlled-rc-development-key\nmediaPort=42820\nrunner_repo=MHGlobal/template-lab\nrunner_branch=rs-remote-actions\n' "$RS_REMOTE_COMMIT" | tee ANDROID_BUILD_REPORT.txt
+          printf 'source_repo=MHGlobal/RS-Remote\nsource_branch=build/public-runner\nsource_commit=%s\nproductVersion=1.0.0-rc3\nversionCode=12\nprotocol=0.2\ndebuggable=false\nsigning=controlled-rc-development-key\nmediaPort=42820\nrunner_repo=MHGlobal/template-lab\nrunner_branch=rs-remote-actions\n' "$RS_REMOTE_COMMIT" | tee ANDROID_BUILD_REPORT.txt
 
       - name: Upload Android release APK
         uses: actions/upload-artifact@v4
         with:
-          name: RS-Remote-Android-v1.0.0-rc2
+          name: RS-Remote-Android-v1.0.0-rc3
           path: |
-            RS-Remote-Android-v1.0.0-rc2.apk
+            RS-Remote-Android-v1.0.0-rc3.apk
             SHA256SUMS-ANDROID.txt
             ANDROID_SIZE_BYTES.txt
             ANDROID_BUILD_REPORT.txt
-            RELEASE_MANIFEST_1.0.0-rc2.md
+            RELEASE_MANIFEST_1.0.0-rc3.md
             android-badging.txt
             android-apksigner.txt
           if-no-files-found: error
@@ -151,12 +153,8 @@ jobs:
           if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/MediaServer.cs')) { throw 'Missing MediaServer' }
           if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/ControlServer.cs')) { throw 'Missing ControlServer' }
           if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/InputService.cs')) { throw 'Missing InputService' }
-          if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/FileService.cs')) { throw 'Missing FileService' }
-          if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/DesktopCaptureService.cs')) { throw 'Missing DesktopCaptureService' }
-          if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/PhoneCameraService.cs')) { throw 'Missing PhoneCameraService' }
-          if (-not (Test-Path 'private-src/source/windows/RSRemote.Core/MicrophoneBridgeService.cs')) { throw 'Missing MicrophoneBridgeService' }
-          if (-not (Test-Path 'private-src/source/windows/RSRemote.Protocol/SessionProtocol.cs')) { throw 'Missing SessionProtocol' }
-          if (-not (Test-Path 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc2.md')) { throw 'Missing RC2 release manifest' }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/ProjectorWindow.cs')) { throw 'Missing ProjectorWindow' }
+          if (-not (Test-Path 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc3.md')) { throw 'Missing RC3 release manifest' }
           $protocol = Get-Content 'private-src/source/windows/RSRemote.Protocol/ProtocolVersion.cs' -Raw
           if ($protocol -notmatch 'Minor = 2') { throw 'RSRP 0.2 is not configured' }
           if ($protocol -notmatch 'MediaPort = 42820') { throw 'Media port 42820 is not configured' }
@@ -165,7 +163,9 @@ jobs:
           if ($media -notmatch 'camera\.stream\.open') { throw 'Binary camera media path missing' }
           if ($media -notmatch 'targetFps = Math\.Clamp\(targetFps, 5, 60\)') { throw 'Desktop 60 FPS target gate missing' }
           $hostProject = Get-Content 'private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj' -Raw
-          if ($hostProject -notmatch '<Version>1.0.0-rc2</Version>') { throw 'Host product version mismatch' }
+          if ($hostProject -notmatch '<Version>1.0.0-rc3</Version>') { throw 'Host product version mismatch' }
+          $projector = Get-Content 'private-src/source/windows/RSRemote.Host/ProjectorWindow.cs' -Raw
+          if ($projector -notmatch 'device\.control\.tap') { throw 'Interactive phone control missing from ProjectorWindow' }
           "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - uses: actions/setup-dotnet@v4
@@ -205,12 +205,12 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $source = 'publish/windows/RSRemote.Host.exe'
-          $out = 'RS-Remote-Host-v1.0.0-rc2-win-x64.exe'
+          $out = 'RS-Remote-Host-v1.0.0-rc3-win-x64.exe'
           if (-not (Test-Path $source)) { throw "Expected $source" }
           $length = (Get-Item $source).Length
           if ($length -lt 20MB) { throw "Self-contained EXE unexpectedly small: $length bytes" }
           Copy-Item $source $out
-          Copy-Item 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc2.md' 'RELEASE_MANIFEST_1.0.0-rc2.md'
+          Copy-Item 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc3.md' 'RELEASE_MANIFEST_1.0.0-rc3.md'
           $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content -Path 'SHA256SUMS-WINDOWS.txt' -Value "$hash  $out"
           Set-Content -Path 'WINDOWS_SIZE_BYTES.txt' -Value $length
@@ -218,7 +218,7 @@ jobs:
             'source_repo=MHGlobal/RS-Remote',
             'source_branch=build/public-runner',
             "source_commit=$env:RS_REMOTE_COMMIT",
-            'productVersion=1.0.0-rc2',
+            'productVersion=1.0.0-rc3',
             'protocol=0.2',
             'mediaPort=42820',
             'selfContained=true',
@@ -232,12 +232,12 @@ jobs:
       - name: Upload Windows Host
         uses: actions/upload-artifact@v4
         with:
-          name: RS-Remote-Windows-Host-v1.0.0-rc2-SelfContained
+          name: RS-Remote-Windows-Host-v1.0.0-rc3-SelfContained
           path: |
-            RS-Remote-Host-v1.0.0-rc2-win-x64.exe
+            RS-Remote-Host-v1.0.0-rc3-win-x64.exe
             SHA256SUMS-WINDOWS.txt
             WINDOWS_SIZE_BYTES.txt
             WINDOWS_BUILD_REPORT.txt
-            RELEASE_MANIFEST_1.0.0-rc2.md
+            RELEASE_MANIFEST_1.0.0-rc3.md
           if-no-files-found: error
           retention-days: 30
