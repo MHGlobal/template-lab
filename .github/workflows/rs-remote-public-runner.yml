@@ -46,6 +46,8 @@ jobs:
           test -f private-src/source/android/app/build.gradle.kts
           test -f private-src/source/android/app/src/main/java/com/rsremote/ui/ImmersiveRemoteTools.kt
           test -f private-src/source/android/app/src/main/java/com/rsremote/session/MediaStreams.kt
+          test -f private-src/source/android/app/src/main/java/com/rsremote/session/CameraMediaStream.kt
+          test -f private-src/source/android/app/src/main/java/com/rsremote/session/MicrophoneMediaStream.kt
           grep -q 'applicationId = "com.rsremote"' private-src/source/android/app/build.gradle.kts
           grep -q 'compileSdk = 36' private-src/source/android/app/build.gradle.kts
           grep -q 'versionCode = 11' private-src/source/android/app/build.gradle.kts
@@ -55,8 +57,8 @@ jobs:
           grep -q 'const val NAME = "RSRP"' private-src/source/android/app/src/main/java/com/rsremote/protocol/RsProtocol.kt
           grep -q 'const val MINOR = 2' private-src/source/android/app/src/main/java/com/rsremote/protocol/RsProtocol.kt
           grep -q 'const val MEDIA_PORT = 42820' private-src/source/android/app/src/main/java/com/rsremote/protocol/RsProtocol.kt
-          grep -q 'CameraMediaStream' private-src/source/android/app/src/main/java/com/rsremote/session/MediaStreams.kt
-          grep -q 'MicrophoneMediaStream' private-src/source/android/app/src/main/java/com/rsremote/session/MediaStreams.kt
+          grep -q 'camera.stream.open' private-src/source/android/app/src/main/java/com/rsremote/session/CameraMediaStream.kt
+          grep -q 'microphone.stream.open' private-src/source/android/app/src/main/java/com/rsremote/session/MicrophoneMediaStream.kt
           grep -q 'ClipboardImageMedia' private-src/source/android/app/src/main/java/com/rsremote/session/MediaStreams.kt
           echo "RS_REMOTE_COMMIT=$ACTUAL" >> "$GITHUB_ENV"
 
