@@ -33,7 +33,7 @@ jobs:
           path: private-src
           persist-credentials: false
 
-      - name: Verify requested source and hotfix contract
+      - name: Verify requested source and rc4.2 runtime contract
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -42,16 +42,42 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($expected)) { throw 'Missing requested RS-Remote hotfix commit' }
           if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
           if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/MainWindow.Startup.cs')) { throw 'Responsive startup implementation missing' }
-          if (-not (Test-Path 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.1.md')) { throw 'RC4.1 release manifest missing' }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/HostDiagnostics.cs')) { throw 'Runtime diagnostics missing' }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/HostIconFactory.cs')) { throw 'RS Remote Windows icon implementation missing' }
+          if (-not (Test-Path 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.2.md')) { throw 'RC4.2 release manifest missing' }
+
           $app = Get-Content 'private-src/source/windows/RSRemote.Host/App.xaml.cs' -Raw
           if ($app -notmatch 'DisableAutomaticStartup\(\)') { throw 'Legacy UI-thread startup is not disabled' }
-          if ($app -notmatch 'Task\.Run\(HostCertificateProvider\.GetOrCreate\)') { throw 'Media certificate bootstrap is still on dispatcher' }
-          if ($app -notmatch 'Dispatcher\.BeginInvoke') { throw 'Tray actions are not asynchronously dispatched' }
+          if ($app -notmatch '--safe-mode') { throw 'Safe mode missing' }
+          if ($app -match 'GetAwaiter\(\)\.GetResult\(\)') { throw 'Blocking async wait remains in App' }
+          if ($app -notmatch 'HostIconFactory\.CreateTrayIcon') { throw 'Tray is not using RS Remote icon' }
+
           $startup = Get-Content 'private-src/source/windows/RSRemote.Host/MainWindow.Startup.cs' -Raw
           if ($startup -notmatch 'Task\.Run\(BuildStartupBootstrap\)') { throw 'Host bootstrap is not off dispatcher' }
           if ($startup -notmatch 'WaitAsync\(TimeSpan\.FromSeconds\(20\)\)') { throw 'Startup bootstrap timeout gate missing' }
+
+          $virtualDisplay = Get-Content 'private-src/source/windows/RSRemote.Host/VirtualDisplayComponent.cs' -Raw
+          if ($virtualDisplay -match 'QueryPnPUtil') { throw 'Legacy synchronous PnP query remains' }
+          if ($virtualDisplay -match 'GetAwaiter\(\)\.GetResult\(\)') { throw 'Blocking PnP wait remains' }
+          if ($virtualDisplay -notmatch 'GetQuickStatus\(\)') { throw 'Nonblocking Virtual Display quick status missing' }
+          if ($virtualDisplay -notmatch 'CancelAfter\(timeout\)') { throw 'PnP process timeout missing' }
+          if ($virtualDisplay -notmatch 'Kill\(entireProcessTree: true\)') { throw 'Timed-out PnP process is not killed' }
+
+          $virtualUi = Get-Content 'private-src/source/windows/RSRemote.Host/MainWindow.VirtualDisplay.cs' -Raw
+          if ($virtualUi -match 'TryRestoreVirtualDisplayAsync') { throw 'Virtual Display autoactivation still exists' }
+          if ($virtualUi -notmatch 'GetQuickStatus\(\)') { throw 'Virtual Display UI does not use quick status' }
+
+          $main = Get-Content 'private-src/source/windows/RSRemote.Host/MainWindow.xaml.cs' -Raw
+          if ($main -match 'Dispatcher\.Invoke\(') { throw 'Synchronous Dispatcher.Invoke remains' }
+          if ($main -notmatch 'DecodeLatestCameraFramesAsync') { throw 'Background camera decode path missing' }
+
+          $polisher = Get-Content 'private-src/source/windows/RSRemote.Host/HostDynamicVisualPolisher.cs' -Raw
+          $identity = Get-Content 'private-src/source/windows/RSRemote.Host/HostBuildIdentity.cs' -Raw
+          if ($polisher -match 'LayoutUpdated') { throw 'Visual polisher still polls LayoutUpdated' }
+          if ($identity -match 'LayoutUpdated') { throw 'Build identity still polls LayoutUpdated' }
+
           $project = Get-Content 'private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj' -Raw
-          if ($project -notmatch '<Version>1.0.0-rc4.1</Version>') { throw 'Windows Host hotfix version mismatch' }
+          if ($project -notmatch '<Version>1.0.0-rc4.2</Version>') { throw 'Windows Host rc4.2 version mismatch' }
           "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - uses: actions/setup-dotnet@v4
@@ -86,7 +112,7 @@ jobs:
             -p:DebugType=None `
             -p:DebugSymbols=false
 
-      - name: Runtime smoke test GUI responsiveness
+      - name: Runtime smoke test normal GUI responsiveness
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -95,15 +121,39 @@ jobs:
           $seenWindow = $false
           $badStreak = 0
           try {
-            for ($i = 0; $i -lt 40; $i++) {
+            for ($i = 0; $i -lt 48; $i++) {
               Start-Sleep -Milliseconds 250
               if ($process.HasExited) { throw "RS Remote Host exited during startup with code $($process.ExitCode)" }
               $process.Refresh()
               if ($process.MainWindowHandle -ne 0) { $seenWindow = $true }
               if ($process.Responding) { $badStreak = 0 } else { $badStreak++ }
-              if ($badStreak -ge 8) { throw 'RS Remote Host remained Not Responding for at least 2 seconds during startup' }
+              if ($badStreak -ge 8) { throw 'RS Remote Host remained Not Responding for at least 2 seconds during normal startup' }
             }
-            if (-not $seenWindow) { throw 'RS Remote Host did not create a main window during the 10-second runtime smoke test' }
+            if (-not $seenWindow) { throw 'RS Remote Host did not create a main window during normal smoke test' }
+          }
+          finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+      - name: Runtime smoke test safe mode responsiveness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Start-Sleep -Seconds 1
+          $exe = (Resolve-Path 'publish/windows/RSRemote.Host.exe').Path
+          $process = Start-Process -FilePath $exe -ArgumentList '--safe-mode' -PassThru
+          $seenWindow = $false
+          $badStreak = 0
+          try {
+            for ($i = 0; $i -lt 32; $i++) {
+              Start-Sleep -Milliseconds 250
+              if ($process.HasExited) { throw "RS Remote Host safe mode exited with code $($process.ExitCode)" }
+              $process.Refresh()
+              if ($process.MainWindowHandle -ne 0) { $seenWindow = $true }
+              if ($process.Responding) { $badStreak = 0 } else { $badStreak++ }
+              if ($badStreak -ge 8) { throw 'RS Remote Host remained Not Responding for at least 2 seconds in safe mode' }
+            }
+            if (-not $seenWindow) { throw 'RS Remote Host did not create a main window in safe mode' }
           }
           finally {
             if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
@@ -114,14 +164,14 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $source = 'publish/windows/RSRemote.Host.exe'
-          $out = 'RS-Remote-Host-v1.0.0-rc4.1-win-x64.exe'
+          $out = 'RS-Remote-Host-v1.0.0-rc4.2-win-x64.exe'
           if (-not (Test-Path $source)) { throw "Expected $source" }
           $length = (Get-Item $source).Length
           if ($length -lt 20MB) { throw "Self-contained EXE unexpectedly small: $length bytes" }
           $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $source)).ProductVersion
-          if ($version -notlike '1.0.0-rc4.1*') { throw "Unexpected ProductVersion: $version" }
+          if ($version -notlike '1.0.0-rc4.2*') { throw "Unexpected ProductVersion: $version" }
           Copy-Item $source $out
-          Copy-Item 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.1.md' 'RELEASE_MANIFEST_1.0.0-rc4.1.md'
+          Copy-Item 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.2.md' 'RELEASE_MANIFEST_1.0.0-rc4.2.md'
           $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content -Path 'SHA256SUMS-WINDOWS.txt' -Value "$hash  $out"
           Set-Content -Path 'WINDOWS_SIZE_BYTES.txt' -Value $length
@@ -129,8 +179,12 @@ jobs:
             'source_repo=MHGlobal/RS-Remote',
             'source_branch=build/public-runner',
             "source_commit=$env:RS_REMOTE_COMMIT",
-            'productVersion=1.0.0-rc4.1',
-            'runtimeSmoke=gui-responsive-10s',
+            'productVersion=1.0.0-rc4.2',
+            'runtimeSmoke=normal-responsive-12s,safe-mode-responsive-8s',
+            'virtualDisplayStartup=on-demand-nonblocking',
+            'dispatcherSyncInvoke=false',
+            'layoutUpdatedPolling=false',
+            'cameraDecode=latest-frame-background',
             'selfContained=true',
             'singleFile=true',
             'externalDotNetRuntimeRequired=false',
@@ -139,15 +193,15 @@ jobs:
             'runner_branch=rs-remote-actions'
           )
 
-      - name: Upload Windows hotfix Host
+      - name: Upload Windows rc4.2 Host
         uses: actions/upload-artifact@v4
         with:
-          name: RS-Remote-Windows-Host-v1.0.0-rc4.1-SelfContained
+          name: RS-Remote-Windows-Host-v1.0.0-rc4.2-SelfContained
           path: |
-            RS-Remote-Host-v1.0.0-rc4.1-win-x64.exe
+            RS-Remote-Host-v1.0.0-rc4.2-win-x64.exe
             SHA256SUMS-WINDOWS.txt
             WINDOWS_SIZE_BYTES.txt
             WINDOWS_BUILD_REPORT.txt
-            RELEASE_MANIFEST_1.0.0-rc4.1.md
+            RELEASE_MANIFEST_1.0.0-rc4.2.md
           if-no-files-found: error
           retention-days: 30
