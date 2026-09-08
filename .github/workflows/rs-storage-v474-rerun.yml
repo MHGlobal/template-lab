@@ -1,0 +1,20 @@
+name: Trigger RS Storage 4.7.4 Remediation Rerun
+
+on:
+  push:
+    branches: [ rs-storage-v474-audit-runner ]
+    paths: [ '.github/workflows/rs-storage-v474-rerun.yml' ]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch audited 4.7.4 build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run rs-storage-v474-runtime-remediation.yml --repo MHGlobal/template-lab --ref rs-storage-v474-audit-runner
