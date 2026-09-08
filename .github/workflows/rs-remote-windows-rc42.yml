@@ -1,0 +1,247 @@
+name: RS Remote Windows RC4.2 Production Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-remote-actions ]
+    paths:
+      - '.github/workflows/rs-remote-windows-rc42.yml'
+      - 'runner/rs-remote-windows-rc42-request.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-remote-windows-rc42
+  cancel-in-progress: true
+
+jobs:
+  windows-runtime:
+    name: Windows Host RC4.2 Runtime + Slow PnP Isolation
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout public runner repository
+        uses: actions/checkout@v4
+
+      - name: Checkout private RS-Remote source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Remote
+          ref: build/public-runner
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify source and RC4.2 runtime contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = (Get-Content 'runner/rs-remote-windows-rc42-request.txt' -Raw).Trim()
+          $actual = (git -C private-src rev-parse HEAD).Trim()
+          if ([string]::IsNullOrWhiteSpace($expected)) { throw 'Missing RC4.2 requested commit' }
+          if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
+
+          $host = 'private-src/source/windows/RSRemote.Host'
+          $project = Get-Content "$host/RSRemote.Host.csproj" -Raw
+          if ($project -notmatch '<Version>1.0.0-rc4.2</Version>') { throw 'Host version is not rc4.2' }
+          if ($project -notmatch '<ApplicationIcon>RSRemote.ico</ApplicationIcon>') { throw 'EXE application icon missing' }
+          if (-not (Test-Path "$host/RSRemote.ico")) { throw 'RSRemote.ico missing' }
+          if (-not (Test-Path 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.2.md')) { throw 'RC4.2 manifest missing' }
+
+          $virtual = Get-Content "$host/VirtualDisplayComponent.cs" -Raw
+          if ($virtual -match 'GetAwaiter\(\)\.GetResult\(\)') { throw 'Synchronous virtual display wait still present' }
+          if ($virtual -notmatch 'GetQuickStatus\(\)') { throw 'Quick no-PnP status path missing' }
+          if ($virtual -notmatch 'GetStatusAsync') { throw 'Async virtual display status missing' }
+          if ($virtual -notmatch 'Kill\(entireProcessTree: true\)') { throw 'PnP timeout process-tree kill missing' }
+
+          $virtualUi = Get-Content "$host/MainWindow.VirtualDisplay.cs" -Raw
+          if ($virtualUi -match 'TryRestoreVirtualDisplayAsync') { throw 'Virtual display auto-restore still present' }
+          if ($virtualUi -notmatch 'GetQuickStatus\(\)') { throw 'Render path is not quick-status only' }
+
+          $main = Get-Content "$host/MainWindow.xaml.cs" -Raw
+          if ($main -match 'Dispatcher\.Invoke\(') { throw 'Synchronous Dispatcher.Invoke remains in MainWindow' }
+          if ($main -notmatch 'DecodeLatestCameraFramesAsync') { throw 'Latest-frame camera decoder missing' }
+
+          $polisher = Get-Content "$host/HostDynamicVisualPolisher.cs" -Raw
+          $identity = Get-Content "$host/HostBuildIdentity.cs" -Raw
+          if ($polisher -match 'LayoutUpdated') { throw 'Visual polisher still polls LayoutUpdated' }
+          if ($identity -match 'LayoutUpdated') { throw 'Build identity still polls LayoutUpdated' }
+
+          $app = Get-Content "$host/App.xaml.cs" -Raw
+          if ($app -notmatch '--safe-mode') { throw 'Safe mode missing' }
+          if ($app -match 'GetAwaiter\(\)\.GetResult\(\)') { throw 'Blocking shutdown wait remains in App' }
+          if ($app -notmatch 'UiResponsivenessWatchdog') { throw 'UI watchdog missing' }
+          if ($app -notmatch 'HostIconFactory') { throw 'Runtime RS Remote icon not wired' }
+
+          "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore private-src/source/windows/RSRemote.sln --runtime win-x64
+
+      - name: Build Release x64
+        shell: pwsh
+        run: dotnet build private-src/source/windows/RSRemote.sln --configuration Release --no-restore --verbosity normal
+
+      - name: Run protocol, media and transfer regressions
+        shell: pwsh
+        run: dotnet run --project private-src/source/windows/RSRemote.RegressionTests/RSRemote.RegressionTests.csproj --configuration Release
+
+      - name: Publish self-contained single-file Host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output publish/windows `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:PublishReadyToRun=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+
+      - name: Normal GUI responsiveness smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path 'publish/windows/RSRemote.Host.exe').Path
+          $p = Start-Process -FilePath $exe -PassThru
+          $seenWindow = $false
+          $badStreak = 0
+          try {
+            for ($i = 0; $i -lt 40; $i++) {
+              Start-Sleep -Milliseconds 250
+              if ($p.HasExited) { throw "Host exited with code $($p.ExitCode)" }
+              $p.Refresh()
+              if ($p.MainWindowHandle -ne 0) { $seenWindow = $true }
+              if ($p.Responding) { $badStreak = 0 } else { $badStreak++ }
+              if ($badStreak -ge 8) { throw 'Host remained Not Responding for at least 2 seconds' }
+            }
+            if (-not $seenWindow) { throw 'Host did not create a main window in 10 seconds' }
+          } finally {
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+      - name: Safe-mode GUI responsiveness smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path 'publish/windows/RSRemote.Host.exe').Path
+          $p = Start-Process -FilePath $exe -ArgumentList '--safe-mode' -PassThru
+          $seenWindow = $false
+          $badStreak = 0
+          try {
+            for ($i = 0; $i -lt 28; $i++) {
+              Start-Sleep -Milliseconds 250
+              if ($p.HasExited) { throw "Safe-mode Host exited with code $($p.ExitCode)" }
+              $p.Refresh()
+              if ($p.MainWindowHandle -ne 0) { $seenWindow = $true }
+              if ($p.Responding) { $badStreak = 0 } else { $badStreak++ }
+              if ($badStreak -ge 8) { throw 'Safe-mode Host remained Not Responding for at least 2 seconds' }
+            }
+            if (-not $seenWindow) { throw 'Safe-mode Host did not create a main window' }
+          } finally {
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+      - name: Build deliberately blocking fake pnputil
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force fake-pnp-src | Out-Null
+          Set-Content fake-pnp-src/FakePnP.csproj '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><AssemblyName>pnputil</AssemblyName></PropertyGroup></Project>'
+          Set-Content fake-pnp-src/Program.cs @'
+          using System;
+          using System.IO;
+          using System.Threading;
+          internal static class Program
+          {
+              public static void Main()
+              {
+                  var marker = Environment.GetEnvironmentVariable("RS_FAKE_PNP_MARKER");
+                  if (!string.IsNullOrWhiteSpace(marker)) File.WriteAllText(marker, "CALLED");
+                  Thread.Sleep(TimeSpan.FromSeconds(30));
+              }
+          }
+          '@
+          dotnet publish fake-pnp-src/FakePnP.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o fake-pnp
+          if (-not (Test-Path 'fake-pnp/pnputil.exe')) { throw 'Fake pnputil.exe was not built' }
+
+      - name: Slow-PnP startup isolation test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $marker = (Join-Path $PWD 'fake-pnp-called.txt')
+          Remove-Item $marker -Force -ErrorAction SilentlyContinue
+          $env:RS_FAKE_PNP_MARKER = $marker
+          $env:PATH = "$(Resolve-Path fake-pnp);$env:PATH"
+          $exe = (Resolve-Path 'publish/windows/RSRemote.Host.exe').Path
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Resolve-Path 'fake-pnp').Path -PassThru
+          $seenWindow = $false
+          $badStreak = 0
+          try {
+            for ($i = 0; $i -lt 40; $i++) {
+              Start-Sleep -Milliseconds 250
+              if ($p.HasExited) { throw "Host exited in slow-PnP test with code $($p.ExitCode)" }
+              $p.Refresh()
+              if ($p.MainWindowHandle -ne 0) { $seenWindow = $true }
+              if ($p.Responding) { $badStreak = 0 } else { $badStreak++ }
+              if ($badStreak -ge 8) { throw 'Host UI blocked while fake pnputil was available' }
+            }
+            if (-not $seenWindow) { throw 'Host did not create a window in slow-PnP test' }
+            if (Test-Path $marker) { throw 'Startup invoked pnputil; Virtual Display is still coupled to startup' }
+          } finally {
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+      - name: Validate and stage standalone Host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'publish/windows/RSRemote.Host.exe'
+          $out = 'RS-Remote-Host-v1.0.0-rc4.2-win-x64.exe'
+          if (-not (Test-Path $source)) { throw "Expected $source" }
+          $length = (Get-Item $source).Length
+          if ($length -lt 20MB) { throw "Self-contained EXE unexpectedly small: $length bytes" }
+          $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $source))
+          if ($info.ProductVersion -notlike '1.0.0-rc4.2*') { throw "Unexpected ProductVersion: $($info.ProductVersion)" }
+          if ($info.ProductName -ne 'RS Remote Host') { throw "Unexpected ProductName: $($info.ProductName)" }
+          Copy-Item $source $out
+          Copy-Item 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.2.md' 'RELEASE_MANIFEST_1.0.0-rc4.2.md'
+          $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content SHA256SUMS-WINDOWS.txt "$hash  $out"
+          Set-Content WINDOWS_SIZE_BYTES.txt $length
+          Set-Content WINDOWS_BUILD_REPORT.txt @(
+            'source_repo=MHGlobal/RS-Remote',
+            'source_branch=build/public-runner',
+            "source_commit=$env:RS_REMOTE_COMMIT",
+            'productVersion=1.0.0-rc4.2',
+            'runtimeSmoke=normal-responsive-10s',
+            'safeModeSmoke=responsive',
+            'slowPnpIsolation=no-pnp-on-startup',
+            'selfContained=true',
+            'singleFile=true',
+            'externalDotNetRuntimeRequired=false',
+            'authenticodeSigned=false'
+          )
+
+      - name: Upload Windows RC4.2 Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Remote-Windows-Host-v1.0.0-rc4.2-SelfContained
+          path: |
+            RS-Remote-Host-v1.0.0-rc4.2-win-x64.exe
+            SHA256SUMS-WINDOWS.txt
+            WINDOWS_SIZE_BYTES.txt
+            WINDOWS_BUILD_REPORT.txt
+            RELEASE_MANIFEST_1.0.0-rc4.2.md
+          if-no-files-found: error
+          retention-days: 30
