@@ -6,7 +6,7 @@ on:
     branches: [ rs-remote-actions ]
     paths:
       - '.github/workflows/rs-remote-windows-runtime-hotfix.yml'
-      - 'runner/rs-remote-request.txt'
+      - 'runner/rs-remote-windows-hotfix-request.txt'
 
 permissions:
   contents: read
@@ -37,9 +37,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $expected = (Get-Content 'runner/rs-remote-request.txt' -Raw).Trim()
+          $expected = (Get-Content 'runner/rs-remote-windows-hotfix-request.txt' -Raw).Trim()
           $actual = (git -C private-src rev-parse HEAD).Trim()
-          if ([string]::IsNullOrWhiteSpace($expected)) { throw 'Missing requested RS-Remote commit' }
+          if ([string]::IsNullOrWhiteSpace($expected)) { throw 'Missing requested RS-Remote hotfix commit' }
           if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
           if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/MainWindow.Startup.cs')) { throw 'Responsive startup implementation missing' }
           if (-not (Test-Path 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc4.1.md')) { throw 'RC4.1 release manifest missing' }
