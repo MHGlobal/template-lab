@@ -16,7 +16,7 @@ concurrency:
 jobs:
   diagnose-v477:
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 110
     env:
       ROOT: source/current-v4.3.0
       LLAMA_REV: 8ef78e644f559db4e8716b59bf76b8e11619337d
@@ -58,8 +58,8 @@ jobs:
             apply_v474_runtime_remediation.py apply_v474_tests.py apply_v474_compile_fix.py audit_v474_release.py \
             apply_v475_production_polish.py audit_v475_production.py \
             apply_v476_production_completion.py audit_v476_production.py \
-            apply_v477_android_ui_rebuild.py apply_v477_android_product_shell.py audit_v477_android_ui.py \
-            apply_v477_web_file_workspace.py fix_v477_web_file_workspace.py audit_v477_web_file_workspace.py \
+            apply_v477_android_ui_rebuild.py apply_v477_android_product_shell.py fix_v477_android_product_shell_compile.py audit_v477_android_ui.py \
+            apply_v477_web_file_workspace.py fix_v477_web_file_workspace.py audit_v477_web_file_workspace.py rsfile_v477_real_runtime_gate.mjs \
             patch_v471_llama_cmake.py; do
             cp "../patch-src/scripts/$f" "scripts/$f"
           done
@@ -82,12 +82,13 @@ jobs:
           python3 scripts/audit_v476_production.py "$ROOT"
           python3 scripts/apply_v477_android_ui_rebuild.py "$ROOT" | tee ../V477_ANDROID_STAGE1.txt
           python3 scripts/apply_v477_android_product_shell.py "$ROOT" | tee ../V477_ANDROID_SHELL.txt
+          python3 scripts/fix_v477_android_product_shell_compile.py "$ROOT" | tee ../V477_ANDROID_COMPILE_FIX.txt
           python3 scripts/audit_v477_android_ui.py "$ROOT" | tee ../V477_ANDROID_AUDIT.txt
           python3 scripts/apply_v477_web_file_workspace.py "$ROOT" | tee ../V477_WEB_STAGE1.txt
           python3 scripts/fix_v477_web_file_workspace.py "$ROOT" | tee ../V477_WEB_FIX.txt
           python3 scripts/audit_v477_web_file_workspace.py "$ROOT" | tee ../V477_WEB_AUDIT.txt
           grep -q 'V477_ANDROID_UI_AUDIT=18/18' ../V477_ANDROID_AUDIT.txt
-          grep -q 'V477_WEB_FILE_AUDIT=18/18' ../V477_WEB_AUDIT.txt
+          grep -q 'V477_WEB_FILE_AUDIT=19/19' ../V477_WEB_AUDIT.txt
           grep -q 'versionCode = 97' "$ROOT/rsapp/build.gradle.kts"
           grep -q 'versionName = "4.7.7"' "$ROOT/rsapp/build.gradle.kts"
       - name: Build Dynamic Web UI with 4.7.7 public workspace assets
@@ -101,6 +102,15 @@ jobs:
           test -s private-src/$ROOT/dynamic-ui/dist/style.css
           test -s private-src/$ROOT/dynamic-ui/dist/rs-file-v477-workspace.js
           test -s private-src/$ROOT/dynamic-ui/dist/rs-file-v477-workspace.css
+      - name: Run RS FILE real production-runtime browser gate
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+          node scripts/rsfile_v477_real_runtime_gate.mjs "$ROOT" | tee ../V477_RSFILE_REAL_RUNTIME.txt
+          grep -q 'RSFILE_V477_REAL_RUNTIME_GATE=6/6' ../V477_RSFILE_REAL_RUNTIME.txt
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -153,7 +163,7 @@ jobs:
           set -euxo pipefail
           mkdir -p v477-integrated/source v477-integrated/web v477-integrated/test-results
           cp ANDROID_JVM_V477_INTEGRATED.log v477-integrated/ || true
-          cp V477_ANDROID_STAGE1.txt V477_ANDROID_SHELL.txt V477_ANDROID_AUDIT.txt V477_WEB_STAGE1.txt V477_WEB_FIX.txt V477_WEB_AUDIT.txt v477-integrated/ || true
+          cp V477_ANDROID_STAGE1.txt V477_ANDROID_SHELL.txt V477_ANDROID_COMPILE_FIX.txt V477_ANDROID_AUDIT.txt V477_WEB_STAGE1.txt V477_WEB_FIX.txt V477_WEB_AUDIT.txt V477_RSFILE_REAL_RUNTIME.txt v477-integrated/ || true
           cp private-src/$ROOT/rsapp/src/main/java/com/rs/localstorage/MainActivity.java v477-integrated/source/ || true
           cp private-src/$ROOT/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java v477-integrated/source/ || true
           cp private-src/$ROOT/dynamic-ui/public/rs-file-v477-workspace.* v477-integrated/web/ || true
