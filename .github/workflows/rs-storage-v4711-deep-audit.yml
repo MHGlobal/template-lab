@@ -130,6 +130,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          git add -A
           git apply --3way --check ../patch-src/scripts/v4711-audit.patch
           git apply --3way ../patch-src/scripts/v4711-audit.patch
           node "$ROOT/audit/inline-syntax.test.mjs" "$ROOT"
