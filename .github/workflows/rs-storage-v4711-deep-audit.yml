@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: ae004fefa206dbfc2f802d05efacd968f573bde1
+          ref: 97527b6ce8556e949e03a2ae24b78ba118c20420
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           path: patch-src
           persist-credentials: false
