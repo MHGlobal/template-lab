@@ -130,8 +130,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          git apply --check ../patch-src/scripts/v4711-audit.patch
-          git apply ../patch-src/scripts/v4711-audit.patch
+          git apply --3way --check ../patch-src/scripts/v4711-audit.patch
+          git apply --3way ../patch-src/scripts/v4711-audit.patch
           node "$ROOT/audit/inline-syntax.test.mjs" "$ROOT"
           node "$ROOT/audit/upload-queue.test.mjs" "$ROOT"
           grep -q 'versionCode = 101' "$ROOT/rsapp/build.gradle.kts"
