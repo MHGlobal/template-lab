@@ -47,7 +47,7 @@ jobs:
         working-directory: private-src
         run: |
           chmod +x gradlew
-          ./gradlew :core:domain:test testDebugUnitTest lintDebug :app:assembleQa :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
+          ./gradlew :core:domain:test testDebugUnitTest lintDebug :app:assembleQa :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon --continue
       - name: Validate and package
         working-directory: private-src
         run: |
