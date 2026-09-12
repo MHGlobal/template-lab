@@ -1,3 +1,3 @@
 RS Music source branch: feat/rs-music-ui-v2
-Validated source revision: cd5256bb38d0ef1e743d76d7db9c6f0362709fbf
-Purpose: retrigger Template Lab after true crossfade, adaptive atmosphere, route-aware automatic DSP profiles and related UI state.
+Validated source revision: acaa088948d6bd24258061bd874327856356e6e1
+Purpose: final validation pass for RS Music UI v2: instant transitions, two-deck crossfade, word-level lyrics, adaptive atmosphere, responsive widget, route-aware DSP profiles and updated QA status.
