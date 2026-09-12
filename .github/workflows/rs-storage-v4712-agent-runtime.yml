@@ -1,0 +1,306 @@
+name: RS Storage 4.7.12 Agent Runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-storage-v4712-agent-runtime ]
+    paths: [ '.github/workflows/rs-storage-v4712-agent-runtime.yml' ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-storage-v4712-agent-runtime
+  cancel-in-progress: true
+
+jobs:
+  build-v4712:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ROOT: source/current-v4.3.0
+      LLAMA_REV: 8ef78e644f559db4e8716b59bf76b8e11619337d
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout canonical baseline
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: 9682c22ffe8f0365cd984ec9baf9653872ec3eb2
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout v4.7.12 agent line
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: release/v4.7.12-agent-runtime
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: patch-src
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Record commits
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "RS_STORAGE_BASE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "RS_STORAGE_PATCH_COMMIT=$(git -C patch-src rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Materialize v4.7.10 baseline
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp -a ../patch-src/scripts/. scripts/
+          chmod +x scripts/materialize_v471_release.sh
+          scripts/materialize_v471_release.sh "$ROOT"
+          python3 scripts/apply_v472_fileop_isolation.py "$ROOT"
+          python3 scripts/apply_v472_preview_policy.py "$ROOT"
+          python3 scripts/apply_v472_folder_memory.py "$ROOT"
+          python3 scripts/fix_v472_generated_literals.py "$ROOT"
+          python3 scripts/audit_v472_release.py "$ROOT"
+          python3 scripts/apply_v473_professional_runtime.py "$ROOT"
+          python3 scripts/apply_v473_tests.py "$ROOT"
+          python3 scripts/audit_v473_professional_runtime.py "$ROOT"
+          python3 scripts/apply_v474_runtime_remediation.py "$ROOT"
+          python3 scripts/apply_v474_tests.py "$ROOT"
+          python3 scripts/apply_v474_compile_fix.py "$ROOT"
+          python3 scripts/audit_v474_release.py "$ROOT"
+          python3 scripts/apply_v475_production_polish.py "$ROOT"
+          python3 scripts/audit_v475_production.py "$ROOT"
+          python3 scripts/apply_v476_production_completion.py "$ROOT"
+          python3 scripts/audit_v476_production.py "$ROOT"
+          python3 scripts/apply_v477_android_ui_rebuild.py "$ROOT"
+          python3 scripts/apply_v477_android_product_shell.py "$ROOT"
+          python3 scripts/fix_v477_android_product_shell_compile.py "$ROOT"
+          python3 scripts/audit_v477_android_ui.py "$ROOT"
+          python3 scripts/apply_v477_web_file_workspace.py "$ROOT"
+          python3 scripts/fix_v477_web_file_workspace.py "$ROOT"
+          python3 scripts/audit_v477_web_file_workspace.py "$ROOT"
+          python3 scripts/apply_v478_product_refinement.py "$ROOT"
+          python3 scripts/apply_v478_web_identity.py "$ROOT"
+          python3 scripts/fix_v478_android_runtime_quality.py "$ROOT"
+          python3 scripts/apply_v478_rsfile_product_completion.py "$ROOT"
+          python3 scripts/audit_v478_product_refinement.py "$ROOT"
+          python3 scripts/audit_v478_web_identity.py "$ROOT"
+          python3 scripts/audit_v478_android_runtime_quality.py "$ROOT"
+          python3 scripts/audit_v478_rsfile_product_completion.py "$ROOT"
+          python3 scripts/prepare_v479_materialization.py "$ROOT"
+          python3 scripts/apply_v479_reported_bugs.py "$ROOT"
+          python3 scripts/audit_v479_reported_bugs.py "$ROOT"
+          python3 scripts/apply_v4710_menu_tutorial_rsia.py "$ROOT"
+          python3 scripts/audit_v4710_menu_tutorial_rsia.py "$ROOT"
+          grep -q 'versionCode = 100' "$ROOT/rsapp/build.gradle.kts"
+          grep -q 'versionName = "4.7.10"' "$ROOT/rsapp/build.gradle.kts"
+
+      - name: Apply v4.7.11 deep-audit remediation
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path('../patch-src/scripts/v4711-audit.patch')
+          target=Path('../v4711-audit-materialized.patch')
+          lines=source.read_text(encoding='utf-8').splitlines(keepends=True)
+          marker='@@ -623,2 +649 @@ public class HotspotServerService extends Service {\n'
+          comment=' // RS FILE 4.7.0 Stateful Explorer Overhaul: durable staged uploads, per-folder focus/scroll, reliable more/long-press, folder picker, list/grid, expanded local preview.\n'
+          out=[];removed=0;i=0
+          while i<len(lines):
+              if i+2<len(lines) and lines[i]==marker and lines[i+1]==comment and lines[i+2]=='-\n':
+                  removed+=1;i+=3;continue
+              out.append(lines[i]);i+=1
+          if removed!=1: raise SystemExit(f'expected one stale cosmetic hunk; removed={removed}')
+          target.write_text(''.join(out),encoding='utf-8')
+          PY
+          git add -A
+          git apply --check ../v4711-audit-materialized.patch
+          git apply ../v4711-audit-materialized.patch
+          python3 ../patch-src/scripts/apply_v4711_compile_fix.py "$ROOT" | tee ../V4711_COMPILE_FIX.txt
+          grep -q 'V4711_COMPILE_FIX=3/3' ../V4711_COMPILE_FIX.txt
+          grep -q 'V4711_TEST_COMPILE_FIX=2/2' ../V4711_COMPILE_FIX.txt
+          grep -q 'versionCode = 101' "$ROOT/rsapp/build.gradle.kts"
+          grep -q 'versionName = "4.7.11"' "$ROOT/rsapp/build.gradle.kts"
+
+      - name: Apply v4.7.12 Agent execution repair
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 ../patch-src/scripts/apply_v4712_agent_execution_observability.py "$ROOT" | tee ../V4712_AGENT_APPLY.txt
+          python3 ../patch-src/scripts/fix_v4712_release_identity.py "$ROOT" | tee ../V4712_IDENTITY.txt
+          python3 ../patch-src/scripts/audit_v4712_agent_execution_observability.py "$ROOT" | tee ../V4712_AGENT_AUDIT.txt
+          grep -q 'V4712_AGENT_EXECUTION_AUDIT=22/22' ../V4712_AGENT_AUDIT.txt
+          grep -q 'V4712_RELEASE_IDENTITY=4/4' ../V4712_IDENTITY.txt
+          grep -q 'versionCode = 102' "$ROOT/rsapp/build.gradle.kts"
+          grep -q 'versionName = "4.7.12"' "$ROOT/rsapp/build.gradle.kts"
+          node --check "$ROOT/rsapp/src/main/assets/rs-ai/app.js"
+          grep -q 'agentMobileTasks' "$ROOT/rsapp/src/main/assets/rs-ai/app.js"
+          grep -q 'normalizeProtocol(generate' "$ROOT/rsapp/src/main/java/com/rs/localstorage/RsAiAgentRuntime.java"
+          grep -q 'A corrigir protocolo' "$ROOT/rsapp/src/main/java/com/rs/localstorage/RsAiAgentRuntime.java"
+
+      - name: Build production Web UI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm --prefix private-src/$ROOT/dynamic-ui pkg set 'devDependencies.@vitejs/plugin-react=5.1.4'
+          npm --prefix private-src/$ROOT/dynamic-ui install --no-audit --no-fund
+          npm --prefix private-src/$ROOT/dynamic-ui run build
+          rm -rf private-src/$ROOT/rsapp/src/main/assets/rs-dynamic
+          mkdir -p private-src/$ROOT/rsapp/src/main/assets/rs-dynamic
+          cp -a private-src/$ROOT/dynamic-ui/dist/. private-src/$ROOT/rsapp/src/main/assets/rs-dynamic/
+
+      - name: Run inherited RS FILE behavior gates
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node scripts/rsfile_v472_required_gate.mjs "$ROOT" | tee ../RSFILE_REQUIRED.txt
+          node scripts/rsfile_v478_real_runtime_gate.mjs "$ROOT" | tee ../V478_RUNTIME.txt
+          node scripts/rsfile_v479_overlay_runtime_gate.mjs "$ROOT" | tee ../V479_RUNTIME.txt
+          node scripts/rsfile_v4710_global_nav_gate.mjs "$ROOT" | tee ../V4710_RUNTIME.txt
+          grep -q 'REQUIRED_GATE_PASS=12/12' ../RSFILE_REQUIRED.txt
+          grep -q 'RSFILE_V478_REAL_RUNTIME_GATE=7/7' ../V478_RUNTIME.txt
+          grep -q 'RSFILE_V479_OVERLAY_RUNTIME_GATE=6/6' ../V479_RUNTIME.txt
+          grep -q 'RSFILE_V4710_GLOBAL_NAV_GATE=6/6' ../V4710_RUNTIME.txt
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' 'ndk;29.0.13113456' 'cmake;3.31.6'
+
+      - name: Run v4.7.11 safety behavior suite
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p audit-classes
+          JAVA="$ROOT/rsapp/src/main/java/com/rs/localstorage"
+          javac -d audit-classes "$JAVA/RsAtomicUpload.java" "$JAVA/RsEndpointPolicy.java" "$JAVA/RsWebEscapes.java" "$JAVA/RsHttpRange.java" "$JAVA/RsPublicAddressPolicy.java" "$ROOT/audit/SafetyBehaviorTest.java"
+          java -cp audit-classes com.rs.localstorage.SafetyBehaviorTest | tee ../V4712_SAFETY.txt
+          grep -q 'SAFETY_BEHAVIOR_PASS=62' ../V4712_SAFETY.txt
+
+      - name: Prepare pinned llama.cpp Android tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp.git llama.cpp
+          git -C llama.cpp fetch --depth=1 origin "$LLAMA_REV"
+          git -C llama.cpp checkout --detach "$LLAMA_REV"
+          python3 private-src/scripts/apply_llama_rs_compat.py llama.cpp
+          python3 private-src/scripts/apply_v434_load_progress.py llama.cpp
+          python3 private-src/scripts/apply_v450_llama_runtime.py llama.cpp
+          python3 private-src/scripts/patch_v471_llama_cmake.py llama.cpp
+          rm -rf llama.cpp/examples/llama.android/rsapp
+          cp -R private-src/$ROOT/rsapp llama.cpp/examples/llama.android/rsapp
+          grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts || printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
+          chmod +x llama.cpp/examples/llama.android/gradlew
+          cat >> llama.cpp/examples/llama.android/gradle.properties <<'GP'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          org.gradle.workers.max=2
+          org.gradle.parallel=false
+          kotlin.compiler.execution.strategy=in-process
+          GP
+
+      - name: JVM tests and Java Kotlin compile
+        working-directory: llama.cpp/examples/llama.android
+        shell: bash
+        env:
+          RS_LLAMA_SRC: ${{ github.workspace }}/llama.cpp
+        run: |
+          set -uo pipefail
+          set +e
+          ./gradlew :rsapp:testDebugUnitTest :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon 2>&1 | tee "$GITHUB_WORKSPACE/V4712_COMPILE.log"
+          rc=${PIPESTATUS[0]}
+          grep -E -n '(^| )error:|e: file:|Compilation error|FAILED|What went wrong|cannot find symbol|incompatible types|symbol:|location:' "$GITHUB_WORKSPACE/V4712_COMPILE.log" | tail -n 300 > "$GITHUB_WORKSPACE/V4712_COMPILE_ERRORS.txt" || true
+          exit "$rc"
+
+      - name: Upload compile diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: V4712-COMPILE-DIAGNOSTICS
+          path: |
+            V4712_COMPILE.log
+            V4712_COMPILE_ERRORS.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Assemble ARM64 APK
+        working-directory: llama.cpp/examples/llama.android
+        shell: bash
+        env:
+          RS_LLAMA_SRC: ${{ github.workspace }}/llama.cpp
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13113456
+        run: |
+          set -euxo pipefail
+          ./gradlew :rsapp:assembleRelease --stacktrace --no-daemon
+
+      - name: Validate v4.7.12 APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK=llama.cpp/examples/llama.android/rsapp/build/outputs/apk/release/rsapp-release-unsigned.apk
+          OUT=RS-Storage-v4.7.12-arm64-unsigned.apk
+          test -s "$APK"
+          test "$(stat -c '%s' "$APK")" -gt 30000000
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.rs.localstorage'" apk-badging.txt
+          grep -q "versionCode='102'" apk-badging.txt
+          grep -q "versionName='4.7.12'" apk-badging.txt
+          ABIS="$(unzip -l "$APK" | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u | xargs)"
+          test "$ABIS" = "arm64-v8a"
+          unzip -p "$APK" assets/RS_BUILD_PROOF.txt | tee APK_BUILD_PROOF.txt
+          grep -q '^Release=4.7.12$' APK_BUILD_PROOF.txt
+          grep -q '^VersionCode=102$' APK_BUILD_PROOF.txt
+          grep -q '^VersionCoherence=4.7.12-102$' APK_BUILD_PROOF.txt
+          grep -q '^RS_AGENT_4712=protocol-tolerant+observable+mobile-tasks$' APK_BUILD_PROOF.txt
+          unzip -p "$APK" assets/rs-ai/app.js | grep -q 'agentMobileTasks'
+          unzip -p "$APK" assets/rs-ai/app.js | grep -q "ev.type==='activity'"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee SHA256SUMS.txt
+          stat -c '%s' "$OUT" | tee APK_SIZE_BYTES.txt
+          printf 'version=4.7.12\nversionCode=102\nabi=arm64-v8a\nbase_commit=%s\npatch_commit=%s\nagent_audit=22/22\nsafety=62\nrsfile_required=12/12\nrsfile_v478=7/7\nrsfile_v479=6/6\nrsfile_v4710=6/6\nsigning=unsigned-release-awaiting-local-signing\n' "$RS_STORAGE_BASE_COMMIT" "$RS_STORAGE_PATCH_COMMIT" | tee BUILD_REPORT.txt
+
+      - name: Upload v4.7.12 APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Storage-v4.7.12-ARM64-AGENT-RUNTIME
+          path: |
+            RS-Storage-v4.7.12-arm64-unsigned.apk
+            SHA256SUMS.txt
+            APK_SIZE_BYTES.txt
+            BUILD_REPORT.txt
+            apk-badging.txt
+            APK_BUILD_PROOF.txt
+            V4712_AGENT_APPLY.txt
+            V4712_AGENT_AUDIT.txt
+            V4712_IDENTITY.txt
+            V4712_SAFETY.txt
+            V4712_COMPILE.log
+            V4712_COMPILE_ERRORS.txt
+            RSFILE_REQUIRED.txt
+            V478_RUNTIME.txt
+            V479_RUNTIME.txt
+            V4710_RUNTIME.txt
+          if-no-files-found: error
+          retention-days: 14
