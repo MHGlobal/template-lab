@@ -29,7 +29,9 @@ jobs:
           path: rs-music
 
       - name: Apply motion UX patch
-        run: python3 scripts/patch_rs_music_motion.py
+        run: |
+          python3 scripts/patch_rs_music_motion.py
+          python3 scripts/fix_rs_music_motion_optin.py
 
       - name: Persist motion UX patch
         working-directory: rs-music
