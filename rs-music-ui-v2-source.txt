@@ -1,3 +1,3 @@
 RS Music source branch: feat/rs-music-ui-v2
-Validated source revision: 76872a2a6fa9b289f7b4f21e41cd5b464f54284f
-Purpose: validate Poweramp-class library expansion, professional Material icons, composer/year/format/lossless navigation, gestures, multi-select, Audio Path and output profiles. No emoji UI controls.
+Validated source revision: c56d844d3b1317451e011a83b6e484d7497a3e7d
+Purpose: final validation of the Poweramp-class interaction pass after preserving API 26 support for audio-route profiles. Includes professional Material/vector icons, gesture engine, pinch density, multi-select, expanded library navigation, Audio Path/output profiles, and emoji-free Android UI controls.
