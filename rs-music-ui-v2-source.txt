@@ -1,0 +1,3 @@
+RS Music source branch: feat/rs-music-ui-v2
+Validated source revision: 046d339195fc4040a1fd5084ec045153ba126e15
+Purpose: retrigger Template Lab validation after compile import fixes.
