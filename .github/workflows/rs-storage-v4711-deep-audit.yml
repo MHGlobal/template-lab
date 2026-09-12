@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-v4710:
+  build-v4711:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -35,7 +35,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Checkout v4.7.10 patch line
+      - name: Checkout v4.7.11 audit line
         uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
@@ -125,14 +125,45 @@ jobs:
           grep -q 'versionCode = 100' "$ROOT/rsapp/build.gradle.kts"
           grep -q 'versionName = "4.7.10"' "$ROOT/rsapp/build.gradle.kts"
 
-      - name: Apply reviewed audit remediation
+      - name: Apply reviewed audit remediation deterministically
         working-directory: private-src
         shell: bash
         run: |
           set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('../patch-src/scripts/v4711-audit.patch')
+          target = Path('../v4711-audit-materialized.patch')
+          lines = source.read_text(encoding='utf-8').splitlines(keepends=True)
+          marker = '@@ -623,2 +649 @@ public class HotspotServerService extends Service {\n'
+          comment = ' // RS FILE 4.7.0 Stateful Explorer Overhaul: durable staged uploads, per-folder focus/scroll, reliable more/long-press, folder picker, list/grid, expanded local preview.\n'
+          out = []
+          removed = 0
+          i = 0
+          while i < len(lines):
+              if i + 2 < len(lines) and lines[i] == marker and lines[i + 1] == comment and lines[i + 2] == '-\n':
+                  removed += 1
+                  i += 3
+                  continue
+              out.append(lines[i])
+              i += 1
+          if removed != 1:
+              raise SystemExit(f'expected exactly one stale cosmetic hunk; removed={removed}')
+          target.write_text(''.join(out), encoding='utf-8')
+          print('V4711_PATCH_SANITIZED=1')
+          PY
           git add -A
-          git apply --3way --check ../patch-src/scripts/v4711-audit.patch
-          git apply --3way ../patch-src/scripts/v4711-audit.patch
+          git apply --check ../v4711-audit-materialized.patch
+          git apply ../v4711-audit-materialized.patch
+          HOT="$ROOT/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java"
+          grep -q 'openSockets=ConcurrentHashMap.newKeySet()' "$HOT"
+          grep -q 'new ThreadPoolExecutor(12,12' "$HOT"
+          grep -q 'Transfer-Encoding não suportado' "$HOT"
+          grep -q 'RsAtomicUpload.stage' "$HOT"
+          grep -q 'RsHttpRange.parse' "$HOT"
+          grep -q 'RsWebEscapes.javascript' "$HOT"
+          grep -q 'if(!"ERROR".equals(RUNTIME_STATE))' "$HOT"
           node "$ROOT/audit/inline-syntax.test.mjs" "$ROOT"
           node "$ROOT/audit/upload-queue.test.mjs" "$ROOT"
           grep -q 'versionCode = 101' "$ROOT/rsapp/build.gradle.kts"
@@ -284,7 +315,7 @@ jobs:
           set -euxo pipefail
           ./gradlew :rsapp:assembleRelease --stacktrace --no-daemon
 
-      - name: Re-run v4.7.10 gates post-build
+      - name: Re-run v4.7.11 gates post-build
         working-directory: private-src
         shell: bash
         run: |
