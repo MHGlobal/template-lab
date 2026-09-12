@@ -1,0 +1,77 @@
+name: RS Music Public Runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [rs-music-actions]
+    paths:
+      - '.github/workflows/rs-music-public-runner.yml'
+      - 'runner/rs-music-request.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-music-public-runner
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout private RS Music source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Music-
+          ref: feat/rs-music-oneshot
+          token: ${{ secrets.RS_MUSIC_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+      - name: Verify requested source
+        run: |
+          EXPECTED="$(tr -d '\r\n ' < runner/rs-music-request.txt)"
+          ACTUAL="$(git -C private-src rev-parse HEAD)"
+          test -n "$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "RS_MUSIC_COMMIT=$ACTUAL" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+      - name: Test, lint and build
+        working-directory: private-src
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:domain:test testDebugUnitTest lintDebug :app:assembleQa :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
+      - name: Validate and package
+        working-directory: private-src
+        run: |
+          mkdir -p ../delivery
+          QA="$(find app/build/outputs/apk/qa -name '*.apk' -type f)"
+          RELEASE="$(find app/build/outputs/apk/release -name '*.apk' -type f)"
+          BUNDLE="$(find app/build/outputs/bundle/release -name '*.aab' -type f)"
+          test -s "$QA"
+          test -s "$RELEASE"
+          test -s "$BUNDLE"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$QA"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$QA" > ../delivery/APK-METADATA.txt
+          grep -q "package: name='com.mhglobal.rsmusic" ../delivery/APK-METADATA.txt
+          unzip -t "$BUNDLE"
+          cp "$QA" ../delivery/RS-Music-QA.apk
+          cp "$RELEASE" ../delivery/RS-Music-release-unsigned.apk
+          cp "$BUNDLE" ../delivery/RS-Music-release-unsigned.aab
+          printf 'Source commit: %s\nQA APK uses debug signing. Release APK/AAB are unsigned.\n' "$RS_MUSIC_COMMIT" > ../delivery/BUILD-INFO.txt
+          cd ../delivery
+          sha256sum *.apk *.aab > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Music-Android
+          path: delivery/
+          if-no-files-found: error
+          retention-days: 30
