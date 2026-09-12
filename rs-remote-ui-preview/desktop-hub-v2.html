@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+<title>RS Remote RC5 · Desktop Hub V2</title>
+<style>
+:root{--bg:#020503;--glass:rgba(5,11,8,.50);--glass2:rgba(12,22,16,.78);--solid:#0d1711;--green:#35e486;--soft:#8ef2bc;--text:#f5fff8;--muted:#9eafa5;--line:rgba(142,242,188,.20);--danger:#ff6b76;--shadow:0 30px 100px rgba(0,0,0,.62)}*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,"Segoe UI",system-ui,sans-serif;color:var(--text);background:radial-gradient(circle at 85% -10%,rgba(53,228,134,.11),transparent 28%),linear-gradient(145deg,#020503,#07100b 52%,#020503)}button,input{font:inherit}.page{padding:18px;min-height:100vh}.intro{max-width:1420px;margin:0 auto 16px;display:flex;align-items:center;gap:13px;flex-wrap:wrap}.logo{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,var(--green),#20bf68);color:#041008;font-weight:900;box-shadow:0 12px 34px rgba(53,228,134,.18)}.intro h1{margin:0;font-size:20px}.intro p{margin:4px 0 0;color:var(--muted);font-size:13px}.chips{margin-left:auto;display:flex;gap:7px;flex-wrap:wrap}.chip{padding:8px 11px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(11,20,15,.7);font-size:11px;color:var(--muted)}.chip strong{color:var(--soft)}.stage{max-width:1420px;margin:auto}.phone{position:relative;width:100%;aspect-ratio:20/9;min-height:510px;max-height:760px;border-radius:34px;padding:10px;background:#010201;border:1px solid #2a4032;box-shadow:var(--shadow);overflow:hidden}.screen{position:relative;width:100%;height:100%;overflow:hidden;border-radius:25px;background:#0b1015}.desktop{position:absolute;inset:0;transition:.28s ease}.desktop.main{background:radial-gradient(circle at 67% 18%,rgba(63,145,255,.20),transparent 26%),linear-gradient(145deg,#0b111d,#172640 48%,#101b18)}.desktop.extended{background:radial-gradient(circle at 22% 22%,rgba(53,228,134,.16),transparent 25%),linear-gradient(145deg,#07100b,#10291b 48%,#0d1420)}.window{position:absolute;border-radius:18px;background:rgba(14,22,20,.78);border:1px solid rgba(255,255,255,.08);box-shadow:0 24px 60px rgba(0,0,0,.32);backdrop-filter:blur(18px)}.main .w1{left:10%;top:13%;width:43%;height:43%}.main .w2{right:10%;top:23%;width:30%;height:48%}.extended .w1{left:14%;top:16%;width:34%;height:57%;background:rgba(11,28,18,.76)}.extended .w2{right:11%;top:12%;width:38%;height:40%;background:rgba(12,18,30,.74)}.window:before{content:"";position:absolute;left:14px;right:14px;top:13px;height:8px;border-radius:999px;background:linear-gradient(90deg,#355142 24%,transparent 24% 31%,#253f31 31% 58%,transparent 58% 66%,#21382c 66%)}.window:after{content:"";position:absolute;left:15px;right:15px;top:38px;bottom:15px;border-radius:13px;background:linear-gradient(150deg,rgba(255,255,255,.035),rgba(255,255,255,.008))}.taskbar{position:absolute;left:25%;right:25%;bottom:4.5%;height:7%;border-radius:18px;background:rgba(4,8,6,.55);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(22px)}.floating{position:absolute;z-index:50;display:flex;align-items:center;gap:7px}.floating.left{left:14px;top:14px}.circle{width:44px;height:44px;border:1px solid rgba(255,255,255,.11);background:var(--glass);color:var(--text);border-radius:15px;display:grid;place-items:center;cursor:pointer;backdrop-filter:blur(22px);box-shadow:0 8px 28px rgba(0,0,0,.20);font-size:20px}.circle:hover{background:rgba(20,42,29,.72);border-color:rgba(142,242,188,.28)}.monitor-chip{position:absolute;right:14px;top:14px;z-index:40;padding:9px 12px;border-radius:15px;background:var(--glass);border:1px solid rgba(255,255,255,.10);backdrop-filter:blur(22px);font-size:11px;display:flex;align-items:center;gap:7px}.dot{width:7px;height:7px;border-radius:50%;background:var(--green)}.monitor-chip span{color:var(--muted)}.drawer-shade{position:absolute;inset:0;z-index:60;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:.2s}.drawer-shade.open{opacity:1;pointer-events:auto}.drawer{position:absolute;z-index:70;left:14px;top:65px;bottom:14px;width:min(360px,40%);border-radius:24px;background:linear-gradient(160deg,rgba(17,31,22,.97),rgba(6,12,8,.97));border:1px solid rgba(255,255,255,.09);box-shadow:0 28px 80px rgba(0,0,0,.55);backdrop-filter:blur(30px);transform:translateX(-115%);transition:.24s ease;overflow:auto}.drawer.open{transform:translateX(0)}.drawer-head{padding:18px 18px 10px}.drawer-head b{font-size:17px}.drawer-head small{display:block;color:var(--muted);margin-top:4px;line-height:1.4}.section-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#71867a;padding:10px 18px 5px}.menu{padding:0 9px 9px}.menu-item{width:100%;border:0;background:transparent;color:var(--text);padding:11px 10px;border-radius:14px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:11px}.menu-item:hover,.menu-item.on{background:#173523}.mi{width:34px;height:34px;border-radius:11px;background:#10271a;display:grid;place-items:center;color:var(--soft)}.menu-item .grow{flex:1}.menu-item b{font-size:13px;display:block}.menu-item small{display:block;color:var(--muted);font-size:10px;margin-top:3px}.switch{width:36px;height:21px;border-radius:999px;background:#28352d;padding:3px;transition:.2s}.switch:after{content:"";display:block;width:15px;height:15px;border-radius:50%;background:#87978d;transition:.2s}.menu-item.on .switch{background:#1d5b39}.menu-item.on .switch:after{margin-left:15px;background:var(--green)}.divider{height:1px;background:rgba(255,255,255,.06);margin:7px 10px}.overlay{position:absolute;z-index:30;border-radius:23px;border:1px solid rgba(255,255,255,.10);background:rgba(3,8,5,.25);backdrop-filter:blur(5px);box-shadow:0 18px 50px rgba(0,0,0,.24);overflow:hidden;display:none;touch-action:none}.overlay.visible{display:block}.overlay.editing{border:1.5px solid rgba(53,228,134,.76);box-shadow:0 0 0 4px rgba(53,228,134,.08),0 18px 50px rgba(0,0,0,.28)}.edit-tag{position:absolute;z-index:8;left:8px;top:8px;padding:5px 8px;border-radius:999px;background:rgba(3,8,5,.70);border:1px solid rgba(255,255,255,.08);font-size:9px;color:var(--soft);display:none}.editing .edit-tag{display:block}.resize{position:absolute;z-index:12;right:6px;bottom:6px;width:29px;height:29px;border-radius:9px;background:var(--green);color:#031008;display:none;place-items:center;cursor:nwse-resize;font-size:13px;font-weight:900}.editing .resize{display:grid}.gamepad{left:8%;top:49%;width:84%;height:43%}.pad-surface{position:absolute;inset:0}.stick{position:absolute;width:17%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,#1c3c29 0 27%,#10251a 28% 56%,rgba(5,12,8,.85) 57%);border:1px solid #315c42;box-shadow:inset 0 7px 24px rgba(0,0,0,.45)}.stick.l{left:5%;bottom:12%}.stick.r{right:20%;bottom:10%}.dpad{position:absolute;left:25%;bottom:13%;width:15%;aspect-ratio:1}.dpad:before,.dpad:after{content:"";position:absolute;background:rgba(17,43,28,.94);border:1px solid #315c42;border-radius:9px}.dpad:before{left:34%;width:32%;height:100%}.dpad:after{top:34%;width:100%;height:32%}.faces{position:absolute;right:5%;top:16%;width:18%;aspect-ratio:1}.face{position:absolute;width:38%;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:#10291b;border:1px solid #3b714f;color:var(--soft);font-size:11px;font-weight:800}.face.a{right:0;top:32%}.face.b{left:32%;bottom:0}.face.x{left:32%;top:0}.face.y{left:0;top:32%}.trigger{position:absolute;top:11%;height:17%;width:18%;border-radius:12px;background:rgba(14,37,24,.88);border:1px solid #315c42;display:grid;place-items:center;color:var(--muted);font-size:10px}.trigger.lt{left:5%}.trigger.rt{right:5%}.touchpad{left:64%;top:57%;width:29%;height:29%;background:rgba(2,7,4,.17);border:1px solid rgba(142,242,188,.18);backdrop-filter:blur(3px)}.touchpad .tp-label{position:absolute;left:9px;top:9px;padding:5px 8px;border-radius:999px;background:rgba(4,10,7,.43);font-size:9px;color:var(--soft)}.touchpad .tp-help{position:absolute;left:8px;right:8px;bottom:8px;text-align:center;font-size:9px;color:rgba(220,239,228,.55)}.edit-pill{position:absolute;z-index:48;left:50%;bottom:15px;transform:translateX(-50%);padding:9px 14px;border-radius:999px;background:rgba(3,8,5,.64);border:1px solid rgba(53,228,134,.26);backdrop-filter:blur(22px);color:var(--soft);font-size:10px;display:none}.edit-pill.show{display:block}.stats{position:absolute;z-index:35;left:14px;bottom:14px;border-radius:13px;padding:8px 10px;background:rgba(3,8,5,.55);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(18px);font-size:9px;color:var(--muted);display:none}.stats.show{display:block}.modal-shade{position:absolute;inset:0;z-index:100;background:rgba(0,0,0,.58);display:none;place-items:center}.modal-shade.open{display:grid}.modal{width:min(500px,82%);max-height:80%;overflow:auto;border-radius:25px;padding:20px;background:linear-gradient(155deg,#112218,#07100b);border:1px solid #365d45;box-shadow:0 30px 90px rgba(0,0,0,.60)}.modal h3{margin:0 0 6px}.modal>p{margin:0 0 15px;color:var(--muted);font-size:11px;line-height:1.5}.monitor-option{padding:14px;border-radius:17px;border:1px solid #294936;background:#0b1710;margin:8px 0;cursor:pointer;display:flex;align-items:center;gap:12px}.monitor-option:hover,.monitor-option.selected{border-color:#4b8a61;background:#153723}.mon-icon{width:48px;height:35px;border:2px solid #508265;border-radius:7px;position:relative}.mon-icon:after{content:"";position:absolute;width:18px;height:2px;background:#508265;left:13px;bottom:-7px}.monitor-option .grow{flex:1}.monitor-option b{display:block;font-size:13px}.monitor-option small{display:block;color:var(--muted);font-size:10px;margin-top:4px}.badge{padding:5px 8px;border-radius:999px;background:#153c26;color:var(--soft);font-size:9px}.extended-info{border-radius:16px;padding:12px;background:rgba(53,228,134,.07);border:1px solid rgba(53,228,134,.18);color:#b6d9c3;font-size:10px;line-height:1.5;margin-top:12px}.modal-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:14px}.modal-actions button,.quality-btn{height:41px;border-radius:13px;border:1px solid #31533e;background:#102118;color:var(--text);padding:0 13px;cursor:pointer}.quality-list{display:grid;grid-template-columns:1fr 1fr;gap:8px}.quality-btn{height:auto;text-align:left;padding:12px}.quality-btn.active{border-color:var(--green);background:#173923}.quality-btn small{display:block;color:var(--muted);font-size:9px;margin-top:4px}.toast{position:absolute;z-index:120;left:50%;bottom:18px;transform:translate(-50%,20px);opacity:0;padding:10px 14px;border-radius:14px;background:#173a25;border:1px solid #467b58;color:var(--soft);font-size:10px;transition:.22s}.toast.show{opacity:1;transform:translate(-50%,0)}.guide{max-width:1420px;margin:13px auto 0;display:flex;gap:8px;flex-wrap:wrap}.guide span{font-size:11px;color:var(--muted);padding:8px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.07);background:rgba(10,18,13,.68)}@media(max-width:800px){.page{padding:9px}.phone{min-height:370px;border-radius:22px}.screen{border-radius:15px}.drawer{width:56%}.circle{width:38px;height:38px;border-radius:13px}.monitor-chip{font-size:9px}.gamepad{top:45%;height:48%}.guide{display:none}}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="intro">
+    <div class="logo">RS</div>
+    <div><h1>Desktop Hub V2 · RC5</h1><p>Prévia interativa do Remote Desktop com Gamepad, Touchpad e monitor adicional dentro do mesmo ecrã.</p></div>
+    <div class="chips"><span class="chip"><strong>Landscape</strong> sempre</span><span class="chip">Sem barra de título</span><span class="chip">Estado persistente</span></div>
+  </header>
+  <main class="stage">
+    <div class="phone"><div class="screen" id="screen">
+      <div class="desktop main" id="desktop"><div class="window w1"></div><div class="window w2"></div><div class="taskbar"></div></div>
+
+      <div class="floating left"><button class="circle" title="Voltar">‹</button><button class="circle" id="menuBtn" title="Opções">⋮</button></div>
+      <div class="monitor-chip"><i class="dot"></i><b id="monitorType">Principal</b><span id="monitorRes">1920×1080</span></div>
+
+      <div class="overlay gamepad" id="gamepad"><span class="edit-tag">GAMEPAD · MOVER</span><div class="pad-surface"><div class="trigger lt">LT</div><div class="trigger rt">RT</div><div class="stick l"></div><div class="dpad"></div><div class="stick r"></div><div class="faces"><div class="face x">X</div><div class="face y">Y</div><div class="face a">A</div><div class="face b">B</div></div></div><div class="resize">↘</div></div>
+      <div class="overlay touchpad" id="touchpad"><span class="edit-tag">TOUCHPAD · MOVER</span><span class="tp-label">TOUCHPAD</span><span class="tp-help">toque · arraste · segure para clique direito</span><div class="resize">↘</div></div>
+
+      <div class="stats" id="stats">1920×1080 · 58.9 fps · 12 ms · 94 KB · Realtime</div>
+      <div class="edit-pill" id="editPill">Modo organizar · arraste os painéis e use ↘ para redimensionar</div>
+
+      <div class="drawer-shade" id="shade"></div>
+      <aside class="drawer" id="drawer">
+        <div class="drawer-head"><b>Controlos do Desktop</b><small>Adicione controlos sem sair da imagem do PC. Tudo fica sobreposto e pode ser redimensionado.</small></div>
+        <div class="section-label">Sobreposições</div>
+        <div class="menu">
+          <button class="menu-item" id="gamepadToggle"><span class="mi">🎮</span><span class="grow"><b>Adicionar Gamepad</b><small>Controlos sobre o Desktop</small></span><span class="switch"></span></button>
+          <button class="menu-item" id="touchToggle"><span class="mi">⌁</span><span class="grow"><b>Adicionar Touchpad</b><small>Transparente, móvel e redimensionável</small></span><span class="switch"></span></button>
+          <button class="menu-item" id="editToggle"><span class="mi">↔</span><span class="grow"><b>Organizar controlos</b><small>Mover e redimensionar Gamepad/Touchpad</small></span><span class="switch"></span></button>
+          <div class="divider"></div>
+          <button class="menu-item" id="monitorMenu"><span class="mi">▣</span><span class="grow"><b>Monitor adicional</b><small>Área de trabalho estendida · não espelha</small></span><span>›</span></button>
+          <button class="menu-item" id="qualityMenu"><span class="mi">◈</span><span class="grow"><b>Qualidade</b><small id="qualityLabel">Balanced · 45 fps</small></span><span>›</span></button>
+          <div class="divider"></div>
+          <button class="menu-item" id="pauseToggle"><span class="mi">Ⅱ</span><span class="grow"><b id="pauseText">Pausar Desktop</b><small>Interrompe apenas o stream</small></span></button>
+          <button class="menu-item" id="statsToggle"><span class="mi">⌁</span><span class="grow"><b>Estatísticas</b><small>FPS, latência e frame</small></span><span class="switch"></span></button>
+        </div>
+      </aside>
+
+      <div class="modal-shade" id="monitorModal"><div class="modal">
+        <h3>Monitor adicional</h3><p>Escolher um monitor muda a área de trabalho que o telefone controla. O monitor adicional é <b>estendido</b>: tem janelas e espaço próprios, não é uma cópia do monitor principal.</p>
+        <div class="monitor-option selected" data-monitor="main"><span class="mon-icon"></span><span class="grow"><b>Monitor principal</b><small>DISPLAY 1 · 1920×1080 · Principal</small></span><span class="badge">ATUAL</span></div>
+        <div class="monitor-option" data-monitor="extended"><span class="mon-icon"></span><span class="grow"><b>RS Virtual Display 2</b><small>DISPLAY 2 · 2560×1440 · Estendido</small></span><span class="badge">ADICIONAL</span></div>
+        <div class="extended-info"><b>Importante:</b> “Monitor adicional” significa uma segunda área de trabalho do Windows. Arrastar uma janela para esse monitor retira-a do monitor principal — exatamente como ligar fisicamente um segundo monitor.</div>
+        <div class="modal-actions"><button data-close="monitorModal">Fechar</button></div>
+      </div></div>
+
+      <div class="modal-shade" id="qualityModal"><div class="modal"><h3>Qualidade do Desktop</h3><p>A escolha fica memorizada por computador no aplicativo real.</p><div class="quality-list">
+        <button class="quality-btn" data-quality="Low latency"><b>Low latency</b><small>960px · até 60 fps</small></button>
+        <button class="quality-btn active" data-quality="Balanced"><b>Balanced</b><small>1280px · até 45 fps</small></button>
+        <button class="quality-btn" data-quality="Quality"><b>Quality</b><small>1600px · 30 fps</small></button>
+        <button class="quality-btn" data-quality="Sharp"><b>Sharp</b><small>1920px · 24 fps</small></button>
+      </div><div class="modal-actions"><button data-close="qualityModal">Fechar</button></div></div></div>
+
+      <div class="toast" id="toast"></div>
+    </div></div>
+  </main>
+  <div class="guide"><span>1. Abra ⋮</span><span>2. Adicione Gamepad</span><span>3. Adicione Touchpad</span><span>4. Ative “Organizar controlos” e arraste/redimensione</span><span>5. Monitor adicional → RS Virtual Display 2</span></div>
+</div>
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const key='rsremote-desktop-v2-preview';
+let state={gamepad:false,touch:false,edit:false,stats:false,paused:false,monitor:'main',quality:'Balanced',gamepadBox:{x:8,y:49,w:84,h:43},touchBox:{x:64,y:57,w:29,h:29}};
+try{state={...state,...JSON.parse(localStorage.getItem(key)||'{}')}}catch(e){}
+const save=()=>localStorage.setItem(key,JSON.stringify(state));
+const toast=msg=>{const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(window.tt);window.tt=setTimeout(()=>t.classList.remove('show'),1500)};
+const setDrawer=open=>{$('#drawer').classList.toggle('open',open);$('#shade').classList.toggle('open',open)};
+$('#menuBtn').onclick=()=>setDrawer(true);$('#shade').onclick=()=>setDrawer(false);
+function applyBox(el,b){el.style.left=b.x+'%';el.style.top=b.y+'%';el.style.width=b.w+'%';el.style.height=b.h+'%'}
+function render(){
+  $('#gamepad').classList.toggle('visible',state.gamepad);$('#touchpad').classList.toggle('visible',state.touch);
+  $('#gamepad').classList.toggle('editing',state.edit);$('#touchpad').classList.toggle('editing',state.edit);
+  $('#gamepadToggle').classList.toggle('on',state.gamepad);$('#touchToggle').classList.toggle('on',state.touch);$('#editToggle').classList.toggle('on',state.edit);$('#statsToggle').classList.toggle('on',state.stats);
+  $('#editPill').classList.toggle('show',state.edit);$('#stats').classList.toggle('show',state.stats);
+  applyBox($('#gamepad'),state.gamepadBox);applyBox($('#touchpad'),state.touchBox);
+  $('#desktop').className='desktop '+(state.monitor==='extended'?'extended':'main');
+  $('#monitorType').textContent=state.monitor==='extended'?'Estendido':'Principal';$('#monitorRes').textContent=state.monitor==='extended'?'2560×1440':'1920×1080';
+  $$('.monitor-option').forEach(x=>x.classList.toggle('selected',x.dataset.monitor===state.monitor));
+  $('#pauseText').textContent=state.paused?'Retomar Desktop':'Pausar Desktop';$('#desktop').style.filter=state.paused?'brightness(.48) saturate(.65)':'';
+  $('#qualityLabel').textContent=state.quality+(state.quality==='Balanced'?' · 45 fps':'');$$('.quality-btn').forEach(x=>x.classList.toggle('active',x.dataset.quality===state.quality));
+  save();
+}
+$('#gamepadToggle').onclick=()=>{state.gamepad=!state.gamepad;if(!state.gamepad&&state.edit&&!state.touch)state.edit=false;render();toast(state.gamepad?'Gamepad adicionado':'Gamepad removido')};
+$('#touchToggle').onclick=()=>{state.touch=!state.touch;if(!state.touch&&state.edit&&!state.gamepad)state.edit=false;render();toast(state.touch?'Touchpad adicionado':'Touchpad removido')};
+$('#editToggle').onclick=()=>{if(!state.gamepad&&!state.touch){toast('Adicione primeiro Gamepad ou Touchpad');return}state.edit=!state.edit;setDrawer(false);render()};
+$('#statsToggle').onclick=()=>{state.stats=!state.stats;render()};
+$('#pauseToggle').onclick=()=>{state.paused=!state.paused;render()};
+$('#monitorMenu').onclick=()=>{setDrawer(false);$('#monitorModal').classList.add('open')};$('#qualityMenu').onclick=()=>{setDrawer(false);$('#qualityModal').classList.add('open')};
+$$('[data-close]').forEach(b=>b.onclick=()=>$('#'+b.dataset.close).classList.remove('open'));
+$$('.monitor-option').forEach(o=>o.onclick=()=>{state.monitor=o.dataset.monitor;$('#monitorModal').classList.remove('open');render();toast(state.monitor==='extended'?'Monitor estendido selecionado · não espelhado':'Monitor principal selecionado')});
+$$('.quality-btn').forEach(b=>b.onclick=()=>{state.quality=b.dataset.quality;render();toast('Qualidade: '+state.quality)});
+function enableMoveResize(el,prop){
+  let mode=null,start=null,initial=null;
+  el.addEventListener('pointerdown',e=>{if(!state.edit)return;const resize=e.target.closest('.resize');mode=resize?'resize':'move';start={x:e.clientX,y:e.clientY};initial={...state[prop]};el.setPointerCapture(e.pointerId);e.preventDefault()});
+  el.addEventListener('pointermove',e=>{if(!mode||!state.edit)return;const r=$('#screen').getBoundingClientRect();const dx=(e.clientX-start.x)/r.width*100,dy=(e.clientY-start.y)/r.height*100;let b={...initial};if(mode==='move'){b.x=Math.max(0,Math.min(100-b.w,initial.x+dx));b.y=Math.max(0,Math.min(100-b.h,initial.y+dy))}else{const minW=prop==='gamepadBox'?45:17,minH=prop==='gamepadBox'?30:16;b.w=Math.max(minW,Math.min(100-b.x,initial.w+dx));b.h=Math.max(minH,Math.min(100-b.y,initial.h+dy))}state[prop]=b;applyBox(el,b);save()});
+  const stop=()=>{mode=null};el.addEventListener('pointerup',stop);el.addEventListener('pointercancel',stop);
+}
+enableMoveResize($('#gamepad'),'gamepadBox');enableMoveResize($('#touchpad'),'touchBox');
+$('#touchpad').addEventListener('click',e=>{if(!state.edit)toast('Touchpad · clique enviado ao PC')});
+$$('.face,.stick,.dpad').forEach(el=>el.addEventListener('pointerdown',()=>{if(!state.edit)el.style.filter='brightness(1.55)'}));$$('.face,.stick,.dpad').forEach(el=>el.addEventListener('pointerup',()=>el.style.filter=''));
+render();
+</script>
+</body>
+</html>
