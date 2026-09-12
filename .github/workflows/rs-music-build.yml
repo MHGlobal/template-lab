@@ -28,6 +28,27 @@ jobs:
           token: ${{ secrets.RS_MUSIC_READ_TOKEN }}
           path: rs-music
 
+      - name: Apply motion UX patch
+        run: python3 scripts/patch_rs_music_motion.py
+
+      - name: Persist motion UX patch
+        working-directory: rs-music
+        shell: bash
+        run: |
+          git config user.name "RS Music CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/kotlin/com/mhglobal/rsmusic/MusicModel.kt app/src/main/kotlin/com/mhglobal/rsmusic/RsMusicFixedUi.kt app/src/main/kotlin/com/mhglobal/rsmusic/ToolsScreens.kt
+          if git diff --cached --quiet; then
+            echo "Motion UX patch already persisted"
+          else
+            git commit -m "feat: add finger-follow player motion and appearance controls"
+            if git push origin HEAD:feat/rs-music-ui-v2; then
+              echo "Motion UX patch pushed to source branch"
+            else
+              echo "WARNING: source token could not push; continuing with patched QA workspace"
+            fi
+          fi
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
