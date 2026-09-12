@@ -22,23 +22,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read requested source commit
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUESTED_SHA="$(tr -d '\r\n ' < runner/rs-data-guard-request.txt)"
+          test -n "$REQUESTED_SHA"
+          test "${#REQUESTED_SHA}" -eq 40
+          echo "sha=$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
+          echo "RSDG_COMMIT=$REQUESTED_SHA" >> "$GITHUB_ENV"
+
       - name: Checkout private RS Data Guard source
         uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Data-Guard
-          ref: feature/foundation-product-shell
+          ref: ${{ steps.source.outputs.sha }}
           token: ${{ secrets.RS_DATA_GUARD_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
           path: private-src
           persist-credentials: false
 
       - name: Verify requested source commit
+        shell: bash
         run: |
           set -euo pipefail
-          EXPECTED="$(tr -d '\r\n ' < runner/rs-data-guard-request.txt)"
           ACTUAL="$(git -C private-src rev-parse HEAD)"
-          test -n "$EXPECTED"
-          test "$ACTUAL" = "$EXPECTED"
-          echo "RSDG_COMMIT=$ACTUAL" >> "$GITHUB_ENV"
+          test "$ACTUAL" = "$RSDG_COMMIT"
 
       - uses: actions/setup-java@v5
         with:
@@ -88,6 +97,7 @@ jobs:
         run: gradle :app:assemblePlayDebug :app:assembleAdvancedDebug --stacktrace --no-daemon
 
       - name: Validate, scan and package
+        id: package
         working-directory: private-src
         shell: bash
         run: |
@@ -105,21 +115,32 @@ jobs:
           grep -q "package: name='com.mhglobal.rsdataguard'" ../delivery/PLAY-APK-METADATA.txt
           grep -q "package: name='com.mhglobal.rsdataguard.advanced'" ../delivery/ADVANCED-APK-METADATA.txt
 
-          if unzip -p "$PLAY" classes.dex | strings | grep -E '/system/bin/su|rsdg-rootd|nftables|iptables'; then
+          VERSION_NAME="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" ../delivery/PLAY-APK-METADATA.txt | head -n1)"
+          test -n "$VERSION_NAME"
+          grep -q "versionName='$VERSION_NAME'" ../delivery/ADVANCED-APK-METADATA.txt
+
+          ROOT_SCAN="$(mktemp)"
+          while IFS= read -r dex; do
+            unzip -p "$PLAY" "$dex" | strings >> "$ROOT_SCAN"
+          done < <(unzip -Z1 "$PLAY" | grep -E '^classes([0-9]+)?\.dex$')
+          if grep -E '/system/bin/su|rsdg-rootd|nftables|iptables' "$ROOT_SCAN"; then
             echo 'Forbidden root machinery found in Play APK' >&2
+            rm -f "$ROOT_SCAN"
             exit 1
           fi
+          rm -f "$ROOT_SCAN"
 
-          cp "$PLAY" ../delivery/RS-Data-Guard-Play-v0.1.0-debug.apk
-          cp "$ADVANCED" ../delivery/RS-Data-Guard-Advanced-v0.1.0-debug.apk
-          printf 'Source commit: %s\nMilestone: Foundation / Product Shell 0.1.0\nDebug APKs use Android debug signing.\n' "$RSDG_COMMIT" > ../delivery/BUILD-INFO.txt
+          cp "$PLAY" "../delivery/RS-Data-Guard-Play-v${VERSION_NAME}-debug.apk"
+          cp "$ADVANCED" "../delivery/RS-Data-Guard-Advanced-v${VERSION_NAME}-debug.apk"
+          printf 'Source commit: %s\nVersion: %s\nDebug APKs use Android debug signing.\n' "$RSDG_COMMIT" "$VERSION_NAME" > ../delivery/BUILD-INFO.txt
+          echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           cd ../delivery
           sha256sum *.apk > SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: RS-Data-Guard-v0.1.0-APKs
+          name: RS-Data-Guard-v${{ steps.package.outputs.version }}-APKs
           path: delivery/
           if-no-files-found: error
           retention-days: 30
