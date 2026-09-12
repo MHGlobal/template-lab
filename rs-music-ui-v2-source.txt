@@ -1,3 +1,3 @@
 RS Music source branch: feat/rs-music-ui-v2
-Validated source revision: 8c74733c5cc6e8cb6b6e2e99a7d4b9fd0a719e81
-Purpose: rebuild reported UI bug fixes after repairing Compose activity/scroll extension imports. Validate library scrolling, fixed full player, single seek bar, smooth track transitions, three-dot player actions, real Up Next list, user-facing smart playlists without JSON, manual playlist song management, functional Home shortcuts, and emoji-free professional icon policy.
+Validated source revision: 5e39cd16e86a7d3d283b073ad99ed75eb85bfdf9
+Purpose: validate reported UI bug fixes with strict AnimatedContent target binding. Validate library scrolling, fixed full player, single seek bar, smooth track transitions, three-dot player actions, real Up Next list, user-facing smart playlists without JSON, manual playlist song management, functional Home shortcuts, and emoji-free professional icon policy.
