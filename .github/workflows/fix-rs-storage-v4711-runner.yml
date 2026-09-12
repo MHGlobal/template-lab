@@ -25,69 +25,64 @@ jobs:
           from pathlib import Path
 
           path = Path('.github/workflows/rs-storage-v4711-deep-audit.yml')
-          text = path.read_text(encoding='utf-8')
-          old = '''      - name: Apply reviewed audit remediation
-        working-directory: private-src
-        shell: bash
-        run: |
-          set -euxo pipefail
-          git add -A
-          git apply --3way --check ../patch-src/scripts/v4711-audit.patch
-          git apply --3way ../patch-src/scripts/v4711-audit.patch
-          node "$ROOT/audit/inline-syntax.test.mjs" "$ROOT"
-          node "$ROOT/audit/upload-queue.test.mjs" "$ROOT"
-          grep -q 'versionCode = 101' "$ROOT/rsapp/build.gradle.kts"
-          grep -q 'versionName = "4.7.11"' "$ROOT/rsapp/build.gradle.kts"
-'''
-          new = '''      - name: Apply reviewed audit remediation deterministically
-        working-directory: private-src
-        shell: bash
-        run: |
-          set -euxo pipefail
-          python3 - <<'PYCODE'
-          from pathlib import Path
-          source = Path('../patch-src/scripts/v4711-audit.patch')
-          target = Path('../v4711-audit-materialized.patch')
-          lines = source.read_text(encoding='utf-8').splitlines(keepends=True)
-          marker = '@@ -623,2 +649 @@ public class HotspotServerService extends Service {\\n'
-          comment = ' // RS FILE 4.7.0 Stateful Explorer Overhaul: durable staged uploads, per-folder focus/scroll, reliable more/long-press, folder picker, list/grid, expanded local preview.\\n'
-          out = []
-          removed = 0
-          i = 0
-          while i < len(lines):
-              if i + 2 < len(lines) and lines[i] == marker and lines[i + 1] == comment and lines[i + 2] == '-\\n':
-                  removed += 1
-                  i += 3
-                  continue
-              out.append(lines[i])
-              i += 1
-          if removed != 1:
-              raise SystemExit(f'expected exactly one stale cosmetic hunk; removed={removed}')
-          target.write_text(''.join(out), encoding='utf-8')
-          print('V4711_PATCH_SANITIZED=1')
-          PYCODE
-          git add -A
-          git apply --check ../v4711-audit-materialized.patch
-          git apply ../v4711-audit-materialized.patch
-          HOT="$ROOT/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java"
-          grep -q 'openSockets=ConcurrentHashMap.newKeySet()' "$HOT"
-          grep -q 'new ThreadPoolExecutor(12,12' "$HOT"
-          grep -q 'Transfer-Encoding não suportado' "$HOT"
-          grep -q 'RsAtomicUpload.stage' "$HOT"
-          grep -q 'RsHttpRange.parse' "$HOT"
-          grep -q 'RsWebEscapes.javascript' "$HOT"
-          grep -q 'if(!"ERROR".equals(RUNTIME_STATE))' "$HOT"
-          node "$ROOT/audit/inline-syntax.test.mjs" "$ROOT"
-          node "$ROOT/audit/upload-queue.test.mjs" "$ROOT"
-          grep -q 'versionCode = 101' "$ROOT/rsapp/build.gradle.kts"
-          grep -q 'versionName = "4.7.11"' "$ROOT/rsapp/build.gradle.kts"
-'''
-          if old not in text:
-              if 'Apply reviewed audit remediation deterministically' in text:
-                  print('RUNNER_ALREADY_PATCHED=1')
-                  raise SystemExit(0)
-              raise SystemExit('expected remediation block not found; refusing broad edit')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+          old_name = '      - name: Apply reviewed audit remediation\n'
+          new_name = '      - name: Apply reviewed audit remediation deterministically\n'
+          next_name = '      - name: Build production Web UI and install Playwright\n'
+          if new_name in lines:
+              print('RUNNER_ALREADY_PATCHED=1')
+              raise SystemExit(0)
+          if old_name not in lines or next_name not in lines:
+              raise SystemExit('expected remediation boundaries not found; refusing broad edit')
+          start = lines.index(old_name)
+          end = lines.index(next_name, start + 1)
+          block = [
+              new_name,
+              '        working-directory: private-src\n',
+              '        shell: bash\n',
+              '        run: |\n',
+              '          set -euxo pipefail\n',
+              "          python3 - <<'PYCODE'\n",
+              '          from pathlib import Path\n',
+              "          source = Path('../patch-src/scripts/v4711-audit.patch')\n",
+              "          target = Path('../v4711-audit-materialized.patch')\n",
+              "          patch_lines = source.read_text(encoding='utf-8').splitlines(keepends=True)\n",
+              "          marker = '@@ -623,2 +649 @@ public class HotspotServerService extends Service {\\n'\n",
+              "          comment = ' // RS FILE 4.7.0 Stateful Explorer Overhaul: durable staged uploads, per-folder focus/scroll, reliable more/long-press, folder picker, list/grid, expanded local preview.\\n'\n",
+              '          out = []\n',
+              '          removed = 0\n',
+              '          i = 0\n',
+              '          while i < len(patch_lines):\n',
+              "              if i + 2 < len(patch_lines) and patch_lines[i] == marker and patch_lines[i + 1] == comment and patch_lines[i + 2] == '-\\n':\n",
+              '                  removed += 1\n',
+              '                  i += 3\n',
+              '                  continue\n',
+              '              out.append(patch_lines[i])\n',
+              '              i += 1\n',
+              '          if removed != 1:\n',
+              "              raise SystemExit(f'expected exactly one stale cosmetic hunk; removed={removed}')\n",
+              "          target.write_text(''.join(out), encoding='utf-8')\n",
+              "          print('V4711_PATCH_SANITIZED=1')\n",
+              '          PYCODE\n',
+              '          git add -A\n',
+              '          git apply --check ../v4711-audit-materialized.patch\n',
+              '          git apply ../v4711-audit-materialized.patch\n',
+              '          HOT="$ROOT/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java"\n',
+              "          grep -q 'openSockets=ConcurrentHashMap.newKeySet()' \"$HOT\"\n",
+              "          grep -q 'new ThreadPoolExecutor(12,12' \"$HOT\"\n",
+              "          grep -q 'Transfer-Encoding não suportado' \"$HOT\"\n",
+              "          grep -q 'RsAtomicUpload.stage' \"$HOT\"\n",
+              "          grep -q 'RsHttpRange.parse' \"$HOT\"\n",
+              "          grep -q 'RsWebEscapes.javascript' \"$HOT\"\n",
+              "          grep -q 'if(!\"ERROR\".equals(RUNTIME_STATE))' \"$HOT\"\n",
+              '          node "$ROOT/audit/inline-syntax.test.mjs" "$ROOT"\n',
+              '          node "$ROOT/audit/upload-queue.test.mjs" "$ROOT"\n',
+              "          grep -q 'versionCode = 101' \"$ROOT/rsapp/build.gradle.kts\"\n",
+              "          grep -q 'versionName = \"4.7.11\"' \"$ROOT/rsapp/build.gradle.kts\"\n",
+              '\n',
+          ]
+          lines[start:end] = block
+          path.write_text(''.join(lines), encoding='utf-8')
           print('RUNNER_PATCHED=1')
           PY
 
