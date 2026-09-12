@@ -37,7 +37,7 @@ jobs:
         run: |
           git config user.name "RS Music CI"
           git config user.email "actions@users.noreply.github.com"
-          git add app/src/main/kotlin/com/mhglobal/rsmusic/MusicModel.kt app/src/main/kotlin/com/mhglobal/rsmusic/RsMusicFixedUi.kt app/src/main/kotlin/com/mhglobal/rsmusic/ToolsScreens.kt
+          git add app/src/main/kotlin/com/mhglobal/rsmusic/MusicModel.kt app/src/main/kotlin/com/mhglobal/rsmusic/RsMusicFixedUi.kt app/src/main/kotlin/com/mhglobal/rsmusic/ToolsScreens.kt app/src/main/kotlin/com/mhglobal/rsmusic/MotionExperience.kt
           if git diff --cached --quiet; then
             echo "Motion UX patch already persisted"
           else
