@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: a2df604538f2f4940c9d09cfc67adce4a6ecff00
+          ref: 01f23e85e32c4044f9f25c3766fac0de702b052a
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           path: patch-src
           persist-credentials: false
@@ -158,8 +158,10 @@ jobs:
           git apply ../v4711-audit-materialized.patch
           python3 ../patch-src/scripts/apply_v4711_compile_fix.py "$ROOT" | tee ../V4711_COMPILE_FIX.txt
           grep -q 'V4711_COMPILE_FIX=3/3' ../V4711_COMPILE_FIX.txt
+          grep -q 'V4711_TEST_COMPILE_FIX=2/2' ../V4711_COMPILE_FIX.txt
           HOT="$ROOT/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java"
           ! grep -q 'BuildConfig' "$HOT"
+          ! grep -R -q 'Files.writeString(' "$ROOT/rsapp/src/test/java/com/rs/localstorage"
           grep -q 'openSockets=ConcurrentHashMap.newKeySet()' "$HOT"
           grep -q 'new ThreadPoolExecutor(12,12' "$HOT"
           grep -q 'Transfer-Encoding não suportado' "$HOT"
