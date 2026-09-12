@@ -1,3 +1,3 @@
 RS Music source branch: feat/rs-music-ui-v2
-Validated source revision: 2e9f1e396da82b332660e8c7c4488b3690ad8a17
-Purpose: consolidated validation of the Poweramp-class interaction pass. Includes professional Material/vector icons, no emoji UI controls, hardened artwork/mini-player gestures, system-edge protection, pinch density, library row swipe actions, advanced multi-select, album artists/composers/years/formats/lossless navigation, expanded metadata, Audio Path and output DSP profiles.
+Validated source revision: 4c5e1cfec3886614e56957f16f77bbee0b589782
+Purpose: validate reported UI bug fixes: library scrolling, fixed full player, single seek bar, smooth track transitions, three-dot player actions, real Up Next list, user-facing smart playlists without JSON, manual playlist song management, and functional Home shortcuts.
