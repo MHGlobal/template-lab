@@ -1,3 +1,3 @@
 RS Music source branch: feat/rs-music-ui-v2
-Validated source revision: acaa088948d6bd24258061bd874327856356e6e1
-Purpose: final validation pass for RS Music UI v2: instant transitions, two-deck crossfade, word-level lyrics, adaptive atmosphere, responsive widget, route-aware DSP profiles and updated QA status.
+Validated source revision: 60d9e85f9955a06224b392c5f650530c6b8a031c
+Purpose: validate RS Music Poweramp-class interaction pass: artwork and mini-player gestures, category swipes, pinch library density, multi-select actions, audio path/output screen, professional Material/vector icons, and emoji-free Android widget controls.
