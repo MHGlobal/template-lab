@@ -62,9 +62,9 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$HOME/.local/bin:$PATH"
-          android --sdk="$ANDROID_HOME" sdk list 'platforms/android-37' --all --all-versions --canary
-          android --sdk="$ANDROID_HOME" sdk install platforms/android-37 build-tools/36.0.0 --canary
-          test -f "$ANDROID_HOME/platforms/android-37/android.jar"
+          android --sdk="$ANDROID_HOME" sdk list 'platforms/android-37.*' --all --all-versions
+          android --sdk="$ANDROID_HOME" sdk install platforms/android-37.0 build-tools/36.0.0
+          test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"
           test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
 
       - name: Setup Gradle 9.6
