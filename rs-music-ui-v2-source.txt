@@ -1,3 +1,4 @@
 RS Music source branch: feat/rs-music-ui-v2
-Validated source revision: bd3578153c9d85ce467d28895fc7d2166117dd18
-Purpose: rebuild from the previously approved RS Music UI only. Preserve Home, Library, Player and navigation layout exactly as before; apply only the requested fixes: scrollable professional player options, finger-follow swipe-up from mini-player, finger-follow swipe-down minimization, configurable transition style/speed, app accent color, reduced motion and gesture sensitivity. Do not use the rejected motion-shell redesign.
+Validated source revision: ac4c41ceba73fd5dcc0606c0456693cd9aa74c0f
+Version: 0.1.1-qa.1 (versionCode 2)
+Purpose: keep the previously accepted RS Music UI and fix Songs scrolling without redesign. Pinch-to-density must require two fingers so one-finger vertical drag remains owned by the Songs LazyColumn. Keep the prior requested motion/menu fixes, professional icon policy, and produce an explicitly versioned APK/artifact to prevent build confusion.
