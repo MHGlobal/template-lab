@@ -62,6 +62,9 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$QA" > ../delivery/APK-METADATA.txt
           grep -q "package: name='com.mhglobal.rsmusic" ../delivery/APK-METADATA.txt
           unzip -t "$BUNDLE"
+          curl --fail --location --retry 3 'https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar' -o "$RUNNER_TEMP/bundletool.jar"
+          printf 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  %s\n' "$RUNNER_TEMP/bundletool.jar" | sha256sum -c -
+          java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle="$BUNDLE" > ../delivery/AAB-VALIDATION.txt
           cp "$QA" ../delivery/RS-Music-QA.apk
           cp "$RELEASE" ../delivery/RS-Music-release-unsigned.apk
           cp "$BUNDLE" ../delivery/RS-Music-release-unsigned.aab
