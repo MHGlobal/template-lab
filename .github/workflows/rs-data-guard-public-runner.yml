@@ -1,0 +1,107 @@
+name: RS Data Guard Public Runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [rs-data-guard-actions]
+    paths:
+      - '.github/workflows/rs-data-guard-public-runner.yml'
+      - 'runner/rs-data-guard-request.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-data-guard-public-runner
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout private RS Data Guard source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Data-Guard
+          ref: feature/foundation-product-shell
+          token: ${{ secrets.RS_DATA_GUARD_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify requested source commit
+        run: |
+          set -euo pipefail
+          EXPECTED="$(tr -d '\r\n ' < runner/rs-data-guard-request.txt)"
+          ACTUAL="$(git -C private-src rev-parse HEAD)"
+          test -n "$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "RSDG_COMMIT=$ACTUAL" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+
+      - name: Setup Gradle 9.6
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Unit tests
+        working-directory: private-src
+        run: gradle :app:testPlayDebugUnitTest :app:testAdvancedDebugUnitTest --stacktrace --no-daemon
+
+      - name: Android lint
+        working-directory: private-src
+        run: gradle :app:lintPlayDebug :app:lintAdvancedDebug --stacktrace --no-daemon
+
+      - name: Build Play and Advanced APKs
+        working-directory: private-src
+        run: gradle :app:assemblePlayDebug :app:assembleAdvancedDebug --stacktrace --no-daemon
+
+      - name: Validate, scan and package
+        working-directory: private-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../delivery
+          PLAY="$(find app/build/outputs/apk/play/debug -name '*.apk' -type f | head -n1)"
+          ADVANCED="$(find app/build/outputs/apk/advanced/debug -name '*.apk' -type f | head -n1)"
+          test -s "$PLAY"
+          test -s "$ADVANCED"
+
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$PLAY"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$ADVANCED"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$PLAY" > ../delivery/PLAY-APK-METADATA.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$ADVANCED" > ../delivery/ADVANCED-APK-METADATA.txt
+          grep -q "package: name='com.mhglobal.rsdataguard'" ../delivery/PLAY-APK-METADATA.txt
+          grep -q "package: name='com.mhglobal.rsdataguard.advanced'" ../delivery/ADVANCED-APK-METADATA.txt
+
+          if unzip -p "$PLAY" classes.dex | strings | grep -E '/system/bin/su|rsdg-rootd|nftables|iptables'; then
+            echo 'Forbidden root machinery found in Play APK' >&2
+            exit 1
+          fi
+
+          cp "$PLAY" ../delivery/RS-Data-Guard-Play-v0.1.0-debug.apk
+          cp "$ADVANCED" ../delivery/RS-Data-Guard-Advanced-v0.1.0-debug.apk
+          printf 'Source commit: %s\nMilestone: Foundation / Product Shell 0.1.0\nDebug APKs use Android debug signing.\n' "$RSDG_COMMIT" > ../delivery/BUILD-INFO.txt
+          cd ../delivery
+          sha256sum *.apk > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Data-Guard-v0.1.0-APKs
+          path: delivery/
+          if-no-files-found: error
+          retention-days: 30
