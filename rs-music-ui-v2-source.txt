@@ -1,3 +1,3 @@
 RS Music source branch: feat/rs-music-ui-v2
-Validated source revision: 588ca486346e69790d3ae532715d512d57566f82
-Purpose: validate follow-finger player motion, swipe-up mini-player expansion, swipe-down full-player minimization, professional scrollable player menu, configurable transition style/speed, accent color theming, reduced motion, gesture sensitivity, and existing emoji-free icon policy.
+Validated source revision: bd3578153c9d85ce467d28895fc7d2166117dd18
+Purpose: rebuild from the previously approved RS Music UI only. Preserve Home, Library, Player and navigation layout exactly as before; apply only the requested fixes: scrollable professional player options, finger-follow swipe-up from mini-player, finger-follow swipe-down minimization, configurable transition style/speed, app accent color, reduced motion and gesture sensitivity. Do not use the rejected motion-shell redesign.
