@@ -99,7 +99,17 @@ def patch_fixed_ui() -> None:
     path.write_text(text)
 
 
+def patch_motion_experience() -> None:
+    path = ROOT / "app/src/main/kotlin/com/mhglobal/rsmusic/MotionExperience.kt"
+    text = path.read_text()
+    old = ''' ) {\n    var ty by remember { mutableFloatStateOf(0f) }\n    val scope=rememberCoroutineScope()\n    val spec=remember(motionStyle,motionSpeed,reducedMotion) { rsMotionSpec(motionStyle,motionSpeed,reducedMotion) }\n    Column(\n        modifier\n            .graphicsLayer {\n                translationY=if(followFinger) ty.coerceAtLeast(0f) else 0f\n                val p=min(1f,ty.coerceAtLeast(0f)/max(1f,size.height*.75f))\n                scaleX=1f-p*.025f;scaleY=1f-p*.025f;alpha=1f-p*.18f\n            }\n'''.replace(' ) {', ') {')
+    new = ''') {\n    var ty by remember { mutableFloatStateOf(if(reducedMotion) 0f else 420f) }\n    val scope=rememberCoroutineScope()\n    val spec=remember(motionStyle,motionSpeed,reducedMotion) { rsMotionSpec(motionStyle,motionSpeed,reducedMotion) }\n    LaunchedEffect(motionStyle,motionSpeed,reducedMotion) {\n        if(reducedMotion) ty=0f\n        else if(ty>0f) {\n            val start=ty\n            animate(start,0f,animationSpec=spec) { v,_ -> ty=v }\n        }\n    }\n    Column(\n        modifier\n            .graphicsLayer {\n                val raw=ty.coerceAtLeast(0f)\n                val p=min(1f,raw/max(1f,size.height*.75f))\n                translationY=if(followFinger && motionStyle !in listOf("fade","scale")) raw else 0f\n                val scaleLoss=if(motionStyle=="scale") p*.07f else p*.025f\n                scaleX=1f-scaleLoss;scaleY=1f-scaleLoss\n                alpha=if(motionStyle=="fade") 1f-p*.92f else 1f-p*.18f\n            }\n'''
+    text = replace_once(text, old, new, "player entry motion")
+    path.write_text(text)
+
+
 patch_music_model()
 patch_tools()
 patch_fixed_ui()
+patch_motion_experience()
 print("RS Music motion patch applied")
