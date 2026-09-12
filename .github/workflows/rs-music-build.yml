@@ -88,23 +88,43 @@ jobs:
         working-directory: rs-music
         run: ./gradlew :app:assembleQa --stacktrace
 
-      - name: Inspect APK
+      - name: Inspect and version APK
+        shell: bash
         run: |
           APK="$(find rs-music/app/build/outputs/apk/qa -name '*.apk' -type f | head -n 1)"
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 12
+          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING" | head -n 12
+          VERSION_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
+          VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -n 1)"
+          test -n "$VERSION_NAME"
+          SAFE_VERSION="$(printf '%s' "$VERSION_NAME" | tr -cs 'A-Za-z0-9._-' '-')"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"
-          cp "$APK" RS-Music-UI-v2-QA.apk
-          sha256sum RS-Music-UI-v2-QA.apk > RS-Music-UI-v2-SHA256SUMS.txt
-          cat RS-Music-UI-v2-SHA256SUMS.txt
+          OUT="RS-Music-v${SAFE_VERSION}.apk"
+          SUMS="RS-Music-v${SAFE_VERSION}-SHA256SUMS.txt"
+          INFO="RS-Music-v${SAFE_VERSION}-BUILD.txt"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" > "$SUMS"
+          {
+            echo "RS Music QA build"
+            echo "versionName=$VERSION_NAME"
+            echo "versionCode=$VERSION_CODE"
+            echo "sourceBranch=feat/rs-music-ui-v2"
+            echo "workflowRun=${GITHUB_RUN_NUMBER}"
+            echo "workflowSha=${GITHUB_SHA}"
+          } > "$INFO"
+          cat "$SUMS"
+          cat "$INFO"
+          echo "RS_VERSION=$SAFE_VERSION" >> "$GITHUB_ENV"
 
-      - name: Upload APK
+      - name: Upload versioned APK
         uses: actions/upload-artifact@v4
         with:
-          name: RS-Music-UI-v2-APK
+          name: RS-Music-v${{ env.RS_VERSION }}
           path: |
-            RS-Music-UI-v2-QA.apk
-            RS-Music-UI-v2-SHA256SUMS.txt
+            RS-Music-v*.apk
+            RS-Music-v*-SHA256SUMS.txt
+            RS-Music-v*-BUILD.txt
             rs-music/app/build/reports/lint-results-debug.html
             rs-music/app/build/reports/tests/
           if-no-files-found: error
