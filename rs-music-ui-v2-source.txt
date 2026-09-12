@@ -1,3 +1,3 @@
 RS Music source branch: feat/rs-music-ui-v2
-Validated source revision: 791f6c6477cefbd640db3ae8ce81b313fbf85904
-Purpose: final validation of reported UI bug fixes after binding Media3 track ids into Compose animation content. Validate library scrolling, fixed full player, single seek bar, smooth track transitions, three-dot player actions, real Up Next list, user-facing smart playlists without JSON, manual playlist song management, functional Home shortcuts, and emoji-free professional icon policy.
+Validated source revision: 588ca486346e69790d3ae532715d512d57566f82
+Purpose: validate follow-finger player motion, swipe-up mini-player expansion, swipe-down full-player minimization, professional scrollable player menu, configurable transition style/speed, accent color theming, reduced motion, gesture sensitivity, and existing emoji-free icon policy.
