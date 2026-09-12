@@ -147,7 +147,7 @@ jobs:
           grep -q 'normalizeProtocol(generate' "$ROOT/rsapp/src/main/java/com/rs/localstorage/RsAiAgentRuntime.java"
           grep -q 'A corrigir protocolo' "$ROOT/rsapp/src/main/java/com/rs/localstorage/RsAiAgentRuntime.java"
 
-      - name: Build production Web UI
+      - name: Build production Web UI and install Playwright
         shell: bash
         run: |
           set -euxo pipefail
@@ -157,6 +157,9 @@ jobs:
           rm -rf private-src/$ROOT/rsapp/src/main/assets/rs-dynamic
           mkdir -p private-src/$ROOT/rsapp/src/main/assets/rs-dynamic
           cp -a private-src/$ROOT/dynamic-ui/dist/. private-src/$ROOT/rsapp/src/main/assets/rs-dynamic/
+          cd private-src
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
 
       - name: Run inherited RS FILE behavior gates
         working-directory: private-src
