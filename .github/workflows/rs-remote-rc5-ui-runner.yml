@@ -1,0 +1,214 @@
+name: RS Remote 1.0 RC5 UI Runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-remote-actions ]
+    paths:
+      - '.github/workflows/rs-remote-rc5-ui-runner.yml'
+      - 'runner/rs-remote-rc5-request.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-remote-rc5-ui-runner
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android RC5 Release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout public runner repository
+
+      - name: Checkout private RS-Remote source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Remote
+          ref: ui/1.0.0-rc5-mobile-redesign
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify requested private source
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED="$(tr -d '\r\n ' < runner/rs-remote-rc5-request.txt)"
+          ACTUAL="$(git -C private-src rev-parse HEAD)"
+          test -n "$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+          test -x private-src/source/android/gradlew
+          test -f private-src/source/android/app/src/main/java/com/rsremote/ui/RsProductionShellV2.kt
+          test -f private-src/source/android/app/src/main/java/com/rsremote/design/RsProductSurfaces.kt
+          test -f private-src/docs/RELEASE_MANIFEST_1.0.0-rc5.md
+          grep -q 'versionCode = 16' private-src/source/android/app/build.gradle.kts
+          grep -q 'versionName = "1.0.0-rc5"' private-src/source/android/app/build.gradle.kts
+          grep -q 'isDebuggable = false' private-src/source/android/app/build.gradle.kts
+          grep -q 'RsProductionShellV2' private-src/source/android/app/src/main/java/com/rsremote/ui/RsAppShell.kt
+          grep -q 'const val MINOR = 2' private-src/source/android/app/src/main/java/com/rsremote/protocol/RsProtocol.kt
+          echo "RS_REMOTE_COMMIT=$ACTUAL" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Test, lint and assemble Android release
+        working-directory: private-src/source/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest lintRelease assembleRelease --stacktrace --no-daemon
+
+      - name: Validate RC5 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find private-src/source/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          OUT="RS-Remote-Android-v1.0.0-rc5.apk"
+          test -n "$APK"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee android-badging.txt
+          grep -q "package: name='com.rsremote'" android-badging.txt
+          grep -q "versionCode='16'" android-badging.txt
+          grep -q "versionName='1.0.0-rc5'" android-badging.txt
+          if grep -q 'application-debuggable' android-badging.txt; then exit 1; fi
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee android-apksigner.txt
+          cp "$APK" "$OUT"
+          cp private-src/docs/RELEASE_MANIFEST_1.0.0-rc5.md RELEASE_MANIFEST_1.0.0-rc5.md
+          sha256sum "$OUT" | tee SHA256SUMS-ANDROID.txt
+          stat -c '%s' "$OUT" | tee ANDROID_SIZE_BYTES.txt
+          printf 'source_repo=MHGlobal/RS-Remote\nsource_branch=ui/1.0.0-rc5-mobile-redesign\nsource_commit=%s\nproductVersion=1.0.0-rc5\nversionCode=16\nprotocol=0.2\ndebuggable=false\n' "$RS_REMOTE_COMMIT" | tee ANDROID_BUILD_REPORT.txt
+
+      - name: Upload Android RC5
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Remote-Android-v1.0.0-rc5
+          path: |
+            RS-Remote-Android-v1.0.0-rc5.apk
+            SHA256SUMS-ANDROID.txt
+            ANDROID_SIZE_BYTES.txt
+            ANDROID_BUILD_REPORT.txt
+            RELEASE_MANIFEST_1.0.0-rc5.md
+            android-badging.txt
+            android-apksigner.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-host:
+    name: Windows RC5 Self-Contained
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout public runner repository
+
+      - name: Checkout private RS-Remote source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Remote
+          ref: ui/1.0.0-rc5-mobile-redesign
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify requested private source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = (Get-Content 'runner/rs-remote-rc5-request.txt' -Raw).Trim()
+          $actual = (git -C private-src rev-parse HEAD).Trim()
+          if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
+          if (-not (Test-Path 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc5.md')) { throw 'Missing RC5 manifest' }
+          $hostProject = Get-Content 'private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj' -Raw
+          if ($hostProject -notmatch '<Version>1.0.0-rc5</Version>') { throw 'Host product version mismatch' }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/MainWindow.xaml')) { throw 'Missing Host UI' }
+          if (-not (Test-Path 'private-src/source/windows/RSRemote.Host/App.xaml')) { throw 'Missing Host theme' }
+          $protocol = Get-Content 'private-src/source/windows/RSRemote.Protocol/ProtocolVersion.cs' -Raw
+          if ($protocol -notmatch 'Minor = 2') { throw 'RSRP 0.2 is not configured' }
+          "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore private-src/source/windows/RSRemote.sln --runtime win-x64
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build private-src/source/windows/RSRemote.sln --configuration Release --no-restore --verbosity normal
+
+      - name: Run protocol, media contract and durable transfer regressions
+        shell: pwsh
+        run: dotnet run --project private-src/source/windows/RSRemote.RegressionTests/RSRemote.RegressionTests.csproj --configuration Release
+
+      - name: Publish dependency-free single-file Host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output publish/windows `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:PublishReadyToRun=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+
+      - name: Validate standalone Host EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'publish/windows/RSRemote.Host.exe'
+          $out = 'RS-Remote-Host-v1.0.0-rc5-win-x64.exe'
+          if (-not (Test-Path $source)) { throw "Expected $source" }
+          $length = (Get-Item $source).Length
+          if ($length -lt 20MB) { throw "Self-contained EXE unexpectedly small: $length bytes" }
+          $version = (Get-Item $source).VersionInfo.ProductVersion
+          if ($version -notlike '1.0.0-rc5*') { throw "Unexpected ProductVersion: $version" }
+          Copy-Item $source $out
+          Copy-Item 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc5.md' 'RELEASE_MANIFEST_1.0.0-rc5.md'
+          $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path 'SHA256SUMS-WINDOWS.txt' -Value "$hash  $out"
+          Set-Content -Path 'WINDOWS_SIZE_BYTES.txt' -Value $length
+          Set-Content -Path 'WINDOWS_BUILD_REPORT.txt' -Value @(
+            'source_repo=MHGlobal/RS-Remote',
+            'source_branch=ui/1.0.0-rc5-mobile-redesign',
+            "source_commit=$env:RS_REMOTE_COMMIT",
+            'productVersion=1.0.0-rc5',
+            'protocol=0.2',
+            'selfContained=true',
+            'singleFile=true'
+          )
+
+      - name: Upload Windows RC5
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Remote-Windows-Host-v1.0.0-rc5-SelfContained
+          path: |
+            RS-Remote-Host-v1.0.0-rc5-win-x64.exe
+            SHA256SUMS-WINDOWS.txt
+            WINDOWS_SIZE_BYTES.txt
+            WINDOWS_BUILD_REPORT.txt
+            RELEASE_MANIFEST_1.0.0-rc5.md
+          if-no-files-found: error
+          retention-days: 30
