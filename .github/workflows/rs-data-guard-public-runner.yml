@@ -47,10 +47,25 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK
+      - name: Install official Android CLI
+        shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager --channel=3 "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+          set -euo pipefail
+          curl -fsSL https://dl.google.com/android/cli/latest/linux_x86_64/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          command -v android
+          android --version
+
+      - name: Install Android API 37 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          android --sdk="$ANDROID_HOME" sdk list 'platforms/android-37' --all --all-versions --canary
+          android --sdk="$ANDROID_HOME" sdk install platforms/android-37 build-tools/36.0.0 --canary
+          test -f "$ANDROID_HOME/platforms/android-37/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
 
       - name: Setup Gradle 9.6
         uses: gradle/actions/setup-gradle@v5
