@@ -1,0 +1,147 @@
+name: RS Storage v4.7.13 Agent Harness (public runner)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-storage-v4713-agent-harness ]
+    paths: [ '.github/workflows/rs-storage-v4713-agent-harness.yml' ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-storage-v4713-agent-harness
+  cancel-in-progress: true
+
+env:
+  RS_STORAGE_SHA: 5b8e782c3e4378a43bf23ad62cbb226363147f0f
+  RS_ANDROID_KEYSTORE_B64: ${{ secrets.RS_ANDROID_KEYSTORE_B64 }}
+  RS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.RS_ANDROID_KEYSTORE_PASSWORD }}
+  RS_ANDROID_KEY_ALIAS: ${{ secrets.RS_ANDROID_KEY_ALIAS }}
+  RS_ANDROID_KEY_PASSWORD: ${{ secrets.RS_ANDROID_KEY_PASSWORD }}
+
+jobs:
+  mandatory-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact RS Storage release
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: 5b8e782c3e4378a43bf23ad62cbb226363147f0f
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: rs-storage
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify pinned source SHA
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git -C rs-storage rev-parse HEAD)" = "$RS_STORAGE_SHA"
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '17' }
+
+      - name: Agent harness JVM behavior gates (73 assertions)
+        working-directory: rs-storage
+        run: |
+          set -euxo pipefail
+          OUT=/tmp/rs-agent-tests
+          mkdir -p "$OUT"
+          javac -d "$OUT" source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/{AgentDefinition,AgentRegistry,RunStateMachine,AgentEventBus,TaskLedger,ToolDefinition,ToolResult,ToolRegistry,PermissionEngine,WorkspaceGuard,NormalizedModelResponse,ReasoningPrivacy,ProviderCapabilityResolver,ProviderAdapters,ProgressDetector,DoomLoopDetector,RecoveryEngine,CompletionGate,ExecutionLoop,SessionEngine,MemoryEngine,ChangeSetEngine,SubagentManager,ContextEngine,ContextBudgetManager,AgentExtensions,AgentHarness}.java source/current-v4.3.0/audit/{AgentCoreBehaviorMain,AgentToolBehaviorMain,ProviderAdapterBehaviorMain,ExecutionEngineBehaviorMain,SessionSubagentBehaviorMain,AgentHarnessIntegrationBehaviorMain}.java
+          for gate in AgentCoreBehaviorMain AgentToolBehaviorMain ProviderAdapterBehaviorMain ExecutionEngineBehaviorMain SessionSubagentBehaviorMain AgentHarnessIntegrationBehaviorMain; do
+            java -cp "$OUT" "com.rs.localstorage.$gate"
+          done | tee /tmp/agent-harness-gates.txt
+          grep -q AGENT_CORE_BEHAVIOR_PASS=12/12 /tmp/agent-harness-gates.txt
+          grep -q AGENT_TOOL_BEHAVIOR_PASS=13/13 /tmp/agent-harness-gates.txt
+          grep -q PROVIDER_ADAPTER_BEHAVIOR_PASS=11/11 /tmp/agent-harness-gates.txt
+          grep -q EXECUTION_ENGINE_BEHAVIOR_PASS=10/10 /tmp/agent-harness-gates.txt
+          grep -q SESSION_SUBAGENT_BEHAVIOR_PASS=9/9 /tmp/agent-harness-gates.txt
+          grep -q AGENT_HARNESS_INTEGRATION_PASS=18/18 /tmp/agent-harness-gates.txt
+
+      - name: Static, UI and inherited RS FILE behavior gates
+        working-directory: rs-storage
+        run: |
+          set -euxo pipefail
+          python3 scripts/validate_rsia_runtime_js.py
+          python3 scripts/validate_rsia_ui.py
+          node source/current-v4.3.0/audit/inline-syntax.test.mjs
+          node source/current-v4.3.0/audit/upload-queue.test.mjs
+          python3 scripts/audit_v478_android_runtime_quality.py source/current-v4.3.0
+          python3 scripts/audit_v478_product_refinement.py source/current-v4.3.0
+          python3 scripts/audit_v479_reported_bugs.py source/current-v4.3.0
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+          node scripts/rsfile_v471_runtime_gate.mjs source/current-v4.3.0
+          node scripts/rsfile_v477_real_runtime_gate.mjs source/current-v4.3.0
+          node scripts/rsfile_v478_real_runtime_gate.mjs source/current-v4.3.0
+          node scripts/rsfile_v479_overlay_runtime_gate.mjs source/current-v4.3.0
+          node scripts/rsfile_v4710_global_nav_gate.mjs source/current-v4.3.0
+
+      - name: Build web UI
+        working-directory: rs-storage/source/current-v4.3.0/dynamic-ui
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          test -s dist/app.js
+          test -s dist/style.css
+
+      - uses: android-actions/setup-android@v3
+      - name: Install Android toolchain
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;29.0.13113456' 'cmake;3.31.6'
+
+      - name: Fetch pinned llama.cpp and run Android gates
+        working-directory: rs-storage
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp.git external/llama.cpp
+          git -C external/llama.cpp fetch --depth=1 origin 8ef78e644f559db4e8716b59bf76b8e11619337d
+          git -C external/llama.cpp checkout --detach 8ef78e644f559db4e8716b59bf76b8e11619337d
+          python3 scripts/apply_llama_rs_compat.py external/llama.cpp
+          python3 scripts/apply_v434_load_progress.py external/llama.cpp
+          python3 scripts/apply_v450_llama_runtime.py external/llama.cpp
+          cp -R source/current-v4.3.0/rsapp external/llama.cpp/examples/llama.android/rsapp
+          grep -q 'include(":rsapp")' external/llama.cpp/examples/llama.android/settings.gradle.kts || printf '\ninclude(":rsapp")\n' >> external/llama.cpp/examples/llama.android/settings.gradle.kts
+          chmod +x external/llama.cpp/examples/llama.android/gradlew
+          cd external/llama.cpp/examples/llama.android
+          ./gradlew :rsapp:testDebugUnitTest :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac :rsapp:assembleRelease --stacktrace --no-daemon
+
+      - name: Sign and validate ARM64 release package
+        working-directory: rs-storage
+        run: |
+          set -euxo pipefail
+          test -n "$RS_ANDROID_KEYSTORE_B64"
+          test -n "$RS_ANDROID_KEYSTORE_PASSWORD"
+          test -n "$RS_ANDROID_KEY_ALIAS"
+          test -n "$RS_ANDROID_KEY_PASSWORD"
+          APK=external/llama.cpp/examples/llama.android/rsapp/build/outputs/apk/release/rsapp-release-unsigned.apk
+          test -s "$APK"
+          mkdir -p delivery
+          printf '%s' "$RS_ANDROID_KEYSTORE_B64" | base64 --decode > /tmp/rs-storage-release.jks
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f 4 "$APK" /tmp/rs-storage-v4713-aligned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks /tmp/rs-storage-release.jks --ks-key-alias "$RS_ANDROID_KEY_ALIAS" --ks-pass env:RS_ANDROID_KEYSTORE_PASSWORD --key-pass env:RS_ANDROID_KEY_PASSWORD --out delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk /tmp/rs-storage-v4713-aligned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | tee delivery/signature.txt
+          unzip -t delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk >/dev/null
+          unzip -l delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | grep -q 'lib/arm64-v8a/libai-chat.so'
+          ! unzip -l delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | grep -Eq 'lib/(x86|x86_64|armeabi-v7a)/'
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | tee delivery/badging.txt
+          grep -q "package: name='com.rs.localstorage'" delivery/badging.txt
+          grep -q "versionCode='103'" delivery/badging.txt
+          grep -q "versionName='4.7.13'" delivery/badging.txt
+          sha256sum delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | tee delivery/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: internal-v4.7.13-redmi-install-candidate
+          path: rs-storage/delivery/
+          if-no-files-found: error
+          retention-days: 7
+
