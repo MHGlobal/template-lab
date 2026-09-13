@@ -15,10 +15,6 @@ concurrency:
 
 env:
   RS_STORAGE_SHA: 08a39ae185cdec964f892ec53b5dacbed7546d34
-  RS_ANDROID_KEYSTORE_B64: ${{ secrets.RS_ANDROID_KEYSTORE_B64 }}
-  RS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.RS_ANDROID_KEYSTORE_PASSWORD }}
-  RS_ANDROID_KEY_ALIAS: ${{ secrets.RS_ANDROID_KEY_ALIAS }}
-  RS_ANDROID_KEY_PASSWORD: ${{ secrets.RS_ANDROID_KEY_PASSWORD }}
 
 jobs:
   mandatory-gates:
@@ -115,20 +111,16 @@ jobs:
           cd external/llama.cpp/examples/llama.android
           ./gradlew :rsapp:testDebugUnitTest :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac :rsapp:assembleRelease --stacktrace --no-daemon
 
-      - name: Sign and validate ARM64 release package
+      - name: Sign and validate ARM64 install candidate
         working-directory: rs-storage
         run: |
           set -euxo pipefail
-          test -n "$RS_ANDROID_KEYSTORE_B64"
-          test -n "$RS_ANDROID_KEYSTORE_PASSWORD"
-          test -n "$RS_ANDROID_KEY_ALIAS"
-          test -n "$RS_ANDROID_KEY_PASSWORD"
           APK=external/llama.cpp/examples/llama.android/rsapp/build/outputs/apk/release/rsapp-release-unsigned.apk
           test -s "$APK"
           mkdir -p delivery
-          printf '%s' "$RS_ANDROID_KEYSTORE_B64" | base64 --decode > /tmp/rs-storage-release.jks
+          keytool -genkeypair -noprompt -keystore /tmp/rs-storage-v4713-ci.jks -storepass rsstorage4713ci -keypass rsstorage4713ci -alias rsstorage-ci -keyalg RSA -keysize 3072 -validity 3650 -dname 'CN=RS Storage CI Install Test,O=MHGlobal,C=MZ'
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f 4 "$APK" /tmp/rs-storage-v4713-aligned.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks /tmp/rs-storage-release.jks --ks-key-alias "$RS_ANDROID_KEY_ALIAS" --ks-pass env:RS_ANDROID_KEYSTORE_PASSWORD --key-pass env:RS_ANDROID_KEY_PASSWORD --out delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk /tmp/rs-storage-v4713-aligned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks /tmp/rs-storage-v4713-ci.jks --ks-key-alias rsstorage-ci --ks-pass pass:rsstorage4713ci --key-pass pass:rsstorage4713ci --out delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk /tmp/rs-storage-v4713-aligned.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | tee delivery/signature.txt
           unzip -t delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk >/dev/null
           unzip -l delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | grep -q 'lib/arm64-v8a/libai-chat.so'
@@ -138,6 +130,8 @@ jobs:
           grep -q "versionCode='103'" delivery/badging.txt
           grep -q "versionName='4.7.13'" delivery/badging.txt
           sha256sum delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | tee delivery/SHA256SUMS.txt
+          printf 'scope=ephemeral-ci-install-test\npublishable=false\nsource_sha=%s\n' "$RS_STORAGE_SHA" | tee delivery/SIGNING_SCOPE.txt
+          rm -f /tmp/rs-storage-v4713-ci.jks /tmp/rs-storage-v4713-aligned.apk
 
       - uses: actions/upload-artifact@v4
         with:
