@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RS_STORAGE_SHA: 5b8e782c3e4378a43bf23ad62cbb226363147f0f
+  RS_STORAGE_SHA: 600f8b0e42c4255e292ce0c7fb6ce66c9c5507fe
   RS_ANDROID_KEYSTORE_B64: ${{ secrets.RS_ANDROID_KEYSTORE_B64 }}
   RS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.RS_ANDROID_KEYSTORE_PASSWORD }}
   RS_ANDROID_KEY_ALIAS: ${{ secrets.RS_ANDROID_KEY_ALIAS }}
@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: 5b8e782c3e4378a43bf23ad62cbb226363147f0f
+          ref: 600f8b0e42c4255e292ce0c7fb6ce66c9c5507fe
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           path: rs-storage
           persist-credentials: false
