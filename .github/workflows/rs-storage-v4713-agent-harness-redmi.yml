@@ -1,4 +1,4 @@
-name: RS Storage v4.7.13 Agent Harness Redmi install gate
+name: RS Storage v4.7.13 Agent Harness Redmi update gate
 
 on:
   workflow_dispatch:
@@ -12,10 +12,10 @@ permissions:
 
 concurrency:
   group: rs-storage-v4713-agent-harness-redmi
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  physical-install:
+  physical-update:
     runs-on: [ self-hosted, android, redmi-note-13-pro-4g ]
     timeout-minutes: 25
     steps:
@@ -36,7 +36,7 @@ jobs:
           test -s "$APK"
           echo '22b91b970972c25ca10ca7e12f3a463dd91086594121bd84367f6315ff4f5f57  delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk' | sha256sum -c -
 
-      - name: Install and launch on physical Redmi Note 13 Pro 4G
+      - name: Prove in-place update compatibility
         shell: bash
         run: |
           set -euxo pipefail
@@ -46,23 +46,68 @@ jobs:
           MARKET="$(adb shell getprop ro.product.marketname | tr -d '\r')"
           printf 'model=%s\nmarket=%s\n' "$MODEL" "$MARKET" | tee delivery/device.txt
           { echo "$MARKET" | grep -qi 'Redmi Note 13 Pro'; } || test "$MODEL" = '23117RA68G'
-          adb install -r delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | tee delivery/adb-install.txt
-          grep -q 'Success' delivery/adb-install.txt
+          INSTALLED_PATH="$(adb shell pm path com.rs.localstorage | head -1 | sed 's/^package://' | tr -d '\r')"
+          test -n "$INSTALLED_PATH"
+          adb pull "$INSTALLED_PATH" delivery/installed-base.apk
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs delivery/installed-base.apk | tee delivery/installed-signature.txt
+          "$APKSIGNER" verify --print-certs delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | tee delivery/candidate-signature.txt
+          INSTALLED_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' delivery/installed-signature.txt | head -1)"
+          CANDIDATE_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' delivery/candidate-signature.txt | head -1)"
+          test -n "$INSTALLED_CERT"
+          test -n "$CANDIDATE_CERT"
+          printf 'installed_cert=%s\ncandidate_cert=%s\n' "$INSTALLED_CERT" "$CANDIDATE_CERT" | tee delivery/UPDATE_COMPATIBILITY.txt
+          if [ "$INSTALLED_CERT" != "$CANDIDATE_CERT" ]; then
+            printf 'compatible=false\nreason=signing-certificate-mismatch\n' | tee -a delivery/UPDATE_COMPATIBILITY.txt
+            exit 1
+          fi
+          printf 'compatible=true\n' | tee -a delivery/UPDATE_COMPATIBILITY.txt
+          adb shell dumpsys package com.rs.localstorage > delivery/package-before.txt
+          sed -n 's/^[[:space:]]*firstInstallTime=/firstInstallTime=/p' delivery/package-before.txt | head -1 > delivery/first-install-before.txt
+          sed -n 's/^[[:space:]]*userId=/userId=/p' delivery/package-before.txt | head -1 > delivery/uid-before.txt
+          test -s delivery/first-install-before.txt
+          test -s delivery/uid-before.txt
+
+      - name: Update without clearing application data
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK=delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk
+          adb install -r "$APK" | tee delivery/adb-update.txt
+          grep -q 'Success' delivery/adb-update.txt
+          adb shell dumpsys package com.rs.localstorage > delivery/package-after.txt
+          sed -n 's/^[[:space:]]*firstInstallTime=/firstInstallTime=/p' delivery/package-after.txt | head -1 > delivery/first-install-after.txt
+          sed -n 's/^[[:space:]]*userId=/userId=/p' delivery/package-after.txt | head -1 > delivery/uid-after.txt
+          cmp delivery/first-install-before.txt delivery/first-install-after.txt
+          cmp delivery/uid-before.txt delivery/uid-after.txt
+          grep -q 'versionName=4.7.13' delivery/package-after.txt
           adb shell am force-stop com.rs.localstorage
           adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1 | tee delivery/launch.txt
           sleep 5
           adb shell pidof com.rs.localstorage | tee delivery/pid.txt
           test -s delivery/pid.txt
-          adb shell dumpsys package com.rs.localstorage | tee delivery/package.txt
-          grep -q 'versionName=4.7.13' delivery/package.txt
           adb shell pm path com.rs.localstorage | tee delivery/installed-path.txt
           grep -q '^package:' delivery/installed-path.txt
-          printf 'physical_install=pass\nsource_sha=08a39ae185cdec964f892ec53b5dacbed7546d34\napk_sha256=22b91b970972c25ca10ca7e12f3a463dd91086594121bd84367f6315ff4f5f57\n' | tee delivery/PHYSICAL_INSTALL_GATE.txt
+          printf 'physical_update=pass\ndata_cleared=false\nsource_sha=08a39ae185cdec964f892ec53b5dacbed7546d34\napk_sha256=22b91b970972c25ca10ca7e12f3a463dd91086594121bd84367f6315ff4f5f57\n' | tee delivery/PHYSICAL_UPDATE_GATE.txt
 
-      - name: Publish APK only after physical gate
+      - name: Upload mismatch diagnostics
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: RS-Storage-v4.7.13-agent-harness-ARM64-signed-installed
+          name: RS-Storage-v4.7.13-update-compatibility-diagnostics
+          path: |
+            delivery/UPDATE_COMPATIBILITY.txt
+            delivery/installed-signature.txt
+            delivery/candidate-signature.txt
+            delivery/device.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publish APK only after data-preserving physical update
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Storage-v4.7.13-agent-harness-ARM64-signed-updated-with-data
           path: delivery/
           if-no-files-found: error
           retention-days: 30
