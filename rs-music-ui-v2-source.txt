@@ -1,0 +1,4 @@
+RS Music source branch: feat/rs-music-ui-v2
+Validated source revision: 976e60e9d935d190a4fcced6a07ba8740cff2843
+Version: 0.1.1-qa.2 (versionCode 3)
+Purpose: keep the previously accepted RS Music UI and fix Songs scrolling without redesign. Row swipe actions must not use a drag detector that captures vertical gestures; vertical intent must remain owned by the Songs LazyColumn, while horizontal swipe actions lock only after clear horizontal movement. Keep pinch-to-density two-finger-only, prior motion/menu fixes, professional icon policy, and versioned artifact naming.
