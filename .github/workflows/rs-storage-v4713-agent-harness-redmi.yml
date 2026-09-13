@@ -1,0 +1,68 @@
+name: RS Storage v4.7.13 Agent Harness Redmi install gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-storage-v4713-agent-harness ]
+    paths: [ '.github/workflows/rs-storage-v4713-agent-harness-redmi.yml' ]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: rs-storage-v4713-agent-harness-redmi
+  cancel-in-progress: false
+
+jobs:
+  physical-install:
+    runs-on: [ self-hosted, android, redmi-note-13-pro-4g ]
+    timeout-minutes: 25
+    steps:
+      - name: Download hosted-runner-approved candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: internal-v4.7.13-redmi-install-candidate
+          path: delivery
+          repository: MHGlobal/template-lab
+          run-id: 34763514548
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify exact candidate before device access
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK=delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk
+          test -s "$APK"
+          echo '22b91b970972c25ca10ca7e12f3a463dd91086594121bd84367f6315ff4f5f57  delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk' | sha256sum -c -
+
+      - name: Install and launch on physical Redmi Note 13 Pro 4G
+        shell: bash
+        run: |
+          set -euxo pipefail
+          adb wait-for-device
+          adb devices -l | tee delivery/adb-devices.txt
+          MODEL="$(adb shell getprop ro.product.model | tr -d '\r')"
+          MARKET="$(adb shell getprop ro.product.marketname | tr -d '\r')"
+          printf 'model=%s\nmarket=%s\n' "$MODEL" "$MARKET" | tee delivery/device.txt
+          { echo "$MARKET" | grep -qi 'Redmi Note 13 Pro'; } || test "$MODEL" = '23117RA68G'
+          adb install -r delivery/RS-Storage-v4.7.13-agent-harness-arm64.apk | tee delivery/adb-install.txt
+          grep -q 'Success' delivery/adb-install.txt
+          adb shell am force-stop com.rs.localstorage
+          adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1 | tee delivery/launch.txt
+          sleep 5
+          adb shell pidof com.rs.localstorage | tee delivery/pid.txt
+          test -s delivery/pid.txt
+          adb shell dumpsys package com.rs.localstorage | tee delivery/package.txt
+          grep -q 'versionName=4.7.13' delivery/package.txt
+          adb shell pm path com.rs.localstorage | tee delivery/installed-path.txt
+          grep -q '^package:' delivery/installed-path.txt
+          printf 'physical_install=pass\nsource_sha=08a39ae185cdec964f892ec53b5dacbed7546d34\napk_sha256=22b91b970972c25ca10ca7e12f3a463dd91086594121bd84367f6315ff4f5f57\n' | tee delivery/PHYSICAL_INSTALL_GATE.txt
+
+      - name: Publish APK only after physical gate
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Storage-v4.7.13-agent-harness-ARM64-signed-installed
+          path: delivery/
+          if-no-files-found: error
+          retention-days: 30
