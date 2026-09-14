@@ -52,13 +52,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
       - name: Install Android and browser toolchains
         shell: bash
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
           npm install --no-save --no-audit --no-fund playwright@1.55.0
           npx playwright install --with-deps chromium
 
@@ -154,7 +156,7 @@ jobs:
             AUDIT_PASS="RsAudit-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-A9!"
             export AUDIT_PASS
             python3 - <<'PY' >/tmp/rs_users.xml
-            import base64,hashlib,html,os,secrets
+            import base64,hashlib,os,secrets
             pw=os.environ['AUDIT_PASS'].encode()
             salt=secrets.token_bytes(16)
             digest=hashlib.pbkdf2_hmac('sha256',pw,salt,180000,dklen=32)
