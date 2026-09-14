@@ -1,0 +1,107 @@
+name: RS Storage Audit Wave 2 Reporter
+
+on:
+  workflow_run:
+    workflows:
+      - RS Storage Audit Wave 2 Real Task Gates
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-sanitized-evidence:
+    name: Publish sanitized Wave 2 evidence
+    if: ${{ github.event.workflow_run.head_branch == 'editor' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Template Lab
+        uses: actions/checkout@v4
+        with:
+          ref: editor
+
+      - name: Collect sanitized run evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100" > /tmp/jobs.json
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log > /tmp/wave2.log 2>/dev/null || true
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+
+          jobs=json.loads(Path('/tmp/jobs.json').read_text(encoding='utf-8')).get('jobs',[])
+          safe=[]
+          log=Path('/tmp/wave2.log').read_text(encoding='utf-8',errors='ignore') if Path('/tmp/wave2.log').exists() else ''
+          patterns=(
+              r'runtime_tool_count=\d+',
+              r'git_status=(?:true|false)',
+              r'git_diff=(?:true|false)',
+              r'git_log=(?:true|false)',
+              r'git_commit=(?:true|false)',
+              r'git_push=(?:true|false)',
+              r'null_executor_count=\d+',
+              r'engineer_git_(?:commit|push|status|diff)_policy=[A-Z_]+',
+              r'blockers=\d+',
+              r'edit_persisted=(?:true|false)',
+              r'undo=(?:true|false)',
+              r'redo=(?:true|false)',
+              r'(?:plain_traversal|encoded_traversal|symlink_escape)_blocked=(?:true|false)',
+              r'synthetic_git_diff_visible=(?:true|false)',
+              r'empty_evidence_rejected=(?:true|false)',
+              r'unknown_diff_rejected=(?:true|false)',
+              r'complete_evidence_passed=(?:true|false)',
+              r'WAVE2_[A-Z0-9_=-]+[^\n]*',
+              r'FINAL_AUDIT_COMPLETE=[^\n]*',
+              r'runtime-blockers=\d+',
+          )
+          for line in log.splitlines():
+              for pat in patterns:
+                  m=re.search(pat,line)
+                  if m:
+                      v=m.group(0).strip()
+                      if v not in safe: safe.append(v)
+
+          out=[]
+          out += ['# RS Storage Audit — Wave 2 latest public-runner evidence','']
+          out += [f'- Run ID: `{os.environ["RUN_ID"]}`',
+                  f'- Run URL: {os.environ["RUN_URL"]}',
+                  f'- Workflow conclusion: **{os.environ["RUN_CONCLUSION"]}**',
+                  f'- Template Lab head SHA: `{os.environ["HEAD_SHA"]}`',
+                  '- Target: `MHGlobal/RS-Storage` · `release/v4.7.13-agent-harness`','']
+          out += ['## Job conclusions','']
+          for j in jobs:
+              out.append(f'- `{j.get("name")}`: **{j.get("conclusion") or j.get("status")}**')
+          out += ['','## Sanitized gate markers','']
+          if safe:
+              out += [f'- `{x}`' for x in safe]
+          else:
+              out.append('- No allow-listed gate markers were recovered from the run log.')
+          out += ['','## Audit policy','',
+                  'This report is evidence only. A green workflow does not by itself complete the RS Storage audit. Android visual review, Android-served Web UI, upgrade/data preservation, transfer/performance and physical Wi-Fi/hotspot evidence remain separate mandatory gates until explicitly completed.','']
+          Path('reports/rs-storage-wave2-latest.md').write_text('\n'.join(out),encoding='utf-8')
+          PY
+          cat reports/rs-storage-wave2-latest.md
+
+      - name: Commit sanitized evidence to editor
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'RS Audit Bot'
+          git config user.email 'rs-audit-bot@users.noreply.github.com'
+          git add reports/rs-storage-wave2-latest.md
+          if git diff --cached --quiet; then
+            echo 'No report delta to publish.'
+            exit 0
+          fi
+          git commit -m "docs(audit): record Wave 2 public-runner evidence"
+          git push origin HEAD:editor
