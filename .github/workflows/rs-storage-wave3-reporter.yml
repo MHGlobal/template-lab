@@ -1,0 +1,70 @@
+name: RS Storage Audit Wave 3 Reporter
+
+on:
+  workflow_run:
+    workflows:
+      - RS Storage Audit Wave 3 Android Runtime
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-index:
+    name: Publish Wave 3 evidence index
+    if: ${{ github.event.workflow_run.head_branch == 'editor' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: editor
+      - name: Collect sanitized metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100" > /tmp/jobs.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts?per_page=100" > /tmp/artifacts.json
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log > /tmp/wave3.log 2>/dev/null || true
+          python3 - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          jobs=json.loads(Path('/tmp/jobs.json').read_text()).get('jobs',[])
+          arts=json.loads(Path('/tmp/artifacts.json').read_text()).get('artifacts',[])
+          log=Path('/tmp/wave3.log').read_text(errors='ignore') if Path('/tmp/wave3.log').exists() else ''
+          allow=[]
+          pats=[r'UPGRADE_[A-Z_]+=(?:true|false)',r'ANDROID_EMBEDDED_SERVER_8080=(?:true|false)',r'ANDROID_SERVED_WEB_SCREENSHOTS=\d+',r'ANDROID_SERVED_WEB_PAGES=\d+',r'WAVE3_[A-Z0-9_=-]+[^\n]*',r'FINAL_AUDIT_COMPLETE=[^\n]*']
+          for line in log.splitlines():
+              for p in pats:
+                  m=re.search(p,line)
+                  if m and m.group(0).strip() not in allow: allow.append(m.group(0).strip())
+          out=['# RS Storage Audit — Wave 3 latest evidence index','',f'- Run ID: `{os.environ["RUN_ID"]}`',f'- Run URL: {os.environ["RUN_URL"]}',f'- Workflow conclusion: **{os.environ["RUN_CONCLUSION"]}**',f'- Template Lab head SHA: `{os.environ["HEAD_SHA"]}`','- Target: `MHGlobal/RS-Storage` · `release/v4.7.13-agent-harness`','','## Job conclusions','']
+          out += [f'- `{j.get("name")}`: **{j.get("conclusion") or j.get("status")}**' for j in jobs]
+          out += ['','## Evidence artifacts','']
+          if arts:
+              for a in arts: out.append(f'- `{a.get("name")}` · artifact id `{a.get("id")}` · expired=`{a.get("expired")}`')
+          else: out.append('- No artifacts were published.')
+          out += ['','## Sanitized markers','']
+          out += [f'- `{x}`' for x in allow] if allow else ['- No allow-listed markers recovered.']
+          out += ['','## Audit policy','', 'A successful Wave 3 run is not final approval. The screenshots in the evidence artifact must be downloaded and visually reviewed. Transfer/performance and physical Wi-Fi/hotspot gates remain mandatory until separately completed.','']
+          Path('reports/rs-storage-wave3-latest.md').write_text('\n'.join(out),encoding='utf-8')
+          PY
+          cat reports/rs-storage-wave3-latest.md
+      - name: Commit evidence index
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'RS Audit Bot'
+          git config user.email 'rs-audit-bot@users.noreply.github.com'
+          git add reports/rs-storage-wave3-latest.md
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'docs(audit): record Wave 3 evidence index'
+          git push origin HEAD:editor
