@@ -66,19 +66,27 @@ jobs:
           Write-Host "VS2022=$installPath"
           & $msbuild -version
 
-      - name: Install matching Windows SDK and WDK 26100.6584
+      - name: Install Windows SDK and WDK 26100.6584 from Microsoft
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          winget source update --disable-interactivity | Out-Host
-          winget install --id Microsoft.WindowsSDK.10.0.26100 --exact --version 10.0.26100.6584 --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
-          if ($LASTEXITCODE -notin @(0,-1978335189)) { throw "SDK install failed with $LASTEXITCODE" }
-          winget install --id Microsoft.WindowsWDK.10.0.26100 --exact --version 10.1.26100.6584 --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
-          if ($LASTEXITCODE -notin @(0,-1978335189)) { throw "WDK install failed with $LASTEXITCODE" }
+          $ProgressPreference = 'SilentlyContinue'
+          $sdk = Join-Path $env:RUNNER_TEMP 'winsdksetup.exe'
+          $wdk = Join-Path $env:RUNNER_TEMP 'wdksetup.exe'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://go.microsoft.com/fwlink/?linkid=2338977' -OutFile $sdk
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://download.microsoft.com/download/41fb59c2-1723-45f9-a270-96b73ad58233/KIT_BUNDLE_WDK_MEDIACREATION/wdksetup.exe' -OutFile $wdk
+          if ((Get-Item $sdk).Length -lt 500KB) { throw 'SDK bootstrapper download is unexpectedly small' }
+          if ((Get-Item $wdk).Length -lt 500KB) { throw 'WDK bootstrapper download is unexpectedly small' }
+          $sdkProcess = Start-Process -FilePath $sdk -ArgumentList @('/features','+','/quiet','/norestart') -Wait -PassThru
+          if ($sdkProcess.ExitCode -notin @(0,3010)) { throw "SDK setup failed with $($sdkProcess.ExitCode)" }
+          $wdkProcess = Start-Process -FilePath $wdk -ArgumentList @('/features','+','/quiet','/norestart') -Wait -PassThru
+          if ($wdkProcess.ExitCode -notin @(0,3010)) { throw "WDK setup failed with $($wdkProcess.ExitCode)" }
           $kitRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
           if (-not (Test-Path "$kitRoot\Include\10.0.26100.0")) { throw 'Windows SDK 26100 headers are missing' }
           if (-not (Test-Path "$kitRoot\build\10.0.26100.0\WindowsDriver.common.targets")) { throw 'WDK 26100 build targets are missing' }
-          Get-ChildItem "$kitRoot\build\10.0.26100.0\bin" -Filter 'Microsoft.DriverKit.Build.Tasks*.dll' | Format-Table Name,Length
+          $tasks = Get-ChildItem "$kitRoot\build\10.0.26100.0\bin" -Filter 'Microsoft.DriverKit.Build.Tasks*.dll'
+          if (-not $tasks) { throw 'WDK DriverKit MSBuild task assembly is missing' }
+          $tasks | Format-Table Name,Length
 
       - name: Build RS Remote virtual display driver
         shell: pwsh
