@@ -53,3 +53,7 @@ The first public Android emulator evidence job builds the x86_64 audit variant s
 5. Transfer/upload/copy performance and cancellation/recovery tests with synthetic payloads.
 6. Physical hotspot/Wi-Fi/Wi-Fi Direct validation where CI cannot truthfully emulate the network topology.
 7. Consolidated recovery specification only after the evidence set is complete.
+
+## Wave 2 public-runner rerun
+
+A fresh Wave 2 run was requested after installing the sanitized completion reporter. The reporter records only allow-listed gate markers and job conclusions; it never publishes the private RS Storage source tree.
