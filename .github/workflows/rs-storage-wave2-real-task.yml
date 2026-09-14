@@ -1,0 +1,283 @@
+name: RS Storage Audit Wave 2 Real Task Gates
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ editor ]
+    paths:
+      - '.github/workflows/rs-storage-wave2-real-task.yml'
+      - 'reports/rs-storage-wave1-findings.md'
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REPOSITORY: MHGlobal/RS-Storage
+  TARGET_REF: release/v4.7.13-agent-harness
+  ROOT: target/source/current-v4.3.0
+
+jobs:
+  agent-runtime-surface:
+    name: Agent runtime tool surface
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      blockers: ${{ steps.surface.outputs.blockers }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Compile runtime-owned Agent Harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/rs-wave2-agent
+          mkdir -p "$OUT" audit-out
+          javac -d "$OUT" \
+            "$ROOT"/rsapp/src/main/java/com/rs/localstorage/{AgentDefinition,AgentRegistry,RunStateMachine,AgentEventBus,TaskLedger,ToolDefinition,ToolResult,ToolRegistry,PermissionEngine,WorkspaceGuard,NormalizedModelResponse,ReasoningPrivacy,ProviderCapabilityResolver,ProviderAdapters,ProgressDetector,DoomLoopDetector,RecoveryEngine,CompletionGate,ExecutionLoop,SessionEngine,MemoryEngine,ChangeSetEngine,SubagentManager,ContextEngine,ContextBudgetManager,AgentExtensions,AgentHarness}.java
+          cat > /tmp/AuditToolSurfaceMain.java <<'JAVA'
+          package com.rs.localstorage;
+          import java.lang.reflect.Method;
+          import java.util.Set;
+          import java.util.TreeSet;
+          public final class AuditToolSurfaceMain {
+            public static void main(String[] args) throws Exception {
+              Method m=AgentHarness.class.getDeclaredMethod("defaultTools");
+              m.setAccessible(true);
+              ToolRegistry r=(ToolRegistry)m.invoke(null);
+              Set<String> names=new TreeSet<String>();
+              int nullExecutors=0;
+              for(ToolDefinition t:r.list()){names.add(t.name);if(t.executor==null)nullExecutors++;}
+              PermissionEngine p=PermissionEngine.engineer();
+              System.out.println("runtime_tool_count="+names.size());
+              System.out.println("git_status="+names.contains("git_status"));
+              System.out.println("git_diff="+names.contains("git_diff"));
+              System.out.println("git_log="+names.contains("git_log"));
+              System.out.println("git_commit="+names.contains("git_commit"));
+              System.out.println("git_push="+names.contains("git_push"));
+              System.out.println("null_executor_count="+nullExecutors);
+              System.out.println("engineer_git_commit_policy="+p.evaluate("git.commit",false,false).decision);
+              System.out.println("engineer_git_push_policy="+p.evaluate("git.push",false,false).decision);
+              System.out.println("engineer_git_status_policy="+p.evaluate("git.status",false,false).decision);
+              System.out.println("engineer_git_diff_policy="+p.evaluate("git.diff",false,false).decision);
+            }
+          }
+          JAVA
+          javac -cp "$OUT" -d "$OUT" /tmp/AuditToolSurfaceMain.java
+          java -cp "$OUT" com.rs.localstorage.AuditToolSurfaceMain | tee audit-out/agent-runtime-surface.txt
+      - name: Classify runtime surface
+        id: surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT=audit-out/agent-runtime-surface.txt
+          blockers=0
+          grep -q '^git_status=true$' "$REPORT"
+          grep -q '^git_diff=true$' "$REPORT"
+          grep -q '^git_log=true$' "$REPORT"
+          grep -q '^engineer_git_commit_policy=ASK$' "$REPORT"
+          grep -q '^engineer_git_push_policy=ASK$' "$REPORT"
+          if grep -q '^git_commit=false$' "$REPORT"; then
+            echo 'BLOCKER F-W1-001: git.commit is permitted by policy but no explicit git_commit runtime tool exists.' | tee -a audit-out/agent-runtime-surface.txt
+            blockers=$((blockers+1))
+          fi
+          if grep -q '^git_push=false$' "$REPORT"; then
+            echo 'BLOCKER F-W1-001: git.push is permitted by policy but no explicit git_push runtime tool exists.' | tee -a audit-out/agent-runtime-surface.txt
+            blockers=$((blockers+1))
+          fi
+          echo "blockers=$blockers" | tee -a audit-out/agent-runtime-surface.txt
+          echo "blockers=$blockers" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wave2-agent-runtime-surface
+          path: audit-out/agent-runtime-surface.txt
+          retention-days: 7
+          if-no-files-found: error
+
+  workspace-recovery-e2e:
+    name: Workspace guard + undo/redo real task
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Execute synthetic edit, rollback, redo and boundary attacks
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/rs-wave2-workspace
+          WORK=/tmp/rs-wave2-fixture
+          OUTSIDE=/tmp/rs-wave2-outside
+          rm -rf "$OUT" "$WORK" "$OUTSIDE"
+          mkdir -p "$OUT" "$WORK/src" "$OUTSIDE" audit-out
+          printf 'before\n' > "$WORK/src/demo.txt"
+          printf 'secret\n' > "$OUTSIDE/secret.txt"
+          ln -s "$OUTSIDE" "$WORK/escape"
+          cat > /tmp/AuditWorkspaceMain.java <<'JAVA'
+          package com.rs.localstorage;
+          import java.nio.charset.StandardCharsets;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          public final class AuditWorkspaceMain {
+            static void require(boolean v,String m){if(!v)throw new AssertionError(m);}
+            public static void main(String[] a)throws Exception{
+              Path root=Path.of(a[0]);
+              WorkspaceGuard guard=new WorkspaceGuard(root);
+              ChangeSetEngine changes=new ChangeSetEngine(guard);
+              Path file=guard.resolve("src/demo.txt");
+              byte[] before=Files.readAllBytes(file),after="after\n".getBytes(StandardCharsets.UTF_8);
+              changes.record("audit-run","tool-edit-1","src/demo.txt",before,after);
+              Files.write(file,after);
+              require(Files.readString(file).equals("after\n"),"edit not persisted");
+              changes.undo();
+              require(Files.readString(file).equals("before\n"),"undo failed");
+              changes.redo();
+              require(Files.readString(file).equals("after\n"),"redo failed");
+              boolean traversalBlocked=false,encodedBlocked=false,symlinkBlocked=false;
+              try{guard.resolve("../rs-wave2-outside/secret.txt");}catch(SecurityException e){traversalBlocked=true;}
+              try{guard.resolve("%2e%2e%2frs-wave2-outside%2fsecret.txt");}catch(SecurityException e){encodedBlocked=true;}
+              try{guard.resolve("escape/secret.txt");}catch(SecurityException e){symlinkBlocked=true;}
+              require(traversalBlocked,"plain traversal escaped workspace");
+              require(encodedBlocked,"encoded traversal escaped workspace");
+              require(symlinkBlocked,"symlink escaped workspace");
+              System.out.println("edit_persisted=true");
+              System.out.println("undo=true");
+              System.out.println("redo=true");
+              System.out.println("plain_traversal_blocked=true");
+              System.out.println("encoded_traversal_blocked=true");
+              System.out.println("symlink_escape_blocked=true");
+            }
+          }
+          JAVA
+          javac -d "$OUT" \
+            "$ROOT"/rsapp/src/main/java/com/rs/localstorage/WorkspaceGuard.java \
+            "$ROOT"/rsapp/src/main/java/com/rs/localstorage/ChangeSetEngine.java \
+            /tmp/AuditWorkspaceMain.java
+          java -cp "$OUT" com.rs.localstorage.AuditWorkspaceMain "$WORK" | tee audit-out/workspace-recovery-e2e.txt
+      - name: Confirm Git diff can observe the synthetic change
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK=/tmp/rs-wave2-fixture
+          git -C "$WORK" init -q
+          git -C "$WORK" config user.name 'RS Audit'
+          git -C "$WORK" config user.email 'audit@example.invalid'
+          printf 'baseline\n' > "$WORK/src/git-fixture.txt"
+          git -C "$WORK" add src/git-fixture.txt
+          git -C "$WORK" commit -qm baseline
+          printf 'changed\n' > "$WORK/src/git-fixture.txt"
+          git -C "$WORK" diff --exit-code -- src/git-fixture.txt >/dev/null && { echo 'Expected a diff but none was detected'; exit 1; } || true
+          test -n "$(git -C "$WORK" diff -- src/git-fixture.txt)"
+          echo 'synthetic_git_diff_visible=true' | tee -a audit-out/workspace-recovery-e2e.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wave2-workspace-recovery-e2e
+          path: audit-out/workspace-recovery-e2e.txt
+          retention-days: 7
+          if-no-files-found: error
+
+  completion-integrity:
+    name: Completion gate cannot self-approve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Exercise incomplete and complete software-change evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/rs-wave2-completion
+          mkdir -p "$OUT" audit-out
+          cat > /tmp/AuditCompletionMain.java <<'JAVA'
+          package com.rs.localstorage;
+          public final class AuditCompletionMain {
+            static void require(boolean v,String m){if(!v)throw new AssertionError(m);}
+            public static void main(String[] a){
+              CompletionGate g=new CompletionGate();
+              CompletionGate.Evidence e=new CompletionGate.Evidence();
+              require(!g.evaluate(e).pass,"empty evidence passed");
+              e.objectiveSatisfied=true;e.requiredTasksResolved=true;e.noPendingTools=true;e.noBlockingError=true;
+              e.changesPersisted=true;e.validationAttempted=true;e.permissionsRespected=true;e.workspaceIntact=true;
+              e.softwareChange=true;e.diffKnown=false;
+              CompletionGate.Result missingDiff=g.evaluate(e);
+              require(!missingDiff.pass,"software change passed without known diff");
+              e.diffKnown=true;
+              require(g.evaluate(e).pass,"complete evidence did not pass");
+              System.out.println("empty_evidence_rejected=true");
+              System.out.println("unknown_diff_rejected=true");
+              System.out.println("complete_evidence_passed=true");
+            }
+          }
+          JAVA
+          javac -d "$OUT" "$ROOT"/rsapp/src/main/java/com/rs/localstorage/CompletionGate.java /tmp/AuditCompletionMain.java
+          java -cp "$OUT" com.rs.localstorage.AuditCompletionMain | tee audit-out/completion-integrity.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wave2-completion-integrity
+          path: audit-out/completion-integrity.txt
+          retention-days: 7
+
+  wave2-production-gate:
+    name: Wave 2 production gate
+    if: always()
+    needs:
+      - agent-runtime-surface
+      - workspace-recovery-e2e
+      - completion-integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce evidence, not test-count optimism
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "agent-runtime-surface=${{ needs.agent-runtime-surface.result }}"
+          echo "workspace-recovery-e2e=${{ needs.workspace-recovery-e2e.result }}"
+          echo "completion-integrity=${{ needs.completion-integrity.result }}"
+          echo "runtime-blockers=${{ needs.agent-runtime-surface.outputs.blockers }}"
+          test '${{ needs.agent-runtime-surface.result }}' = success
+          test '${{ needs.workspace-recovery-e2e.result }}' = success
+          test '${{ needs.completion-integrity.result }}' = success
+          if [ '${{ needs.agent-runtime-surface.outputs.blockers }}' != '0' ]; then
+            echo '::error::WAVE2_PRODUCTION_GATE=BLOCKED — explicit Agent runtime capabilities do not match declared Git write permissions.'
+            exit 1
+          fi
+          echo 'WAVE2_AUTOMATED_REAL_TASK_GATES=PASS'
+          echo 'FINAL_AUDIT_COMPLETE=NO — Android-served UI, upgrade, performance and physical-network evidence remain mandatory.'
