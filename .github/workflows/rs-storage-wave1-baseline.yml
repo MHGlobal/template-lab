@@ -1,0 +1,440 @@
+name: RS Storage Audit Wave 1 Baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ editor ]
+    paths:
+      - '.github/workflows/rs-storage-wave1-baseline.yml'
+      - 'audit/rsfile_visual_capture.mjs'
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REPOSITORY: MHGlobal/RS-Storage
+  TARGET_REF: release/v4.7.13-agent-harness
+  STABILIZATION_REF: release/v4.7.13-agent-stabilization
+  ROOT: target/source/current-v4.3.0
+
+jobs:
+  regression-map:
+    name: Regression map / branch delta
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.STABILIZATION_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: stabilization
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Compare trees without publishing private source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit-out
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          def scan(root):
+              out={}
+              root=Path(root)
+              for p in root.rglob('*'):
+                  if not p.is_file() or '.git' in p.parts: continue
+                  rel=str(p.relative_to(root))
+                  h=hashlib.sha256()
+                  with p.open('rb') as f:
+                      for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
+                  out[rel]=(h.hexdigest(),p.stat().st_size)
+              return out
+          a=scan('target'); b=scan('stabilization')
+          added=set(a)-set(b); removed=set(b)-set(a); changed={p for p in set(a)&set(b) if a[p][0]!=b[p][0]}
+          def buckets(paths):
+              out={}
+              for p in paths:
+                  parts=Path(p).parts
+                  k='/'.join(parts[:3]) if len(parts)>=3 else p
+                  out[k]=out.get(k,0)+1
+              return dict(sorted(out.items(), key=lambda kv:(-kv[1],kv[0]))[:20])
+          report={
+            'target_sha': Path('target/.git/HEAD').read_text().strip() if Path('target/.git/HEAD').exists() else 'checked-out',
+            'target_files':len(a),'stabilization_files':len(b),
+            'added_count':len(added),'removed_count':len(removed),'changed_count':len(changed),
+            'affected_buckets':buckets(added|removed|changed)
+          }
+          Path('audit-out/regression-map.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Record exact SHAs
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "target=$(git -C target rev-parse HEAD)" | tee audit-out/shas.txt
+          echo "stabilization=$(git -C stabilization rev-parse HEAD)" | tee -a audit-out/shas.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wave1-regression-map
+          path: audit-out/
+          retention-days: 7
+
+  agent-contracts:
+    name: Agent Harness behavior contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '17' }
+      - name: Compile and execute Agent Harness behavior gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/rs-agent-tests
+          mkdir -p "$OUT" audit-out
+          javac -d "$OUT" \
+            "$ROOT"/rsapp/src/main/java/com/rs/localstorage/{AgentDefinition,AgentRegistry,RunStateMachine,AgentEventBus,TaskLedger,ToolDefinition,ToolResult,ToolRegistry,PermissionEngine,WorkspaceGuard,NormalizedModelResponse,ReasoningPrivacy,ProviderCapabilityResolver,ProviderAdapters,ProgressDetector,DoomLoopDetector,RecoveryEngine,CompletionGate,ExecutionLoop,SessionEngine,MemoryEngine,ChangeSetEngine,SubagentManager,ContextEngine,ContextBudgetManager,AgentExtensions,AgentHarness}.java \
+            "$ROOT"/audit/{AgentCoreBehaviorMain,AgentToolBehaviorMain,ProviderAdapterBehaviorMain,ExecutionEngineBehaviorMain,SessionSubagentBehaviorMain,AgentHarnessIntegrationBehaviorMain}.java
+          : > audit-out/agent-gates.txt
+          for gate in AgentCoreBehaviorMain AgentToolBehaviorMain ProviderAdapterBehaviorMain ExecutionEngineBehaviorMain SessionSubagentBehaviorMain AgentHarnessIntegrationBehaviorMain; do
+            echo "=== $gate ===" | tee -a audit-out/agent-gates.txt
+            java -cp "$OUT" "com.rs.localstorage.$gate" 2>&1 | tee -a audit-out/agent-gates.txt
+          done
+      - name: Static safety and UI contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          python3 scripts/validate_rsia_runtime_js.py
+          python3 scripts/validate_rsia_ui.py
+          node source/current-v4.3.0/audit/inline-syntax.test.mjs
+          node source/current-v4.3.0/audit/upload-queue.test.mjs
+          python3 scripts/audit_v478_android_runtime_quality.py source/current-v4.3.0
+          python3 scripts/audit_v478_product_refinement.py source/current-v4.3.0
+          python3 scripts/audit_v479_reported_bugs.py source/current-v4.3.0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wave1-agent-contracts
+          path: audit-out/agent-gates.txt
+          retention-days: 7
+
+  web-runtime-visual:
+    name: Web runtime + visual evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Build Dynamic UI
+        working-directory: target/source/current-v4.3.0/dynamic-ui
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+          test -s dist/app.js
+          test -s dist/style.css
+      - name: Install Playwright Chromium
+        working-directory: target
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Existing real browser behavior gates
+        working-directory: target
+        run: |
+          set -euo pipefail
+          node scripts/rsfile_v471_runtime_gate.mjs source/current-v4.3.0
+          node scripts/rsfile_v477_real_runtime_gate.mjs source/current-v4.3.0
+          node scripts/rsfile_v478_real_runtime_gate.mjs source/current-v4.3.0
+          node scripts/rsfile_v479_overlay_runtime_gate.mjs source/current-v4.3.0
+          node scripts/rsfile_v4710_global_nav_gate.mjs source/current-v4.3.0
+      - name: Capture actual production-asset visual states
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_PATH="$GITHUB_WORKSPACE/target/node_modules" node audit/rsfile_visual_capture.mjs "$ROOT" audit-out/web
+          test "$(find audit-out/web -name '*.png' | wc -l)" -ge 8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wave1-web-visual-evidence
+          path: audit-out/web/
+          retention-days: 7
+          if-no-files-found: error
+
+  android-arm64-build:
+    name: Android ARM64 build + unit baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - name: Install Android toolchain
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Materialize pinned native runtime
+        run: |
+          set -euo pipefail
+          mkdir -p external/llama.cpp
+          git -C external/llama.cpp init
+          git -C external/llama.cpp remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C external/llama.cpp fetch --depth=1 origin 8ef78e644f559db4e8716b59bf76b8e11619337d
+          git -C external/llama.cpp checkout --detach FETCH_HEAD
+          python3 target/scripts/apply_llama_rs_compat.py external/llama.cpp
+          python3 target/scripts/apply_v434_load_progress.py external/llama.cpp
+          python3 target/scripts/apply_v450_llama_runtime.py external/llama.cpp
+          cp -R "$ROOT/rsapp" external/llama.cpp/examples/llama.android/rsapp
+          SETTINGS=external/llama.cpp/examples/llama.android/settings.gradle.kts
+          grep -q 'include(":rsapp")' "$SETTINGS" || printf '\ninclude(":rsapp")\n' >> "$SETTINGS"
+          chmod +x external/llama.cpp/examples/llama.android/gradlew
+      - name: Unit tests, compile and assemble debug
+        working-directory: external/llama.cpp/examples/llama.android
+        run: |
+          set -euo pipefail
+          ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.13113456" ./gradlew :rsapp:testDebugUnitTest :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac :rsapp:assembleDebug --stacktrace --no-daemon
+      - name: Validate ARM64 package without publishing APK
+        run: |
+          set -euo pipefail
+          mkdir -p audit-out
+          APK=$(find external/llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug -type f -name '*.apk' | head -1)
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libai-chat.so'
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee audit-out/android-badging.txt
+          grep -q "versionName='4.7.13'" audit-out/android-badging.txt
+          sha256sum "$APK" | awk '{print $1}' > audit-out/android-apk-sha256.txt
+          stat -c '%s' "$APK" > audit-out/android-apk-size.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wave1-android-arm64-metadata
+          path: audit-out/
+          retention-days: 7
+
+  security-baseline:
+    name: Security + permission baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Summarize manifest and risky primitives without printing source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit-out
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,json
+          root=Path('target/source/current-v4.3.0')
+          manifest=(root/'rsapp/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+          perms=re.findall(r'<uses-permission[^>]+android:name="([^"]+)"',manifest)
+          patterns={
+            'runtime_exec':r'Runtime\.getRuntime\(\)\.exec',
+            'process_builder':r'ProcessBuilder\(',
+            'webview_js':r'setJavaScriptEnabled\(true\)',
+            'cleartext_flag':r'usesCleartextTraffic',
+            'raw_shell_strings':r'/system/bin/sh|sh -c'
+          }
+          counts={k:0 for k in patterns}
+          for p in root.rglob('*'):
+            if not p.is_file() or p.suffix.lower() not in {'.java','.kt','.kts','.js','.mjs','.xml'}: continue
+            try:s=p.read_text(encoding='utf-8',errors='ignore')
+            except Exception:continue
+            for k,pat in patterns.items(): counts[k]+=len(re.findall(pat,s))
+          report={'permissions':perms,'primitive_counts':counts}
+          Path('audit-out/security-baseline.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Dependency audit for Dynamic UI
+        working-directory: target/source/current-v4.3.0/dynamic-ui
+        shell: bash
+        run: |
+          set +e
+          npm ci --no-audit --no-fund
+          npm audit --json > "$GITHUB_WORKSPACE/audit-out/npm-audit.json"
+          STATUS=$?
+          set -e
+          node - <<'JS'
+          const fs=require('fs'); const p=JSON.parse(fs.readFileSync(process.env.GITHUB_WORKSPACE+'/audit-out/npm-audit.json','utf8'));
+          console.log('npm vulnerability summary:', JSON.stringify(p.metadata?.vulnerabilities||{}));
+          JS
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wave1-security-baseline
+          path: audit-out/
+          retention-days: 7
+
+  android-emulator-visual:
+    name: Android emulator visual evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - name: Prepare x86_64 audit-only build
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('target/source/current-v4.3.0/rsapp/build.gradle.kts')
+          s=p.read_text(encoding='utf-8')
+          old='abiFilters += listOf("arm64-v8a")'
+          assert old in s
+          p.write_text(s.replace(old,'abiFilters += listOf("x86_64")'),encoding='utf-8')
+          PY
+          mkdir -p external/llama.cpp
+          git -C external/llama.cpp init
+          git -C external/llama.cpp remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C external/llama.cpp fetch --depth=1 origin 8ef78e644f559db4e8716b59bf76b8e11619337d
+          git -C external/llama.cpp checkout --detach FETCH_HEAD
+          python3 target/scripts/apply_llama_rs_compat.py external/llama.cpp
+          python3 target/scripts/apply_v434_load_progress.py external/llama.cpp
+          python3 target/scripts/apply_v450_llama_runtime.py external/llama.cpp
+          cp -R "$ROOT/rsapp" external/llama.cpp/examples/llama.android/rsapp
+          SETTINGS=external/llama.cpp/examples/llama.android/settings.gradle.kts
+          grep -q 'include(":rsapp")' "$SETTINGS" || printf '\ninclude(":rsapp")\n' >> "$SETTINGS"
+          chmod +x external/llama.cpp/examples/llama.android/gradlew
+          cd external/llama.cpp/examples/llama.android
+          ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.13113456" ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
+      - name: Boot emulator, install app and capture screenshots
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            mkdir -p audit-out/android
+            APK=$(find external/llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug -type f -name '*.apk' | head -1)
+            adb install -r "$APK"
+            adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || true
+            adb shell pm grant com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES || true
+            adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
+            adb shell am force-stop com.rs.localstorage
+            adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1
+            sleep 8
+            adb shell pidof com.rs.localstorage | tee audit-out/android/pid.txt
+            adb exec-out screencap -p > audit-out/android/01-main-launch.png
+            adb shell dumpsys activity activities > audit-out/android/activity.txt
+            adb shell uiautomator dump /sdcard/rs-window.xml || true
+            adb pull /sdcard/rs-window.xml audit-out/android/window.xml || true
+            adb shell input keyevent 4 || true
+            sleep 2
+            adb exec-out screencap -p > audit-out/android/02-after-back.png
+            adb logcat -d -t 600 > audit-out/android/logcat-tail.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wave1-android-emulator-visual
+          path: audit-out/android/
+          retention-days: 7
+          if-no-files-found: warn
+
+  wave1-gate:
+    name: Wave 1 aggregate gate
+    if: always()
+    needs:
+      - regression-map
+      - agent-contracts
+      - web-runtime-visual
+      - android-arm64-build
+      - security-baseline
+      - android-emulator-visual
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate results
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat <<EOF
+          regression-map=${{ needs.regression-map.result }}
+          agent-contracts=${{ needs.agent-contracts.result }}
+          web-runtime-visual=${{ needs.web-runtime-visual.result }}
+          android-arm64-build=${{ needs.android-arm64-build.result }}
+          security-baseline=${{ needs.security-baseline.result }}
+          android-emulator-visual=${{ needs.android-emulator-visual.result }}
+          EOF
+          for r in \
+            '${{ needs.regression-map.result }}' \
+            '${{ needs.agent-contracts.result }}' \
+            '${{ needs.web-runtime-visual.result }}' \
+            '${{ needs.android-arm64-build.result }}' \
+            '${{ needs.security-baseline.result }}' \
+            '${{ needs.android-emulator-visual.result }}'; do
+            test "$r" = success || exit 1
+          done
+          echo 'WAVE1_AUTOMATED_BASELINE=PASS'
+          echo 'FINAL_AUDIT_COMPLETE=NO (visual review and physical-device gates still required)'
