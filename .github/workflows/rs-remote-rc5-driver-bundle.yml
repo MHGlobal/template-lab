@@ -1,0 +1,202 @@
+name: RS Remote RC5 Virtual Display Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ rs-remote-actions ]
+    paths:
+      - '.github/workflows/rs-remote-rc5-driver-bundle.yml'
+      - 'runner/rs-remote-rc5-driver-request.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-remote-rc5-driver-bundle
+  cancel-in-progress: true
+
+jobs:
+  windows-bundle:
+    name: Windows Host + Virtual Display Driver
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout public runner repository
+
+      - name: Checkout private RS-Remote source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Remote
+          ref: ui/1.0.0-rc5-mobile-redesign
+          token: ${{ secrets.RS_REMOTE_READ_TOKEN || secrets.RS_STORAGE_READ_TOKEN }}
+          path: private-src
+          persist-credentials: false
+
+      - name: Verify requested private source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = (Get-Content 'runner/rs-remote-rc5-driver-request.txt' -Raw).Trim()
+          $actual = (git -C private-src rev-parse HEAD).Trim()
+          if ($actual -ne $expected) { throw "Source mismatch. Expected $expected, got $actual" }
+          foreach ($path in @(
+            'private-src/source/windows/RSRemote.VirtualDisplay.Driver/RSRemoteVirtualDisplay.vcxproj',
+            'private-src/source/windows/RSRemote.VirtualDisplay.Driver/RSRemoteVirtualDisplay.inf',
+            'private-src/source/windows/RSRemote.VirtualDisplay.Driver/Driver.cpp',
+            'private-src/source/windows/RSRemote.Host/VirtualDisplayComponent.cs'
+          )) { if (-not (Test-Path $path)) { throw "Missing $path" } }
+          "RS_REMOTE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Ensure VS2022 WDK component
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw 'vswhere.exe not found' }
+          $installPath = (& $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath).Trim()
+          if ([string]::IsNullOrWhiteSpace($installPath)) { throw 'Visual Studio installation not found' }
+          $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          if (-not (Test-Path $setup)) { throw 'Visual Studio setup.exe not found' }
+          & $setup modify --installPath "$installPath" --add Component.Microsoft.Windows.DriverKit --add Microsoft.VisualStudio.Component.Windows11SDK.26100 --quiet --norestart --wait
+          if ($LASTEXITCODE -notin @(0,3010)) { throw "Visual Studio component install failed with $LASTEXITCODE" }
+          "VS_INSTALL_PATH=$installPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install matching WDK 26100.6584
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget source update --disable-interactivity | Out-Host
+          winget install --id Microsoft.WindowsWDK.10.0.26100 --exact --version 10.1.26100.6584 --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+          if ($LASTEXITCODE -notin @(0,-1978335189)) { throw "WDK install failed with $LASTEXITCODE" }
+
+      - name: Build RS Remote virtual display driver
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = (& $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1).Trim()
+          if (-not (Test-Path $msbuild)) { throw "MSBuild not found: $msbuild" }
+          $project = (Resolve-Path 'private-src/source/windows/RSRemote.VirtualDisplay.Driver/RSRemoteVirtualDisplay.vcxproj').Path
+          & $msbuild $project /t:Rebuild /m /v:m /p:Configuration=Release /p:Platform=x64 /p:TargetVersion=Windows10 /p:TargetPlatformVersion=10.0.26100.0 /p:SignMode=TestSign
+          if ($LASTEXITCODE -ne 0) { throw "Driver build failed with $LASTEXITCODE" }
+
+      - name: Stage driver package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = (Resolve-Path 'private-src/source/windows/RSRemote.VirtualDisplay.Driver').Path
+          $dll = Get-ChildItem $root -Recurse -File -Filter 'RSRemoteVirtualDisplay.dll' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $cat = Get-ChildItem $root -Recurse -File -Filter 'RSRemoteVirtualDisplay.cat' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $cer = Get-ChildItem $root -Recurse -File -Filter '*.cer' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $inf = Get-Item "$root\RSRemoteVirtualDisplay.inf"
+          if ($null -eq $dll) { throw 'Driver DLL was not produced' }
+          if ($null -eq $cat) { throw 'Driver catalog was not produced' }
+          New-Item -ItemType Directory -Force -Path 'driver-package' | Out-Null
+          Copy-Item $dll.FullName 'driver-package/RSRemoteVirtualDisplay.dll'
+          Copy-Item $inf.FullName 'driver-package/RSRemoteVirtualDisplay.inf'
+          Copy-Item $cat.FullName 'driver-package/RSRemoteVirtualDisplay.cat'
+          if ($null -ne $cer) { Copy-Item $cer.FullName 'driver-package/RSRemoteVirtualDisplayTest.cer' }
+          Get-ChildItem driver-package | Format-Table Name,Length
+          $catSig = Get-AuthenticodeSignature 'driver-package/RSRemoteVirtualDisplay.cat'
+          "catalog_status=$($catSig.Status)" | Set-Content DRIVER_SIGNATURE_REPORT.txt
+          "catalog_subject=$($catSig.SignerCertificate.Subject)" | Add-Content DRIVER_SIGNATURE_REPORT.txt
+          "catalog_thumbprint=$($catSig.SignerCertificate.Thumbprint)" | Add-Content DRIVER_SIGNATURE_REPORT.txt
+          "driver_signing=test" | Add-Content DRIVER_SIGNATURE_REPORT.txt
+          Get-Content DRIVER_SIGNATURE_REPORT.txt
+
+      - name: Restore, build and regress Host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet restore private-src/source/windows/RSRemote.sln --runtime win-x64
+          dotnet build private-src/source/windows/RSRemote.sln --configuration Release --no-restore --verbosity normal
+          dotnet run --project private-src/source/windows/RSRemote.RegressionTests/RSRemote.RegressionTests.csproj --configuration Release
+
+      - name: Publish Host and create installable bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish private-src/source/windows/RSRemote.Host/RSRemote.Host.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output publish/windows `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:PublishReadyToRun=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+
+          New-Item -ItemType Directory -Force -Path 'bundle/components/virtual-display' | Out-Null
+          Copy-Item 'publish/windows/RSRemote.Host.exe' 'bundle/RS-Remote-Host-v1.0.0-rc5-win-x64.exe'
+          Copy-Item 'driver-package/*' 'bundle/components/virtual-display/'
+          Copy-Item 'private-src/docs/RELEASE_MANIFEST_1.0.0-rc5.md' 'bundle/RELEASE_MANIFEST_1.0.0-rc5.md'
+          Copy-Item 'DRIVER_SIGNATURE_REPORT.txt' 'bundle/DRIVER_SIGNATURE_REPORT.txt'
+          Set-Content 'bundle/VIRTUAL_DISPLAY_README.txt' @'
+          RS Remote RC5 - Virtual Display QA bundle
+
+          1. Extract this entire ZIP. Do not run the EXE from inside the ZIP.
+          2. Run RS-Remote-Host-v1.0.0-rc5-win-x64.exe.
+          3. Components > Virtual Monitor > Refresh status.
+          4. Install / Repair installs the packaged driver through Windows PnP.
+          5. Activate creates the additional Windows display.
+          6. Use Display settings to keep it in Extend mode.
+
+          IMPORTANT: This CI artifact is TEST-SIGNED for RC/QA validation. Windows production systems may reject it unless test-signing policy is enabled. The final public release requires a Microsoft/WHQL/attestation-signed catalog.
+          '@
+
+          Compress-Archive -Path 'bundle/*' -DestinationPath 'RS-Remote-Windows-v1.0.0-rc5-VirtualDisplay-QA.zip' -CompressionLevel Optimal
+          $exeHash = (Get-FileHash 'bundle/RS-Remote-Host-v1.0.0-rc5-win-x64.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          $zipHash = (Get-FileHash 'RS-Remote-Windows-v1.0.0-rc5-VirtualDisplay-QA.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content 'SHA256SUMS-WINDOWS-DRIVER.txt' @(
+            "$exeHash  RS-Remote-Host-v1.0.0-rc5-win-x64.exe",
+            "$zipHash  RS-Remote-Windows-v1.0.0-rc5-VirtualDisplay-QA.zip"
+          )
+          Set-Content 'WINDOWS_DRIVER_BUILD_REPORT.txt' @(
+            'source_repo=MHGlobal/RS-Remote',
+            'source_branch=ui/1.0.0-rc5-mobile-redesign',
+            "source_commit=$env:RS_REMOTE_COMMIT",
+            'productVersion=1.0.0-rc5',
+            'virtualDisplayPackaged=true',
+            'driverSigning=test',
+            'wdk=10.0.26100.6584',
+            'bundleLayout=exe+components/virtual-display'
+          )
+
+      - name: Validate bundle layout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            'bundle/RS-Remote-Host-v1.0.0-rc5-win-x64.exe',
+            'bundle/components/virtual-display/RSRemoteVirtualDisplay.dll',
+            'bundle/components/virtual-display/RSRemoteVirtualDisplay.inf',
+            'bundle/components/virtual-display/RSRemoteVirtualDisplay.cat',
+            'RS-Remote-Windows-v1.0.0-rc5-VirtualDisplay-QA.zip'
+          )) { if (-not (Test-Path $path)) { throw "Missing bundle file: $path" } }
+          if ((Get-Item 'bundle/RS-Remote-Host-v1.0.0-rc5-win-x64.exe').Length -lt 20MB) { throw 'Host EXE unexpectedly small' }
+          if ((Get-Item 'bundle/components/virtual-display/RSRemoteVirtualDisplay.dll').Length -lt 10KB) { throw 'Driver DLL unexpectedly small' }
+
+      - name: Upload Windows Host + Virtual Display bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Remote-Windows-v1.0.0-rc5-VirtualDisplay-QA
+          path: |
+            RS-Remote-Windows-v1.0.0-rc5-VirtualDisplay-QA.zip
+            SHA256SUMS-WINDOWS-DRIVER.txt
+            WINDOWS_DRIVER_BUILD_REPORT.txt
+            DRIVER_SIGNATURE_REPORT.txt
+            bundle/RS-Remote-Host-v1.0.0-rc5-win-x64.exe
+            bundle/components/virtual-display/RSRemoteVirtualDisplay.dll
+            bundle/components/virtual-display/RSRemoteVirtualDisplay.inf
+            bundle/components/virtual-display/RSRemoteVirtualDisplay.cat
+            bundle/components/virtual-display/RSRemoteVirtualDisplayTest.cer
+            bundle/VIRTUAL_DISPLAY_README.txt
+          if-no-files-found: warn
+          retention-days: 30
