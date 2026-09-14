@@ -21,6 +21,11 @@ on:
     paths:
       - '.github/workflows/rs-storage-full-audit.yml'
       - 'audit/**'
+  push:
+    branches: [ editor ]
+    paths:
+      - '.github/workflows/rs-storage-full-audit.yml'
+      - 'audit/**'
 
 permissions:
   contents: read
@@ -74,7 +79,7 @@ jobs:
           ref: ${{ steps.target.outputs.ref }}
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           path: target
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
 
       - name: Verify source identity
@@ -87,7 +92,7 @@ jobs:
           BRANCH="$(git branch --show-current || true)"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-          echo "RS Storage checkout verified."
+          echo 'RS Storage checkout verified.'
           echo "Target SHA: $SHA"
           echo "Target branch: ${BRANCH:-detached}"
           test -f AGENTS.md || echo '::warning::AGENTS.md not found at repository root.'
