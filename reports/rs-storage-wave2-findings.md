@@ -49,3 +49,7 @@ It remains an architectural maintainability risk because capability metadata and
 ## Audit remains incomplete
 
 Wave 2 does not replace the mandatory Android visual, Android-served Web, upgrade/data-preservation, transfer/performance and physical Wi-Fi/hotspot gates. Those continue independently while F-W2-001 remains open.
+
+## Wave 3 execution
+
+A fresh Wave 3 public-runner execution was requested after the completion reporter was installed. Wave 3 is responsible for the real upgrade-preservation path, native Android screenshots, embedded server startup and browser screenshots served by the actual Android application. Its screenshots still require manual visual review before any visual gate can pass.
