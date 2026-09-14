@@ -1,0 +1,139 @@
+name: RS Storage Full Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: RS Storage branch or SHA to audit
+        required: true
+        default: release/v4.7.13-agent-harness
+      audit_wave:
+        description: Audit wave
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - baseline
+          - full
+  pull_request:
+    branches: [ editor ]
+    paths:
+      - '.github/workflows/rs-storage-full-audit.yml'
+      - 'audit/**'
+  push:
+    branches: [ editor ]
+    paths:
+      - '.github/workflows/rs-storage-full-audit.yml'
+      - 'audit/**'
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REPOSITORY: MHGlobal/RS-Storage
+  DEFAULT_TARGET_REF: release/v4.7.13-agent-harness
+
+jobs:
+  preflight:
+    name: Pre-flight / private source access
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Template Lab
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify audit credential is configured
+        shell: bash
+        env:
+          RS_STORAGE_READ_TOKEN: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RS_STORAGE_READ_TOKEN:-}" ]; then
+            echo '::error::RS_STORAGE_READ_TOKEN is not available to this workflow.'
+            exit 1
+          fi
+          echo 'RS_STORAGE_READ_TOKEN is available to the workflow.'
+
+      - name: Resolve target ref
+        id: target
+        shell: bash
+        env:
+          DISPATCH_REF: ${{ inputs.target_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DISPATCH_REF:-}" ]; then
+            TARGET_REF="$DISPATCH_REF"
+          else
+            TARGET_REF="$DEFAULT_TARGET_REF"
+          fi
+          echo "ref=$TARGET_REF" >> "$GITHUB_OUTPUT"
+          echo "Target ref: $TARGET_REF"
+
+      - name: Checkout private RS Storage source read-only
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ steps.target.outputs.ref }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify source identity
+        id: source
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          BRANCH="$(git branch --show-current || true)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo 'RS Storage checkout verified.'
+          echo "Target SHA: $SHA"
+          echo "Target branch: ${BRANCH:-detached}"
+          test -f AGENTS.md || echo '::warning::AGENTS.md not found at repository root.'
+
+      - name: Runner and toolchain inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit-out
+          {
+            echo '# RS Storage Audit Pre-flight'
+            echo
+            echo "- Target repository: $TARGET_REPOSITORY"
+            echo "- Target ref: ${{ steps.target.outputs.ref }}"
+            echo "- Target SHA: ${{ steps.source.outputs.sha }}"
+            echo "- Runner OS: $RUNNER_OS"
+            echo "- Runner arch: $RUNNER_ARCH"
+            echo "- CPU count: $(nproc)"
+            echo "- Memory: $(free -h | awk '/Mem:/ {print $2}')"
+            echo "- Disk free: $(df -h . | awk 'NR==2 {print $4}')"
+            echo "- Java: $(java -version 2>&1 | head -n1 || true)"
+            echo "- Node: $(node --version || true)"
+            echo "- Python: $(python3 --version || true)"
+            echo "- Git: $(git --version || true)"
+            echo
+            echo 'Result: PRE-FLIGHT SOURCE ACCESS PASS'
+          } > audit-out/preflight.md
+          cat audit-out/preflight.md
+
+      - name: Confirm source is not staged as public artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d target/.git
+          test ! -e audit-out/source
+          echo 'Private source remains runner-local only.'
+
+      - name: Upload sanitized pre-flight report
+        uses: actions/upload-artifact@v4
+        with:
+          name: rs-storage-preflight-${{ steps.source.outputs.sha }}
+          path: audit-out/preflight.md
+          if-no-files-found: error
+          retention-days: 7
