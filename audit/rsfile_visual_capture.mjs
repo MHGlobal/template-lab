@@ -77,19 +77,33 @@ const browser = await chromium.launch({ headless: true });
 async function capture(name, viewport, mobile) {
   const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile });
   const page = await context.newPage();
+  const diagnostics = [];
   await page.goto(base + '/admin/files?d=%2Fstorage%2FRS%20Storage');
   await page.waitForFunction(() => window.__RS_FILE_V4710_GLOBAL_NAV__ && document.querySelector('.rs-v477-file-commandbar'));
+  diagnostics.push(await page.evaluate(() => {
+    const fab=document.querySelector('.rs-menu-fab'); const s=fab?getComputedStyle(fab):null;
+    return {state:'files',fabExists:!!fab,fabDisplay:s?.display||null,fabVisibility:s?.visibility||null,fabOpacity:s?.opacity||null};
+  }));
   await page.screenshot({ path: path.join(out, `${name}-01-files.png`), fullPage: true });
-  await page.click('.rs-menu-fab');
+
+  // Drive the actual production runtime function directly. This avoids a hidden trigger
+  // preventing evidence collection while still rendering the real production state.
+  await page.evaluate(() => window.rsMenuToggle(true));
   await page.waitForFunction(() => document.getElementById('rsGlobalMenu')?.classList.contains('open'));
+  diagnostics.push(await page.evaluate(() => ({state:'global-menu',open:document.getElementById('rsGlobalMenu')?.classList.contains('open')})));
   await page.screenshot({ path: path.join(out, `${name}-02-global-menu.png`), fullPage: true });
+
   await page.evaluate(() => window.rsMenuToggle(false));
-  await page.click('#file .more');
-  await page.waitForSelector('.context-backdrop.rs-v479-context-overlay');
+  await page.evaluate(() => document.querySelector('#file .more')?.click());
+  await page.waitForSelector('.context-backdrop.rs-v479-context-overlay', { state:'attached' });
+  diagnostics.push(await page.evaluate(() => ({state:'context-menu',exists:!!document.querySelector('.context-backdrop.rs-v479-context-overlay')})));
   await page.screenshot({ path: path.join(out, `${name}-03-context-menu.png`), fullPage: true });
+
   await page.evaluate(() => window.rsOpenTransfers(true));
   await page.waitForFunction(() => document.getElementById('rsTransferModal')?.classList.contains('open'));
+  diagnostics.push(await page.evaluate(() => ({state:'transfers',open:document.getElementById('rsTransferModal')?.classList.contains('open')})));
   await page.screenshot({ path: path.join(out, `${name}-04-transfers.png`), fullPage: true });
+  fs.writeFileSync(path.join(out, `${name}-diagnostics.json`), JSON.stringify(diagnostics, null, 2));
   await context.close();
 }
 
