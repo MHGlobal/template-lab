@@ -1,9 +1,9 @@
 # RS Storage Audit — Wave 3 latest evidence index
 
-- Run ID: `34899261692`
-- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/34899261692
+- Run ID: `34899549508`
+- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/34899549508
 - Workflow conclusion: **failure**
-- Template Lab head SHA: `99d8de13f9f5304a851ca5de6532b58b1cb7fe46`
+- Template Lab head SHA: `da19d2062ccccc11f1f6f1a4e3b007240fbce180`
 - Target: `MHGlobal/RS-Storage` · `release/v4.7.13-agent-harness`
 
 ## Job conclusions
