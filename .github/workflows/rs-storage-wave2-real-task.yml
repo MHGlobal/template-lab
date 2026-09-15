@@ -46,7 +46,7 @@ jobs:
           OUT=/tmp/rs-wave2-agent
           mkdir -p "$OUT" audit-out
           javac -d "$OUT" \
-            "$ROOT"/rsapp/src/main/java/com/rs/localstorage/{AgentDefinition,AgentRegistry,RunStateMachine,AgentEventBus,TaskLedger,ToolDefinition,ToolResult,ToolRegistry,PermissionEngine,WorkspaceGuard,NormalizedModelResponse,ReasoningPrivacy,ProviderCapabilityResolver,ProviderAdapters,ProgressDetector,DoomLoopDetector,RecoveryEngine,CompletionGate,ExecutionLoop,SessionEngine,MemoryEngine,ChangeSetEngine,SubagentManager,ContextEngine,ContextBudgetManager,AgentExtensions,AgentHarness}.java
+            "$ROOT"/rsapp/src/main/java/com/rs/localstorage/{AgentDefinition,AgentRegistry,RunStateMachine,AgentEventBus,TaskLedger,ToolDefinition,ToolResult,ToolRegistry,PermissionEngine,WorkspaceGuard,RuntimeToolExecutors,NormalizedModelResponse,ReasoningPrivacy,ProviderCapabilityResolver,ProviderAdapters,ProgressDetector,DoomLoopDetector,RecoveryEngine,CompletionGate,ExecutionLoop,SessionEngine,MemoryEngine,ChangeSetEngine,SubagentManager,ContextEngine,ContextBudgetManager,AgentExtensions,AgentHarness}.java
           cat > /tmp/AuditToolSurfaceMain.java <<'JAVA'
           package com.rs.localstorage;
           import java.lang.reflect.Method;
