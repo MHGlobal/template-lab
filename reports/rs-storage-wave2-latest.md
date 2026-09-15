@@ -1,22 +1,38 @@
 # RS Storage Audit — Wave 2 latest public-runner evidence
 
-- Run ID: `35020256857`
-- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35020256857
-- Workflow conclusion: **failure**
-- Template Lab head SHA: `d460840fb64e5e391d23494f612f989a48dc2293`
+- Run ID: `35031577595`
+- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35031577595
+- Workflow conclusion: **success**
+- Template Lab head SHA: `c71eb77b37c98462061b74493f63d1738b98d191`
 - Target: `MHGlobal/RS-Storage` · `release/v4.7.13-agent-harness`
 
 ## Job conclusions
 
-- `Completion gate cannot self-approve`: **success**
-- `Agent runtime tool surface`: **failure**
+- `Agent runtime tool surface`: **success**
 - `Workspace guard + undo/redo real task`: **success**
-- `Wave 2 production gate`: **failure**
+- `Completion gate cannot self-approve`: **success**
+- `Wave 2 production gate`: **success**
 
 ## Sanitized gate markers
 
+- `runtime_tool_count=27`
+- `git_status=true`
+- `git_diff=true`
+- `git_log=true`
+- `git_commit=true`
+- `git_push=true`
+- `null_executor_count=0`
+- `engineer_git_commit_policy=ASK`
+- `engineer_git_push_policy=ASK`
+- `engineer_git_status_policy=ALLOW`
+- `engineer_git_diff_policy=ALLOW`
+- `blockers=0`
+- `git_commit=false`
+- `git_push=false`
 - `WAVE2_AUTOMATED_REAL_TASK_GATES=PASS'^[[0m`
 - `FINAL_AUDIT_COMPLETE=NO — Android-served UI, upgrade, performance and physical-network evidence remain mandatory.'^[[0m`
+- `WAVE2_AUTOMATED_REAL_TASK_GATES=PASS`
+- `FINAL_AUDIT_COMPLETE=NO — Android-served UI, upgrade, performance and physical-network evidence remain mandatory.`
 
 ## Audit policy
 
