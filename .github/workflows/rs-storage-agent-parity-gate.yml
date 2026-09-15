@@ -1,0 +1,104 @@
+name: RS Storage Audit Agent Tool Parity Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - '.github/workflows/rs-storage-agent-parity-gate.yml'
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF: release/v4.7.13-agent-harness
+  ROOT: target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage
+
+jobs:
+  parity:
+    name: Native schema + registry + production dispatcher parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Analyze canonical capability parity without publishing private source
+        id: parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit-out
+          python3 - <<'PY' | tee audit-out/agent-parity.txt
+          from pathlib import Path
+          import re
+
+          root=Path('target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage')
+          harness=(root/'AgentHarness.java').read_text(encoding='utf-8')
+          native=(root/'RsAgentNativeTools.java').read_text(encoding='utf-8')
+          runtime=(root/'RsAiAgentRuntime.java').read_text(encoding='utf-8')
+          executors=(root/'RuntimeToolExecutors.java').read_text(encoding='utf-8')
+
+          blockers=[]
+          def mark(name, value): print(f'{name}={str(bool(value)).lower()}')
+
+          registry_commit='register(r,"git_commit","git.commit"' in harness
+          registry_push='register(r,"git_push","git.push"' in harness
+          native_commit='"git_commit"' in native
+          native_push='"git_push"' in native
+          dispatcher_commit='if("git_commit".equals(tool))' in runtime
+          dispatcher_push='if("git_push".equals(tool))' in runtime
+          instruction_commit='git_commit' in re.search(r'FERRAMENTAS DISPONÍVEIS:.*?\\n',runtime,re.S).group(0) if 'FERRAMENTAS DISPONÍVEIS:' in runtime else False
+          instruction_push='git_push' in re.search(r'FERRAMENTAS DISPONÍVEIS:.*?\\n',runtime,re.S).group(0) if 'FERRAMENTAS DISPONÍVEIS:' in runtime else False
+
+          for n,v in [('REGISTRY_GIT_COMMIT',registry_commit),('REGISTRY_GIT_PUSH',registry_push),('NATIVE_SCHEMA_GIT_COMMIT',native_commit),('NATIVE_SCHEMA_GIT_PUSH',native_push),('PRODUCTION_DISPATCH_GIT_COMMIT',dispatcher_commit),('PRODUCTION_DISPATCH_GIT_PUSH',dispatcher_push),('FALLBACK_INSTRUCTION_GIT_COMMIT',instruction_commit),('FALLBACK_INSTRUCTION_GIT_PUSH',instruction_push)]: mark(n,v)
+
+          if not all([registry_commit,registry_push,native_commit,native_push,dispatcher_commit,dispatcher_push,instruction_commit,instruction_push]):
+              blockers.append('git-write-surface-parity')
+
+          native_copy_from='{"from","string"}' in native and '{"to","string"}' in native
+          runtime_copy_from='a.optString("from"' in runtime and 'a.optString("to"' in runtime
+          registry_copy_source='req2("source",String.class,"destination",String.class)' in harness
+          executor_copy_source='string(a,"source",true)' in executors and 'string(a,"destination",true)' in executors
+          mark('NATIVE_COPY_USES_FROM_TO',native_copy_from)
+          mark('PRODUCTION_COPY_USES_FROM_TO',runtime_copy_from)
+          mark('REGISTRY_COPY_USES_SOURCE_DESTINATION',registry_copy_source)
+          mark('REGISTERED_EXECUTOR_COPY_USES_SOURCE_DESTINATION',executor_copy_source)
+          if native_copy_from and runtime_copy_from and registry_copy_source and executor_copy_source: blockers.append('copy-move-argument-contract-drift')
+
+          native_edit_old_new='{"old","string"}' in native and '{"new","string"}' in native
+          runtime_edit_replace='if("fs_edit".equals(tool))' in runtime and 'body.replace(old' in runtime
+          registry_edit_content='register(r,"fs_edit"' in harness and 'req2("path",String.class,"content",String.class)' in harness
+          executor_edit_append='final String tool=append?"fs_edit":"fs_write"' in executors
+          mark('NATIVE_EDIT_USES_OLD_NEW',native_edit_old_new)
+          mark('PRODUCTION_EDIT_REPLACE_SEMANTICS',runtime_edit_replace)
+          mark('REGISTRY_EDIT_USES_CONTENT',registry_edit_content)
+          mark('REGISTERED_EXECUTOR_EDIT_APPEND_SEMANTICS',executor_edit_append)
+          if native_edit_old_new and runtime_edit_replace and registry_edit_content and executor_edit_append: blockers.append('fs-edit-semantic-drift')
+
+          production_calls_canonical='harness.executeTool(' in runtime
+          mark('PRODUCTION_CALLS_AGENT_HARNESS_EXECUTE_TOOL',production_calls_canonical)
+          if not production_calls_canonical: blockers.append('duplicate-production-dispatch')
+
+          print(f'PARITY_BLOCKERS={len(blockers)}')
+          for b in blockers: print('BLOCKER='+b)
+          print('AGENT_TOOL_PARITY='+('PASS' if not blockers else 'FAIL'))
+          if blockers: raise SystemExit(7)
+          PY
+
+      - name: Publish sanitized parity markers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rs-storage-agent-parity-markers
+          path: audit-out/agent-parity.txt
+          retention-days: 7
+          if-no-files-found: warn
