@@ -108,6 +108,7 @@ async function capture(name, viewport, mobile) {
 }
 
 try {
+  await capture('mobile-360x800', { width: 360, height: 800 }, true);
   await capture('mobile-412x915', { width: 412, height: 915 }, true);
   await capture('desktop-1366x768', { width: 1366, height: 768 }, false);
   console.log(`VISUAL_CAPTURE_DIR=${out}`);
