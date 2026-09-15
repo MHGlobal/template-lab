@@ -8,23 +8,19 @@
 
 ## Job conclusions
 
+- `Wave 2 production gate`: **failure**
+- `Agent runtime tool surface`: **success**
 - `Workspace guard + undo/redo real task`: **success**
 - `Completion gate cannot self-approve`: **success**
-- `Agent runtime tool surface`: **success**
-- `Wave 2 production gate`: **failure**
 
 ## Sanitized gate markers
 
-- `edit_persisted=true`
-- `undo=true`
-- `redo=true`
-- `plain_traversal_blocked=true`
-- `encoded_traversal_blocked=true`
-- `symlink_escape_blocked=true`
-- `synthetic_git_diff_visible=true`
-- `empty_evidence_rejected=true`
-- `unknown_diff_rejected=true`
-- `complete_evidence_passed=true`
+- `blockers=2`
+- `runtime-blockers=2`
+- `WAVE2_PRODUCTION_GATE=BLOCKED — explicit Agent runtime capabilities do not match declared Git write permissions.'^[[0m`
+- `WAVE2_AUTOMATED_REAL_TASK_GATES=PASS'^[[0m`
+- `FINAL_AUDIT_COMPLETE=NO — Android-served UI, upgrade, performance and physical-network evidence remain mandatory.'^[[0m`
+- `WAVE2_PRODUCTION_GATE=BLOCKED — explicit Agent runtime capabilities do not match declared Git write permissions.`
 - `runtime_tool_count=25`
 - `git_status=true`
 - `git_diff=true`
@@ -37,12 +33,16 @@
 - `engineer_git_status_policy=ALLOW`
 - `engineer_git_diff_policy=ALLOW`
 - `blockers=0`
-- `blockers=2`
-- `runtime-blockers=2`
-- `WAVE2_PRODUCTION_GATE=BLOCKED — explicit Agent runtime capabilities do not match declared Git write permissions.'^[[0m`
-- `WAVE2_AUTOMATED_REAL_TASK_GATES=PASS'^[[0m`
-- `FINAL_AUDIT_COMPLETE=NO — Android-served UI, upgrade, performance and physical-network evidence remain mandatory.'^[[0m`
-- `WAVE2_PRODUCTION_GATE=BLOCKED — explicit Agent runtime capabilities do not match declared Git write permissions.`
+- `edit_persisted=true`
+- `undo=true`
+- `redo=true`
+- `plain_traversal_blocked=true`
+- `encoded_traversal_blocked=true`
+- `symlink_escape_blocked=true`
+- `synthetic_git_diff_visible=true`
+- `empty_evidence_rejected=true`
+- `unknown_diff_rejected=true`
+- `complete_evidence_passed=true`
 
 ## Audit policy
 
