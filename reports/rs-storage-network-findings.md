@@ -38,14 +38,34 @@ The direct-IP URL list enumerates active non-loopback interfaces and includes RF
 
 This is primarily a diagnostics/UX correctness risk. The physical gate must verify which addresses are shown on devices with mobile data + hotspot and with VPN active.
 
+## F-WN-006 — HIGH compatibility candidate — LAN admission is IPv4/RFC1918-only
+
+The server's `allowed(Socket)` path accepts loopback, otherwise delegates to `RsLocalNetworkPolicy.samePrivateSubnet(remote, local)`. That policy rejects every non-`Inet4Address` address and then only accepts 10/8, 172.16/12 and 192.168/16.
+
+This means the restriction is enforced at the actual socket boundary, not merely in the UI. A non-loopback IPv6 LAN client is rejected even when it is directly connected to the same local network.
+
+The same IPv4-only assumption is repeated in `privateUrls()` and `LocalDiscoveryManager`, whose selected mDNS bind address is explicitly an `Inet4Address`. Therefore direct access, displayed endpoints and mDNS discovery all lack an IPv6 LAN path.
+
+Android's current Local Network Protection definition includes IPv6 link-local and directly connected routes as local-network traffic. The physical test matrix must therefore include IPv6-capable Wi-Fi when available, and the recovery specification must explicitly decide whether IPv6 LAN support is required before general LAN compatibility is claimed.
+
+## F-WN-007 — MEDIUM/HIGH compatibility candidate — Android-local IPv4 ranges 100.64/10 and 169.254/16 are rejected
+
+Android's Local Network Protection definition treats 100.64.0.0/10 (CGNAT) and 169.254.0.0/16 (IPv4 link-local) as local-network address space. RS Storage's `isPrivateV4(...)` rejects both ranges and consequently closes non-loopback client sockets using those addresses.
+
+These ranges are less common than RFC1918 for ordinary phone hotspots, so this is not yet classified as a universal production blocker. It is, however, incompatible with a broader claim that the embedded server accepts all valid local networks. The physical/recovery matrix must decide whether to support them or document the intentional restriction.
+
+## F-WN-008 — FUTURE COMPATIBILITY — Android 17 target API 37 requires the dedicated local-network permission
+
+Android 17 introduces `ACCESS_LOCAL_NETWORK` for apps targeting API 37+. RS Storage 4.7.13 currently targets API 36 and declares `NEARBY_WIFI_DEVICES`, so this is **not a current 4.7.13 release blocker**. It must be added to the upgrade checklist before the application raises `targetSdk` to 37.
+
 ## Positive controls already present
 
 - Main HTTP server binds to port 8080 and accepts on all interfaces; socket admission is then checked per connection.
-- `NEARBY_WIFI_DEVICES` is declared in the manifest and requested before normal UI-driven server startup.
+- `NEARBY_WIFI_DEVICES` is declared with `neverForLocation` and requested before normal UI-driven server startup.
 - `CHANGE_WIFI_MULTICAST_STATE` is declared and JmDNS uses a multicast lock when available.
 - mDNS deliberately excludes obvious cellular, VPN, dummy and tunnel interface names when choosing its bind address.
 - The explicit subnet comparison handles arbitrary IPv4 prefixes correctly when the real interface prefix is available.
 
 ## Mandatory physical matrix
 
-The audit is not complete until a real candidate APK is exercised with at least: Android hotspot → second Android client; Android hotspot → Windows/laptop client; ordinary shared Wi-Fi; `rsstorage.local` versus direct IP; screen-on/screen-off; stop/start/restart; permission denial/grant; mobile-data + hotspot coexistence; and, when available, a wider-than-/24 LAN or a second supported local transport. Each run needs client-side screenshots plus server-side screenshots/log evidence.
+The audit is not complete until a real candidate APK is exercised with at least: Android hotspot → second Android client; Android hotspot → Windows/laptop client; ordinary shared Wi-Fi; `rsstorage.local` versus direct IP; screen-on/screen-off; stop/start/restart; permission denial/grant; mobile-data + hotspot coexistence; and, when available, a wider-than-/24 LAN, IPv6-capable LAN and a second supported local transport. Each run needs client-side screenshots plus server-side screenshots/log evidence.
