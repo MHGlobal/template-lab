@@ -56,12 +56,12 @@ jobs:
           import java.util.TreeSet;
           public final class AuditToolSurfaceMain {
             public static void main(String[] args) throws Exception {
-              AgentHarness h=new AgentHarness(Path.of(args[0]));
+              AgentHarness h=new AgentHarness("audit-session","audit-run","engineer",Path.of(args[0]),null,null,null,null);
               ToolRegistry r=h.tools;
               Set<String> names=new TreeSet<String>();
               int nullExecutors=0;
               for(ToolDefinition t:r.list()){names.add(t.name);if(t.executor==null)nullExecutors++;}
-              PermissionEngine p=PermissionEngine.engineer();
+              PermissionEngine p=h.permissions;
               System.out.println("runtime_tool_count="+names.size());
               System.out.println("git_status="+names.contains("git_status"));
               System.out.println("git_diff="+names.contains("git_diff"));
@@ -73,6 +73,7 @@ jobs:
               System.out.println("engineer_git_push_policy="+p.evaluate("git.push",false,false).decision);
               System.out.println("engineer_git_status_policy="+p.evaluate("git.status",false,false).decision);
               System.out.println("engineer_git_diff_policy="+p.evaluate("git.diff",false,false).decision);
+              h.close();
             }
           }
           JAVA
