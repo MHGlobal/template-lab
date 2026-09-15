@@ -1,16 +1,16 @@
 # RS Storage Audit — Wave 2 latest public-runner evidence
 
-- Run ID: `35006622198`
-- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35006622198
+- Run ID: `35006815286`
+- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35006815286
 - Workflow conclusion: **failure**
-- Template Lab head SHA: `f3eb6259249df79efb8d7a326d2d13419ae2affa`
+- Template Lab head SHA: `a3187e7a4465139c131b226fade2b2cf9d4be261`
 - Target: `MHGlobal/RS-Storage` · `release/v4.7.13-agent-harness`
 
 ## Job conclusions
 
+- `Agent runtime tool surface`: **failure**
 - `Completion gate cannot self-approve`: **success**
 - `Workspace guard + undo/redo real task`: **success**
-- `Agent runtime tool surface`: **failure**
 - `Wave 2 production gate`: **failure**
 
 ## Sanitized gate markers
