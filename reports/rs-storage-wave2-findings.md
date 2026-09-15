@@ -4,11 +4,11 @@ Target: `MHGlobal/RS-Storage` · `release/v4.7.13-agent-harness`
 
 ## Release decision after Wave 2
 
-**BLOCKED.** Wave 2 automated real-task gates passed for workspace containment, undo/redo and CompletionGate integrity, but the production gate correctly failed because the Agent runtime capability surface does not match the declared Git write permissions.
+**BLOCKED.** Wave 2 automated real-task gates passed for workspace containment, undo/redo and CompletionGate integrity. The original Git-write blocker has since received a source-level remediation, but the remediation still requires runtime revalidation. A later Android compile blocker was also discovered and fixed on the dedicated Agent Harness branch; the release remains blocked until all downstream gates are rerun successfully.
 
-## F-W2-001 — BLOCKER — Git write capability / permission-path mismatch
+## F-W2-001 — REMEDIATED IN CODE / RUNTIME REVALIDATION REQUIRED — Git write capability / permission-path mismatch
 
-Observed on public Template Lab runner:
+Wave 2 originally observed:
 
 - Runtime tool count: 25.
 - Explicit Git tools: `git_status=true`, `git_diff=true`, `git_log=true`.
@@ -16,24 +16,32 @@ Observed on public Template Lab runner:
 - Engineer policy: `git.commit=ASK`, `git.push=ASK`, `git.status=ALLOW`, `git.diff=ALLOW`.
 - Final runtime blockers: 2.
 
-Source inspection confirms the provider/native schema advertises only `git_status`, `git_diff` and `git_log`. The production dispatcher also implements only those explicit Git tools.
+The branch subsequently added explicit `git_commit` and `git_push` ToolRegistry entries wired to `git.commit` and `git.push`, with concrete runtime executors. This closes the original source-level architecture mismatch. It is **not yet marked PASS** because the corrected candidate must compile and the real-task/public-runner gate must be repeated against the new branch head.
 
-The generic `shell` path can execute commands that are not on the safe-shell allowlist only after a separate explicit approval. This does **not** close the architecture gap: a `git commit` or `git push` issued through `shell` is authorized/audited under the shell path instead of the dedicated `git.commit` / `git.push` policy categories. The Engineer therefore has declared Git-specific permission rules that cannot be exercised through explicit Git write tools.
+The generic shell path remains insufficient as a substitute for dedicated Git authorization. Dedicated Git tools are still the required path, including approval/audit events and force-push protection.
 
-Required remediation is not to silently bless shell as the Git API. The recovery specification must either:
+## F-W2-002 — ARCHITECTURE RISK REDUCED / REVALIDATION REQUIRED — executor binding
 
-1. implement explicit `git_commit` and `git_push` runtime tools wired to `git.commit` and `git.push`, including approval/audit events and force-push denial; or
-2. deliberately remove the unsupported Git-write contract from the Agent capability model and redefine completion semantics so coding tasks do not claim Git-write capability.
+Wave 2 had reported `null_executor_count=25` under the earlier split architecture. The current branch now binds concrete executors through the ToolRegistry for runtime tools. This is a material remediation, but parity between provider-advertised tools, ToolRegistry entries, permission categories and executable dispatch must be retested on the new branch head.
 
-The current product specification expects a coding agent capable of complete real tasks, so option 1 is the expected remediation unless the product contract is explicitly changed.
+## F-W2-003 — BLOCKER FOUND AND REMEDIATED — Android-incompatible `Files.readString/writeString`
 
-## F-W2-002 — NOT A DEFECT BY ITSELF — null ToolDefinition executors
+The first post-remediation Android builds in Waves 3, 4 and 5 all failed in the same place: `:rsapp:compileDebugJavaWithJavac` in `RuntimeToolExecutors.java`.
 
-Wave 2 reported `null_executor_count=25`. Source inspection shows this is currently a split architecture: `ToolRegistry` holds capability/permission metadata, while `RsAiAgentRuntime.exec(...)` is the actual production dispatcher. Therefore `null_executor_count=25` is not independently classified as a blocker.
+Root cause:
 
-It remains an architectural maintainability risk because capability metadata and executable dispatch are duplicated in separate places and can drift — F-W2-001 is already evidence of such drift. The recovery specification should consolidate registration and execution binding or add a mandatory parity contract.
+- `Files.readString(path, UTF_8)` was not available in the Android compile API used by the app.
+- Both `Files.writeString(...)` calls were likewise unavailable.
+- This produced three `cannot find symbol` errors before any emulator/runtime test could execute.
 
-## Gates passed in Wave 2
+The issue was corrected on `release/v4.7.13-agent-harness` in commit `0581f962efef7e7f3f6b4302f253fef6d4131129` by using Android-compatible equivalents:
+
+- `new String(Files.readAllBytes(path), StandardCharsets.UTF_8)` for reads;
+- `Files.write(path, text.getBytes(StandardCharsets.UTF_8), ...)` for create/append/truncate writes.
+
+No change was made to `main`. The Android build and all dependent runtime gates must now be rerun from this exact candidate branch state.
+
+## Gates passed in the original Wave 2
 
 - Workspace edit persisted.
 - Undo passed.
@@ -48,8 +56,17 @@ It remains an architectural maintainability risk because capability metadata and
 
 ## Audit remains incomplete
 
-Wave 2 does not replace the mandatory Android visual, Android-served Web, upgrade/data-preservation, transfer/performance and physical Wi-Fi/hotspot gates. Those continue independently while F-W2-001 remains open.
+The following remain mandatory before release approval:
 
-## Wave 3 execution
+1. Revalidate the remediated Agent tool surface and real Git permission path.
+2. Android emulator/device screenshots plus UI hierarchy and logcat review.
+3. Web UI served by the actual Android application.
+4. Upgrade/data-preservation test from the previous install to the candidate build.
+5. Transfer/upload/copy performance and cancellation/recovery tests with synthetic payloads.
+6. Android 16 local-network protection behavior.
+7. Physical hotspot/Wi-Fi validation where CI cannot truthfully emulate the topology.
+8. Human review of the captured Android and Android-served Web screenshots.
 
-A fresh Wave 3 public-runner execution was requested after the completion reporter was installed. Wave 3 is responsible for the real upgrade-preservation path, native Android screenshots, embedded server startup and browser screenshots served by the actual Android application. Its screenshots still require manual visual review before any visual gate can pass.
+## Wave 3 rerun
+
+Updating this findings ledger intentionally retriggers Wave 3 on the public Template Lab runner against the corrected candidate branch. A green workflow alone will still not constitute visual approval; the generated screenshots must be downloaded and manually reviewed.
