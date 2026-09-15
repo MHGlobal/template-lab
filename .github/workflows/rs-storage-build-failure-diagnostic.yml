@@ -1,0 +1,71 @@
+name: RS Storage Audit Common Build Failure Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - '.github/workflows/rs-storage-build-failure-diagnostic.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: editor
+      - name: Extract sanitized failed-build evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          : > /tmp/combined.txt
+          for run in 34899549508 34899815754 34900103350; do
+            echo "===== RUN $run =====" >> /tmp/combined.txt
+            gh run view "$run" --repo "$GITHUB_REPOSITORY" --log-failed >> /tmp/combined.txt 2>&1 || true
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          raw=Path('/tmp/combined.txt').read_text(encoding='utf-8',errors='ignore')
+          keep=[]
+          patterns=[
+              r'(?i)(?:FAILURE: Build failed|What went wrong|Execution failed for task|Could not resolve|Could not find|CMake Error|ninja: error|ld\.lld: error|clang\+\+: error|error: .*|Exception: .*|Caused by: .*|A problem occurred|No matching variant|Unsupported ABI|x86_64|abiFilters|libai-chat|configureCMake|externalNativeBuild|assembleDebug)',
+          ]
+          for line in raw.splitlines():
+              if line.startswith('===== RUN '):
+                  keep.append(line)
+                  continue
+              # Strip Actions step prefixes and obvious command echo noise where possible.
+              text=line
+              if any(re.search(p,text) for p in patterns):
+                  # Never publish credential-like values even if a tool echoed them.
+                  text=re.sub(r'(?i)(token|password|secret|authorization|cookie)\s*[=:]\s*\S+',r'\1=<redacted>',text)
+                  text=re.sub(r'https://x-access-token:[^@\s]+@github\.com','https://github.com',text)
+                  keep.append(text[:1200])
+          # Deduplicate adjacent duplicates while retaining run boundaries.
+          out=[]
+          for x in keep:
+              if not out or out[-1]!=x: out.append(x)
+          Path('reports/rs-storage-x86-build-failure-diagnostic.md').write_text(
+              '# RS Storage audit — common x86_64 build failure diagnostic\n\n'
+              'Sanitized excerpts from the failed build steps of Waves 3, 4 and 5. No private source contents or credentials are intentionally included.\n\n'
+              '```text\n'+'\n'.join(out[-300:])+'\n```\n',encoding='utf-8')
+          PY
+          cat reports/rs-storage-x86-build-failure-diagnostic.md
+      - name: Publish diagnostic report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'RS Audit Bot'
+          git config user.email 'rs-audit-bot@users.noreply.github.com'
+          git add reports/rs-storage-x86-build-failure-diagnostic.md
+          git commit -m 'docs(audit): capture common x86 build failure' || exit 0
+          git push origin HEAD:editor
