@@ -1,9 +1,9 @@
 # RS Storage Audit — Wave 3 latest evidence index
 
-- Run ID: `35064155697`
-- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35064155697
+- Run ID: `35069173527`
+- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35069173527
 - Workflow conclusion: **failure**
-- Template Lab head SHA: `a130dbd57dfd98ee56267dfe83562622d894a053`
+- Template Lab head SHA: `7b503ebecff31e955eebc9ea3625dea00f10979a`
 - Target: `MHGlobal/RS-Storage` · `release/v4.7.13-agent-harness`
 
 ## Job conclusions
@@ -13,16 +13,14 @@
 
 ## Evidence artifacts
 
-- `wave3-android-runtime-evidence` · artifact id `10434315337` · expired=`False`
+- `wave3-android-runtime-evidence` · artifact id `10435786495` · expired=`False`
 
 ## Sanitized markers
 
 - `UPGRADE_INTERNAL_DATA_PRESERVED=true`
-- `UPGRADE_SHARED_PREFS_PRESERVED=true`
-- `UPGRADE_EXTERNAL_WORKSPACE_PRESERVED=true`
 - `ANDROID_EMBEDDED_SERVER_8080=true`
 - `WAVE3_ANDROID_RUNTIME_GATES=PASS' | tee -a "$OUT/upgrade-evidence.txt"`
-- `WAVE3_AUTOMATED_EVIDENCE=PASS'^[[0m`
+- `WAVE3_AUTOMATED_EVIDENCE=PASS'; echo 'FINAL_AUDIT_COMPLETE=NO — screenshots still require human visual review; transfer/performance and physical Wi-Fi/hotspot gates remain mandatory.'^[[0m`
 - `FINAL_AUDIT_COMPLETE=NO — screenshots still require human visual review; transfer/performance and physical Wi-Fi/hotspot gates remain mandatory.'^[[0m`
 
 ## Audit policy
