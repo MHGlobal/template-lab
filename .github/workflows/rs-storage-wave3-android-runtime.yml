@@ -55,6 +55,22 @@ jobs:
         with:
           packages: ''
 
+      - name: Enable KVM for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -e /dev/kvm ]; then
+            sudo usermod -aG kvm "$USER" || true
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+            sudo udevadm control --reload-rules || true
+            sudo udevadm trigger --name-match=kvm || true
+            sudo chmod 666 /dev/kvm || true
+            ls -l /dev/kvm
+          else
+            echo '::error::/dev/kvm is unavailable on this public runner; hardware-accelerated Android runtime audit cannot start.'
+            exit 1
+          fi
+
       - name: Install Android and browser toolchains
         shell: bash
         run: |
@@ -128,7 +144,6 @@ jobs:
             OLD="$GITHUB_WORKSPACE/private-builds/previous.apk"
             NEW="$GITHUB_WORKSPACE/private-builds/candidate.apk"
             mkdir -p "$OUT" "$WEB"
-
             tap_ui() {
               local wanted="$1"
               adb shell uiautomator dump /sdcard/rs-audit-window.xml >/dev/null
@@ -149,23 +164,14 @@ jobs:
               adb shell input tap $xy
               sleep 1
             }
-
             echo 'Installing previous production baseline without uninstall path...' | tee "$OUT/upgrade-evidence.txt"
             adb install "$OLD" >/dev/null
-
             AUDIT_PASS="RsAudit-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-A9!"
             export AUDIT_PASS
             python3 - <<'PY' >/tmp/rs_users.xml
             import base64,hashlib,os,secrets
-            pw=os.environ['AUDIT_PASS'].encode()
-            salt=secrets.token_bytes(16)
-            digest=hashlib.pbkdf2_hmac('sha256',pw,salt,180000,dklen=32)
-            print('<?xml version="1.0" encoding="utf-8" standalone="yes" ?>')
-            print('<map>')
-            print('  <string name="admin_user">admin</string>')
-            print('  <string name="admin_salt">'+base64.b64encode(salt).decode()+'</string>')
-            print('  <string name="admin_hash">'+base64.b64encode(digest).decode()+'</string>')
-            print('</map>')
+            pw=os.environ['AUDIT_PASS'].encode(); salt=secrets.token_bytes(16); digest=hashlib.pbkdf2_hmac('sha256',pw,salt,180000,dklen=32)
+            print('<?xml version="1.0" encoding="utf-8" standalone="yes" ?>'); print('<map>'); print('  <string name="admin_user">admin</string>'); print('  <string name="admin_salt">'+base64.b64encode(salt).decode()+'</string>'); print('  <string name="admin_hash">'+base64.b64encode(digest).decode()+'</string>'); print('</map>')
             PY
             cat >/tmp/rs_onboarding.xml <<'EOF'
             <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
@@ -182,7 +188,6 @@ jobs:
             adb exec-out run-as com.rs.localstorage sh -c 'cat > shared_prefs/rs_ui.xml' < /tmp/rs_ui.xml
             adb shell mkdir -p /sdcard/RSAgentWorkspace
             adb shell "echo external-upgrade-marker-${GITHUB_RUN_ID} > /sdcard/RSAgentWorkspace/rs-audit-preserve.txt"
-
             echo 'Applying candidate with adb install -r (no uninstall)...' | tee -a "$OUT/upgrade-evidence.txt"
             adb install -r "$NEW" >/dev/null
             adb shell dumpsys package com.rs.localstorage | grep -E 'versionName=|versionCode=' | head -4 | tee -a "$OUT/upgrade-evidence.txt"
@@ -193,7 +198,6 @@ jobs:
             echo 'UPGRADE_INTERNAL_DATA_PRESERVED=true' | tee -a "$OUT/upgrade-evidence.txt"
             echo 'UPGRADE_SHARED_PREFS_PRESERVED=true' | tee -a "$OUT/upgrade-evidence.txt"
             echo 'UPGRADE_EXTERNAL_WORKSPACE_PRESERVED=true' | tee -a "$OUT/upgrade-evidence.txt"
-
             adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || true
             adb shell pm grant com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES || true
             adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
@@ -204,46 +208,29 @@ jobs:
             adb exec-out screencap -p > "$OUT/01-native-server-stopped.png"
             adb shell uiautomator dump /sdcard/rs-native.xml >/dev/null || true
             adb pull /sdcard/rs-native.xml "$OUT/01-native-server-stopped.xml" >/dev/null || true
-
             tap_ui 'Ativar servidor'
             adb forward tcp:18080 tcp:8080
             ok=0
-            for i in $(seq 1 75); do
-              if curl -fsS --max-time 2 http://127.0.0.1:18080/login >/dev/null 2>&1; then ok=1; break; fi
-              sleep 1
-            done
+            for i in $(seq 1 75); do if curl -fsS --max-time 2 http://127.0.0.1:18080/login >/dev/null 2>&1; then ok=1; break; fi; sleep 1; done
             test "$ok" = 1
             echo 'ANDROID_EMBEDDED_SERVER_8080=true' | tee -a "$OUT/upgrade-evidence.txt"
             adb exec-out screencap -p > "$OUT/02-native-server-running.png"
-
-            tap_ui 'Media'
-            adb exec-out screencap -p > "$OUT/03-native-media.png"
-            tap_ui 'Clientes'
-            adb exec-out screencap -p > "$OUT/04-native-clients.png"
-            tap_ui 'Acessos'
-            adb exec-out screencap -p > "$OUT/05-native-access.png"
-            tap_ui 'Definições'
-            adb exec-out screencap -p > "$OUT/06-native-settings.png"
-            tap_ui 'IA'
-            sleep 2
-            adb exec-out screencap -p > "$OUT/07-native-rsia.png"
-            adb shell input keyevent 4 || true
-            sleep 1
-
-            curl -sS -D /tmp/rs-login.headers -o /dev/null -X POST \
-              --data-urlencode 'u=admin' --data-urlencode "p=$AUDIT_PASS" \
-              http://127.0.0.1:18080/login
+            tap_ui 'Media'; adb exec-out screencap -p > "$OUT/03-native-media.png"
+            tap_ui 'Clientes'; adb exec-out screencap -p > "$OUT/04-native-clients.png"
+            tap_ui 'Acessos'; adb exec-out screencap -p > "$OUT/05-native-access.png"
+            tap_ui 'Definições'; adb exec-out screencap -p > "$OUT/06-native-settings.png"
+            tap_ui 'IA'; sleep 2; adb exec-out screencap -p > "$OUT/07-native-rsia.png"
+            adb shell input keyevent 4 || true; sleep 1
+            curl -sS -D /tmp/rs-login.headers -o /dev/null -X POST --data-urlencode 'u=admin' --data-urlencode "p=$AUDIT_PASS" http://127.0.0.1:18080/login
             RSSESSION=$(python3 - <<'PY'
             import re
-            s=open('/tmp/rs-login.headers',encoding='utf-8',errors='ignore').read()
-            m=re.search(r'(?im)^Set-Cookie:\s*RSSESSION=([^;\r\n]+)',s)
+            s=open('/tmp/rs-login.headers',encoding='utf-8',errors='ignore').read(); m=re.search(r'(?im)^Set-Cookie:\s*RSSESSION=([^;\r\n]+)',s)
             if not m: raise SystemExit(2)
             print(m.group(1))
             PY
             )
             echo "::add-mask::$RSSESSION"
             AUDIT_RSSESSION="$RSSESSION" node audit/rsstorage_wave3_android_served_web.mjs http://127.0.0.1:18080 "$WEB"
-
             adb shell uiautomator dump /sdcard/rs-final.xml >/dev/null || true
             adb pull /sdcard/rs-final.xml "$OUT/final-window.xml" >/dev/null || true
             adb shell dumpsys activity activities > "$OUT/activity.txt"
