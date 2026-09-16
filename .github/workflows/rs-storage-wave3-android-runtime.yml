@@ -20,7 +20,7 @@ env:
 jobs:
   android-upgrade-served-web:
     name: Android upgrade + native visual + Android-served Web
-    runs-on: macos-14
+    runs-on: macos-13
     timeout-minutes: 120
     steps:
       - name: Checkout Template Lab
@@ -50,20 +50,15 @@ jobs:
         with: { node-version: '22' }
       - uses: android-actions/setup-android@v3
         with: { packages: '' }
-      - name: Select native Android emulator ABI
+      - name: Select supported macOS Android emulator ABI
         id: accel
         shell: bash
         run: |
           set -euo pipefail
-          # GitHub-hosted Ubuntu runners used by this audit expose no /dev/kvm.
-          # macos-14 is Apple Silicon and provides native ARM virtualization, so
-          # use the matching Android ARM64 image instead of unsupported x86/ARM
-          # software emulation on Linux.
           test "$(uname -s)" = Darwin
-          test "$(uname -m)" = arm64
-          echo 'arch=arm64-v8a' >> "$GITHUB_OUTPUT"
+          test "$(uname -m)" = x86_64
+          echo 'arch=x86_64' >> "$GITHUB_OUTPUT"
           echo 'target=google_apis' >> "$GITHUB_OUTPUT"
-          echo 'software=false' >> "$GITHUB_OUTPUT"
       - name: Install Android and browser toolchains
         shell: bash
         run: |
