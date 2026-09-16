@@ -20,7 +20,7 @@ env:
 jobs:
   android-upgrade-served-web:
     name: Android upgrade + native visual + Android-served Web
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     timeout-minutes: 120
     steps:
       - name: Checkout Template Lab
@@ -50,22 +50,20 @@ jobs:
         with: { node-version: '22' }
       - uses: android-actions/setup-android@v3
         with: { packages: '' }
-      - name: Detect Android emulator acceleration
+      - name: Select native Android emulator ABI
         id: accel
         shell: bash
         run: |
           set -euo pipefail
-          if [ -e /dev/kvm ]; then
-            sudo chmod 666 /dev/kvm || true
-            echo 'arch=x86_64' >> "$GITHUB_OUTPUT"
-            echo 'target=google_apis' >> "$GITHUB_OUTPUT"
-            echo 'software=false' >> "$GITHUB_OUTPUT"
-          else
-            echo '::warning::/dev/kvm unavailable; switching to ARM64 system image so the real Android audit can execute without x86 hardware virtualization.'
-            echo 'arch=arm64-v8a' >> "$GITHUB_OUTPUT"
-            echo 'target=google_apis' >> "$GITHUB_OUTPUT"
-            echo 'software=true' >> "$GITHUB_OUTPUT"
-          fi
+          # GitHub-hosted Ubuntu runners used by this audit expose no /dev/kvm.
+          # macos-14 is Apple Silicon and provides native ARM virtualization, so
+          # use the matching Android ARM64 image instead of unsupported x86/ARM
+          # software emulation on Linux.
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          echo 'arch=arm64-v8a' >> "$GITHUB_OUTPUT"
+          echo 'target=google_apis' >> "$GITHUB_OUTPUT"
+          echo 'software=false' >> "$GITHUB_OUTPUT"
       - name: Install Android and browser toolchains
         shell: bash
         run: |
@@ -73,7 +71,7 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
           npm install --no-save --no-audit --no-fund playwright@1.55.0
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
       - name: Build candidate and previous install with emulator ABI
         shell: bash
         run: |
@@ -119,7 +117,6 @@ jobs:
           target: ${{ steps.accel.outputs.target }}
           profile: pixel_6
           disable-animations: true
-          disable-linux-hw-accel: ${{ steps.accel.outputs.software }}
           script: |
             set -euo pipefail
             OUT="$GITHUB_WORKSPACE/audit-out/android"; WEB="$GITHUB_WORKSPACE/audit-out/web-android-served"; OLD="$GITHUB_WORKSPACE/private-builds/previous.apk"; NEW="$GITHUB_WORKSPACE/private-builds/candidate.apk"; mkdir -p "$OUT" "$WEB"
