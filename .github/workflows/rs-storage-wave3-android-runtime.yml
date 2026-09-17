@@ -20,7 +20,7 @@ env:
 jobs:
   android-upgrade-served-web:
     name: Android upgrade + native visual + Android-served Web
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     timeout-minutes: 120
     steps:
       - name: Checkout Template Lab
@@ -50,15 +50,13 @@ jobs:
         with: { node-version: '22' }
       - uses: android-actions/setup-android@v3
         with: { packages: '' }
-      - name: Enable KVM group permissions
+      - name: Verify Intel macOS virtualization host
         shell: bash
         run: |
           set -euo pipefail
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -e /dev/kvm
-          ls -l /dev/kvm
+          uname -a
+          test "$(uname -m)" = x86_64
+          sysctl -a 2>/dev/null | grep -E 'machdep.cpu.features|VMX' | head -5 || true
       - name: Install Android and browser toolchains
         shell: bash
         run: |
