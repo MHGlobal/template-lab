@@ -20,7 +20,7 @@ env:
 jobs:
   android-upgrade-served-web:
     name: Android upgrade + native visual + Android-served Web
-    runs-on: macos-13
+    runs-on: macos-15
     timeout-minutes: 120
     steps:
       - name: Checkout Template Lab
@@ -50,15 +50,19 @@ jobs:
         with: { node-version: '22' }
       - uses: android-actions/setup-android@v3
         with: { packages: '' }
-      - name: Select supported macOS Android emulator ABI
+      - name: Select host-compatible Android emulator ABI
         id: accel
         shell: bash
         run: |
           set -euo pipefail
           test "$(uname -s)" = Darwin
-          test "$(uname -m)" = x86_64
-          echo 'arch=x86_64' >> "$GITHUB_OUTPUT"
+          case "$(uname -m)" in
+            arm64)  echo 'arch=arm64-v8a' >> "$GITHUB_OUTPUT" ;;
+            x86_64) echo 'arch=x86_64' >> "$GITHUB_OUTPUT" ;;
+            *) echo "Unsupported macOS host architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
           echo 'target=google_apis' >> "$GITHUB_OUTPUT"
+          uname -a
       - name: Install Android and browser toolchains
         shell: bash
         run: |
