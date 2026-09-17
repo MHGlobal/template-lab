@@ -1,9 +1,9 @@
 # RS Storage Audit — Wave 3 latest evidence index
 
-- Run ID: `35090863067`
-- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35090863067
+- Run ID: `35199902095`
+- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35199902095
 - Workflow conclusion: **failure**
-- Template Lab head SHA: `de0d3eaefa83fa4a66e1b6d8214b939ff85e8aec`
+- Template Lab head SHA: `47172d5a87214f872d4c0b2365f04d37032aca1f`
 - Target: `MHGlobal/RS-Storage` · `release/v4.7.13-agent-harness`
 
 ## Job conclusions
@@ -13,7 +13,7 @@
 
 ## Evidence artifacts
 
-- `wave3-android-runtime-evidence` · artifact id `10445715031` · expired=`False`
+- `wave3-android-runtime-evidence` · artifact id `10487893208` · expired=`False`
 
 ## Sanitized markers
 
