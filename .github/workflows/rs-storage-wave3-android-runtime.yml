@@ -50,13 +50,12 @@ jobs:
         with: { node-version: '22' }
       - uses: android-actions/setup-android@v3
         with: { packages: '' }
-      - name: Verify Intel macOS virtualization host
+      - name: Verify hosted macOS architecture
         shell: bash
         run: |
           set -euo pipefail
           uname -a
-          test "$(uname -m)" = x86_64
-          sysctl -a 2>/dev/null | grep -E 'machdep.cpu.features|VMX' | head -5 || true
+          test "$(uname -m)" = arm64
       - name: Install Android and browser toolchains
         shell: bash
         run: |
@@ -65,16 +64,12 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
           npm install --no-save --no-audit --no-fund playwright@1.55.0
           npx playwright install chromium
-      - name: Build candidate and previous install for x86_64 emulator
+      - name: Build candidate and previous install for arm64 emulator
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p private-builds audit-out/android
-          python3 - <<'PY'
-          from pathlib import Path
-          for p in [Path('target/source/current-v4.3.0/rsapp/build.gradle.kts'),Path('stabilization/source/current-v4.3.0/rsapp/build.gradle.kts')]:
-              s=p.read_text(encoding='utf-8'); old='abiFilters += listOf("arm64-v8a")'; assert old in s, p; p.write_text(s.replace(old,'abiFilters += listOf("x86_64")'),encoding='utf-8')
-          PY
+          # Product Gradle already targets arm64-v8a; do not mutate product sources for this runner.
           mkdir -p external/llama.cpp
           git -C external/llama.cpp init
           git -C external/llama.cpp remote add origin https://github.com/ggml-org/llama.cpp.git
@@ -99,11 +94,11 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging private-builds/candidate.apk | grep -E '^package:' > audit-out/android/candidate-badging.txt
           grep -q "versionName='4.7.0'" audit-out/android/previous-badging.txt; grep -q "versionName='4.7.13'" audit-out/android/candidate-badging.txt
           grep -q "versionCode='90'" audit-out/android/previous-badging.txt; grep -q "versionCode='103'" audit-out/android/candidate-badging.txt
-      - name: Boot stable emulator and execute upgrade + real visual/runtime gates
+      - name: Boot arm64 emulator and execute upgrade + real visual/runtime gates
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          arch: x86_64
+          arch: arm64-v8a
           target: google_apis
           profile: pixel_6
           disable-animations: true
@@ -113,6 +108,7 @@ jobs:
             set -euo pipefail
             OUT="$GITHUB_WORKSPACE/audit-out/android"; WEB="$GITHUB_WORKSPACE/audit-out/web-android-served"; OLD="$GITHUB_WORKSPACE/private-builds/previous.apk"; NEW="$GITHUB_WORKSPACE/private-builds/candidate.apk"; mkdir -p "$OUT" "$WEB"
             adb devices -l | tee "$OUT/adb-devices.txt"
+            adb shell getprop ro.product.cpu.abi | tee "$OUT/emulator-abi.txt"
             adb shell getprop ro.build.version.release | tee "$OUT/emulator-android-version.txt"
             adb shell getprop ro.build.version.sdk | tee "$OUT/emulator-api-level.txt"
             adb shell getprop sys.boot_completed | tee "$OUT/emulator-boot-completed.txt"
