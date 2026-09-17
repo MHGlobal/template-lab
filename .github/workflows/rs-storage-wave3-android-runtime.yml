@@ -101,17 +101,20 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging private-builds/candidate.apk | grep -E '^package:' > audit-out/android/candidate-badging.txt
           grep -q "versionName='4.7.0'" audit-out/android/previous-badging.txt; grep -q "versionName='4.7.13'" audit-out/android/candidate-badging.txt
           grep -q "versionCode='90'" audit-out/android/previous-badging.txt; grep -q "versionCode='103'" audit-out/android/candidate-badging.txt
-      - name: Boot emulator and execute upgrade + real visual/runtime gates
+      - name: Boot stable emulator and execute upgrade + real visual/runtime gates
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
           arch: x86_64
-          target: google_apis
+          target: default
           profile: pixel_6
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             set -euo pipefail
             OUT="$GITHUB_WORKSPACE/audit-out/android"; WEB="$GITHUB_WORKSPACE/audit-out/web-android-served"; OLD="$GITHUB_WORKSPACE/private-builds/previous.apk"; NEW="$GITHUB_WORKSPACE/private-builds/candidate.apk"; mkdir -p "$OUT" "$WEB"
+            adb shell getprop ro.build.version.release | tee "$OUT/emulator-android-version.txt"
+            adb shell getprop ro.build.version.sdk | tee "$OUT/emulator-api-level.txt"
             echo 'Installing previous production baseline without uninstall path...' | tee "$OUT/upgrade-evidence.txt"; adb install "$OLD" >/dev/null
             adb shell run-as com.rs.localstorage mkdir -p files
             printf 'upgrade-marker-%s\n' "$GITHUB_RUN_ID" | adb exec-out run-as com.rs.localstorage sh -c 'cat > files/rs-audit-preserve.txt'
@@ -124,7 +127,7 @@ jobs:
             adb shell am force-stop com.rs.localstorage; adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1 >/dev/null; sleep 5
             adb shell pidof com.rs.localstorage | tee "$OUT/pid.txt"; adb exec-out screencap -p > "$OUT/01-native-launch.png"
             adb shell dumpsys activity activities > "$OUT/activity.txt"; adb logcat -d -t 1000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|com\.rs\.localstorage' > "$OUT/logcat-app-tail.txt" || true
-            echo 'WAVE3_ANDROID_RUNTIME_GATES=PASS' | tee -a "$OUT/upgrade-evidence.txt"
+            echo 'WAVE3_ANDROID14_RUNTIME_GATES=PASS' | tee -a "$OUT/upgrade-evidence.txt"
       - name: Publish visual/runtime evidence only
         if: always()
         uses: actions/upload-artifact@v4
@@ -146,4 +149,4 @@ jobs:
         run: |
           set -euo pipefail
           echo "android-upgrade-served-web=${{ needs.android-upgrade-served-web.result }}"; test "${{ needs.android-upgrade-served-web.result }}" = success
-          echo 'WAVE3_AUTOMATED_EVIDENCE=PASS'; echo 'FINAL_AUDIT_COMPLETE=NO — full Android/Web visual evidence, transfer/performance and physical Wi-Fi/hotspot gates remain mandatory.'
+          echo 'WAVE3_AUTOMATED_EVIDENCE=PASS'; echo 'FINAL_AUDIT_COMPLETE=NO — Android 15/16 network compatibility, full Android/Web visual evidence, transfer/performance and physical Wi-Fi/hotspot gates remain mandatory.'
