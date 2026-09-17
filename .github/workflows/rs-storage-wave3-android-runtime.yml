@@ -106,15 +106,19 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
-          target: default
+          target: google_apis
           profile: pixel_6
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: |
             set -euo pipefail
             OUT="$GITHUB_WORKSPACE/audit-out/android"; WEB="$GITHUB_WORKSPACE/audit-out/web-android-served"; OLD="$GITHUB_WORKSPACE/private-builds/previous.apk"; NEW="$GITHUB_WORKSPACE/private-builds/candidate.apk"; mkdir -p "$OUT" "$WEB"
+            adb devices -l | tee "$OUT/adb-devices.txt"
             adb shell getprop ro.build.version.release | tee "$OUT/emulator-android-version.txt"
             adb shell getprop ro.build.version.sdk | tee "$OUT/emulator-api-level.txt"
+            adb shell getprop sys.boot_completed | tee "$OUT/emulator-boot-completed.txt"
+            test "$(tr -d '\r' < "$OUT/emulator-boot-completed.txt")" = 1
             echo 'Installing previous production baseline without uninstall path...' | tee "$OUT/upgrade-evidence.txt"; adb install "$OLD" >/dev/null
             adb shell run-as com.rs.localstorage mkdir -p files
             printf 'upgrade-marker-%s\n' "$GITHUB_RUN_ID" | adb exec-out run-as com.rs.localstorage sh -c 'cat > files/rs-audit-preserve.txt'
@@ -125,8 +129,9 @@ jobs:
             echo 'UPGRADE_INTERNAL_DATA_PRESERVED=true' | tee -a "$OUT/upgrade-evidence.txt"; echo 'UPGRADE_EXTERNAL_WORKSPACE_PRESERVED=true' | tee -a "$OUT/upgrade-evidence.txt"
             adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || true; adb shell pm grant com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES || true
             adb shell am force-stop com.rs.localstorage; adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1 >/dev/null; sleep 5
-            adb shell pidof com.rs.localstorage | tee "$OUT/pid.txt"; adb exec-out screencap -p > "$OUT/01-native-launch.png"
+            adb shell pidof com.rs.localstorage | tee "$OUT/pid.txt"; test -s "$OUT/pid.txt"; adb exec-out screencap -p > "$OUT/01-native-launch.png"; test -s "$OUT/01-native-launch.png"
             adb shell dumpsys activity activities > "$OUT/activity.txt"; adb logcat -d -t 1000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|com\.rs\.localstorage' > "$OUT/logcat-app-tail.txt" || true
+            ! grep -qE 'FATAL EXCEPTION|Process: com\.rs\.localstorage.*has died' "$OUT/logcat-app-tail.txt"
             echo 'WAVE3_ANDROID14_RUNTIME_GATES=PASS' | tee -a "$OUT/upgrade-evidence.txt"
       - name: Publish visual/runtime evidence only
         if: always()
