@@ -20,7 +20,7 @@ env:
 jobs:
   android-upgrade-served-web:
     name: Android upgrade + native visual + Android-served Web
-    runs-on: macos-14
+    runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
       - name: Checkout Template Lab
@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           uname -a
-          test "$(uname -m)" = arm64
+          test "$(uname -m)" = x86_64
       - name: Install Android and browser toolchains
         shell: bash
         run: |
@@ -64,12 +64,12 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
           npm install --no-save --no-audit --no-fund playwright@1.55.0
           npx playwright install chromium
-      - name: Build candidate and previous install for arm64 emulator
+      - name: Build candidate and previous install for x86_64 emulator
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p private-builds audit-out/android
-          # Product Gradle already targets arm64-v8a; do not mutate product sources for this runner.
+          # CI-only emulator build: patch the checked-out build copies to x86_64; product branch remains unchanged.
           mkdir -p external/llama.cpp
           git -C external/llama.cpp init
           git -C external/llama.cpp remote add origin https://github.com/ggml-org/llama.cpp.git
@@ -82,10 +82,12 @@ jobs:
           grep -q 'include(":rsapp")' "$SETTINGS" || printf '\ninclude(":rsapp")\n' >> "$SETTINGS"
           chmod +x external/llama.cpp/examples/llama.android/gradlew
           cp -R "$ROOT/rsapp" external/llama.cpp/examples/llama.android/rsapp
+          sed -i.bak 's/abiFilters += listOf("arm64-v8a")/abiFilters += listOf("x86_64")/g' external/llama.cpp/examples/llama.android/rsapp/build.gradle.kts || true
           cd external/llama.cpp/examples/llama.android
           ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.13113456" ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
           CANDIDATE=$(find rsapp/build/outputs/apk/debug -type f -name '*.apk' | head -1); test -s "$CANDIDATE"; cp "$CANDIDATE" "$GITHUB_WORKSPACE/private-builds/candidate.apk"
           cd "$GITHUB_WORKSPACE"; rm -rf external/llama.cpp/examples/llama.android/rsapp; cp -R stabilization/source/current-v4.3.0/rsapp external/llama.cpp/examples/llama.android/rsapp
+          sed -i.bak 's/abiFilters += listOf("arm64-v8a")/abiFilters += listOf("x86_64")/g' external/llama.cpp/examples/llama.android/rsapp/build.gradle.kts || true
           cd external/llama.cpp/examples/llama.android
           ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.13113456" ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
           PREVIOUS=$(find rsapp/build/outputs/apk/debug -type f -name '*.apk' | head -1); test -s "$PREVIOUS"; cp "$PREVIOUS" "$GITHUB_WORKSPACE/private-builds/previous.apk"
@@ -94,11 +96,11 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging private-builds/candidate.apk | grep -E '^package:' > audit-out/android/candidate-badging.txt
           grep -q "versionName='4.7.0'" audit-out/android/previous-badging.txt; grep -q "versionName='4.7.13'" audit-out/android/candidate-badging.txt
           grep -q "versionCode='90'" audit-out/android/previous-badging.txt; grep -q "versionCode='103'" audit-out/android/candidate-badging.txt
-      - name: Boot arm64 emulator and execute upgrade + real visual/runtime gates
+      - name: Boot x86_64 emulator and execute upgrade + real visual/runtime gates
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          arch: arm64-v8a
+          arch: x86_64
           target: google_apis
           profile: pixel_6
           disable-animations: true
