@@ -9,6 +9,10 @@ on:
       - 'audit/rsfile_visual_capture.mjs'
       - 'audit/rsstorage_wave1_android_visual.sh'
 
+concurrency:
+  group: rs-storage-wave1-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
