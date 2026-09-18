@@ -116,8 +116,11 @@ jobs:
             adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
             adb shell am start -W -n com.mhglobal.rsmusic/.RsMusicActivity > audit-out/runtime/activity-start.txt
             sleep 3
-            adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp' > audit-out/runtime/window-focus.txt || true
-            grep -q 'com.mhglobal.rsmusic' audit-out/runtime/window-focus.txt
+            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|ResumedActivity' > audit-out/runtime/activity-focus.txt || true
+            grep -q 'com.mhglobal.rsmusic' audit-out/runtime/activity-focus.txt
+            adb shell uiautomator dump /sdcard/rs-window.xml >/dev/null 2>&1 || true
+            adb pull /sdcard/rs-window.xml audit-out/runtime/window.xml >/dev/null 2>&1 || true
+            if [ -s audit-out/runtime/window.xml ] && grep -Eqi 'Pixel Launcher.*isn.t responding|isn.t responding.*Pixel Launcher' audit-out/runtime/window.xml; then echo 'Emulator launcher ANR dialog contaminated visual gate' >&2; exit 1; fi
             adb exec-out screencap -p > audit-out/runtime/01-startup.png
             adb shell dumpsys gfxinfo com.mhglobal.rsmusic framestats > audit-out/runtime/gfxinfo.txt || true
             adb shell dumpsys meminfo com.mhglobal.rsmusic > audit-out/runtime/meminfo.txt || true
