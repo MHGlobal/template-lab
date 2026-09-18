@@ -43,6 +43,12 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Record audited RS Music revision
+        shell: bash
+        run: |
+          mkdir -p audit-out
+          git -C target rev-parse HEAD | tee audit-out/TARGET_SHA.txt
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -126,11 +132,13 @@ jobs:
           mkdir -p audit-out
           STATIC=NOT_COMPLETED
           RUNTIME=NOT_COMPLETED
+          TARGET_SHA=$(cat audit-out/TARGET_SHA.txt 2>/dev/null || echo UNKNOWN)
           test -f audit-out/STAGE_STATIC_PASS && STATIC=PASS
           test -f audit-out/STAGE_RUNTIME_PASS && RUNTIME=PASS
           cat > audit-out/TEMPLATE_LAB_RS_MUSIC_V3_AUDIT.md <<EOF
           # Template Lab — RS Music V3 Audit
           - Target ref: ${TARGET_REF}
+          - RS Music SHA: ${TARGET_SHA}
           - Template Lab commit: ${GITHUB_SHA}
           - Static/build gate: ${STATIC}
           - Android runtime/UI gate: ${RUNTIME}
