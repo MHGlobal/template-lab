@@ -9,6 +9,10 @@ on:
       - 'audit/RsLocalNetworkPolicyContractTest.java'
       - 'audit/rsstorage_wave5_lnp_runtime.sh'
 
+concurrency:
+  group: rs-storage-wave5-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
