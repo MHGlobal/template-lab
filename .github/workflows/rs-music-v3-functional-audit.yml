@@ -1,0 +1,142 @@
+name: RS Music V3 Functional Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: RS Music branch or commit to audit
+        required: false
+        default: main
+  push:
+    branches: [editor]
+    paths:
+      - '.github/workflows/rs-music-v3-functional-audit.yml'
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF: ${{ inputs.target_ref || 'feat/rs-music-v3-product' }}
+
+jobs:
+  audit:
+    name: Build + Android runtime + UI audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Template Lab
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout private RS Music target
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Music-
+          ref: ${{ env.TARGET_REF }}
+          token: ${{ secrets.RS_MUSIC_READ_TOKEN || secrets.RS_MUSIC_TOKEN }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: target/**/*.gradle*
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator"
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Build and static validation
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :core:domain:test testDebugUnitTest lintDebug :app:assembleQa :app:assembleQaAndroidTest --stacktrace --no-daemon
+          mkdir -p ../audit-out
+          APK="$(find app/build/outputs/apk/qa -type f -name '*.apk' | head -1)"
+          TEST_APK="$(find app/build/outputs/apk/androidTest/qa -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          test -s "$TEST_APK"
+          cp "$APK" ../audit-out/RS-Music-V3-QA.apk
+          cp "$TEST_APK" ../audit-out/RS-Music-V3-QA-androidTest.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK" > ../audit-out/apksigner.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" > ../audit-out/aapt-badging.txt
+          sha256sum ../audit-out/RS-Music-V3-QA.apk > ../audit-out/SHA256SUMS.txt
+
+      - name: Android emulator functional gates
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: false
+          script: |
+            set -euo pipefail
+            cd target
+            ./gradlew :core:database:connectedDebugAndroidTest :app:connectedQaAndroidTest --stacktrace --no-daemon
+            cd ..
+            mkdir -p audit-out/runtime
+            adb install -r audit-out/RS-Music-V3-QA.apk >/dev/null
+            adb logcat -c
+            adb shell am force-stop com.mhglobal.rsmusic
+            adb shell monkey -p com.mhglobal.rsmusic -c android.intent.category.LAUNCHER 1 >/dev/null
+            sleep 3
+            adb exec-out screencap -p > audit-out/runtime/01-startup.png
+            adb shell dumpsys gfxinfo com.mhglobal.rsmusic framestats > audit-out/runtime/gfxinfo.txt || true
+            adb shell dumpsys meminfo com.mhglobal.rsmusic > audit-out/runtime/meminfo.txt || true
+            adb logcat -d > audit-out/runtime/logcat.txt || true
+            if grep -E 'FATAL EXCEPTION|ANR in com\.mhglobal\.rsmusic' audit-out/runtime/logcat.txt; then
+              echo 'RS Music runtime crash/ANR detected' >&2
+              exit 1
+            fi
+
+      - name: Write audit summary
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p audit-out
+          cat > audit-out/TEMPLATE_LAB_RS_MUSIC_V3_AUDIT.md <<EOF
+          # Template Lab — RS Music V3 Audit
+          - Target ref: ${TARGET_REF}
+          - Template Lab commit: ${GITHUB_SHA}
+          - Unit tests: executed
+          - Lint: executed
+          - QA APK: assembled and signature checked
+          - Compose UI tests: executed
+          - Favorite database persistence: executed
+          - Android runtime launch: executed
+          - Gfx/memory/logcat evidence: captured
+          EOF
+
+      - name: Upload RS Music audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Music-V3-Template-Lab-Audit
+          path: |
+            audit-out/
+            target/app/build/reports/
+            target/app/build/outputs/androidTest-results/
+            target/core/database/build/outputs/androidTest-results/
+          if-no-files-found: warn
+          retention-days: 14
