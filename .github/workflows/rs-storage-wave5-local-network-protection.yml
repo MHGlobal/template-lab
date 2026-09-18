@@ -164,7 +164,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
-          emulator-boot-timeout: 900
+          emulator-boot-timeout: 1500
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: bash "${{ github.workspace }}/audit/rsstorage_wave5_lnp_runtime.sh" "${{ github.workspace }}"
       - name: Publish safe Wave 5 evidence only
