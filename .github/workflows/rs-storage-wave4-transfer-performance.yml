@@ -6,6 +6,7 @@ on:
     branches: [editor]
     paths:
       - '.github/workflows/rs-storage-wave4-transfer-performance.yml'
+      - 'audit/rsstorage_wave4_transfer_runtime.sh'
 
 permissions:
   contents: read
