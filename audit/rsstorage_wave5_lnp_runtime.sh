@@ -20,6 +20,37 @@ wait_boot() {
   adb devices -l || true
   return 1
 }
+adb_install_bounded() {
+  local apk="$1" log="$2"
+  for attempt in 1 2; do
+    echo "ADB_INSTALL_ATTEMPT=$attempt APK=$(basename "$apk")" | tee -a "$log"
+    if python3 - "$apk" "$log" <<'PY'
+import subprocess,sys
+apk,log=sys.argv[1:]
+cmd=['adb','install','--no-streaming',apk]
+with open(log,'a',encoding='utf-8') as fh:
+    fh.write('CMD='+' '.join(cmd)+'\n'); fh.flush()
+    try:
+        p=subprocess.run(cmd,stdout=fh,stderr=subprocess.STDOUT,timeout=300)
+        raise SystemExit(p.returncode)
+    except subprocess.TimeoutExpired:
+        fh.write('ADB_INSTALL_TIMEOUT_SECONDS=300\n'); fh.flush()
+        raise SystemExit(124)
+PY
+    then
+      echo "ADB_INSTALL=PASS" | tee -a "$log"
+      return 0
+    fi
+    echo "ADB_INSTALL_ATTEMPT_${attempt}=FAIL" | tee -a "$log"
+    adb kill-server || true
+    sleep 2
+    adb start-server
+    wait_boot || true
+  done
+  echo "ADB_INSTALL=FAIL" | tee -a "$log"
+  return 1
+}
+
 tap_text() {
   local wanted="$1"
   adb shell uiautomator dump /sdcard/rs-wave5.xml >/dev/null
@@ -42,7 +73,8 @@ PY
   sleep 1
 }
 
-adb install "$WS/private-builds/candidate.apk" >/dev/null
+wait_boot
+adb_install_bounded "$WS/private-builds/candidate.apk" "$OUT/adb-install.log"
 AUDIT_PASS="RsLnp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-C5!"
 export AUDIT_PASS
 python3 - <<'PY' >/tmp/rs_users.xml
