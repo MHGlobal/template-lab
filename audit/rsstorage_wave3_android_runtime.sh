@@ -6,6 +6,7 @@ WEB="$WS/audit-out/web-android-served"
 OLD="$WS/private-builds/previous.apk"
 NEW="$WS/private-builds/candidate.apk"
 mkdir -p "$OUT" "$WEB"
+git -C "$WS/target" rev-parse HEAD > "$OUT/target-sha.txt"
 tap_ui() {
   local wanted="$1"
   adb shell uiautomator dump /sdcard/rs-audit-window.xml >/dev/null
