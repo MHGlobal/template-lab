@@ -53,13 +53,21 @@ jobs:
           discovery=Path('target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/LocalDiscoveryManager.java').read_text(encoding='utf-8')
           main=Path('target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/MainActivity.java').read_text(encoding='utf-8')
           service=Path('target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java').read_text(encoding='utf-8')
-          assert 'return sameSubnet(remote, local, 24);' in policy
+          assert 'return remote instanceof Inet4Address && sameSubnet(remote, local, 24);' in policy
+          assert 'first == 100 && second >= 64 && second <= 127' in policy
+          assert 'first == 169 && second == 254' in policy
+          assert 'address instanceof Inet6Address' in policy
           assert 'interfaceScore(name)' in discovery and 'selectBestAddress()' in discovery
+          assert 'RsLocalNetworkPolicy.isLocalInterfaceAddress(a)' in discovery
           assert 'refreshIfAddressChanged' in discovery
           assert 'startDiscoveryRefresh()' in service and 'refreshDiscoveryBinding()' in service
           assert 'networkHandler.removeCallbacks(networkRefresh)' in service
           assert 'if(nearbyMissing)toast(' in main and 'startServerAfterPermissions();' in main
           print('NETWORK_RISK_PREFIX_FALLBACK_24=true')
+          print('NETWORK_ACCEPTS_CGNAT_100_64=true')
+          print('NETWORK_ACCEPTS_IPV4_LINK_LOCAL_169_254=true')
+          print('NETWORK_SUPPORTS_IPV6_LOCAL_PREFIXES=true')
+          print('NETWORK_MDNS_MULTISTACK_BINDING=true')
           print('NETWORK_MDNS_REBIND_ON_ADDRESS_CHANGE=true')
           print('NETWORK_RISK_MDNS_STALE_BINDING=false')
           print('DENIED_NEARBY_CALLBACK_CAN_START_SERVER=true')
