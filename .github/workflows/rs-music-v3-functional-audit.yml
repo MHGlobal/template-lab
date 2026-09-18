@@ -104,10 +104,8 @@ jobs:
           profile: pixel_6
           disable-animations: false
           script: |
-            set -eu
-            cd target
-            ./gradlew :core:database:connectedAndroidTest :app:connectedAndroidTest --stacktrace --no-daemon
-            cd ..
+            test -x target/gradlew
+            target/gradlew -p target :core:database:connectedAndroidTest :app:connectedAndroidTest --stacktrace --no-daemon
             mkdir -p audit-out/runtime
             adb shell pm clear com.mhglobal.rsmusic >/dev/null 2>&1 || true
             adb install -r audit-out/RS-Music-V3-QA.apk >/dev/null
