@@ -104,7 +104,7 @@ jobs:
           profile: pixel_6
           disable-animations: false
           script: |
-            set -euo pipefail
+            set -eu
             cd target
             ./gradlew :core:database:connectedAndroidTest :app:connectedAndroidTest --stacktrace --no-daemon
             cd ..
