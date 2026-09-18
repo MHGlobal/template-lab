@@ -117,10 +117,7 @@ jobs:
             adb shell dumpsys gfxinfo com.mhglobal.rsmusic framestats > audit-out/runtime/gfxinfo.txt || true
             adb shell dumpsys meminfo com.mhglobal.rsmusic > audit-out/runtime/meminfo.txt || true
             adb logcat -d > audit-out/runtime/logcat.txt || true
-            if grep -E 'FATAL EXCEPTION|ANR in com\.mhglobal\.rsmusic' audit-out/runtime/logcat.txt; then
-              echo 'RS Music runtime crash/ANR detected' >&2
-              exit 1
-            fi
+            if grep -Eq 'FATAL EXCEPTION|ANR in com\.mhglobal\.rsmusic' audit-out/runtime/logcat.txt; then echo 'RS Music runtime crash/ANR detected' >&2; exit 1; fi
             touch audit-out/STAGE_RUNTIME_PASS
 
       - name: Write audit summary
