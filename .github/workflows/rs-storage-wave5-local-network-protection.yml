@@ -122,8 +122,8 @@ jobs:
           ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.13113456" ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
           APK=$(find rsapp/build/outputs/apk/debug -type f -name '*.apk' | head -1)
           test -s "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/private-builds/candidate.apk"
-          cd "$GITHUB_WORKSPACE"
+          cp "$APK" "${{ github.workspace }}/private-builds/candidate.apk"
+          cd "${{ github.workspace }}"
           unzip -l private-builds/candidate.apk | grep -q 'lib/x86_64/'
           echo 'X86_64_APK_ABI=PASS' > audit-out/wave5/x86-abi.txt
 
@@ -139,7 +139,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: |
             set -euo pipefail
-            OUT="$GITHUB_WORKSPACE/audit-out/wave5"
+            OUT="${{ github.workspace }}/audit-out/wave5"
             mkdir -p "$OUT"
             exec > >(tee "$OUT/lnp-runtime.log") 2>&1
 
@@ -170,7 +170,7 @@ jobs:
               sleep 1
             }
 
-            adb install "$GITHUB_WORKSPACE/private-builds/candidate.apk" >/dev/null
+            adb install "${{ github.workspace }}/private-builds/candidate.apk" >/dev/null
             AUDIT_PASS="RsLnp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-C5!"
             export AUDIT_PASS
             python3 - <<'PY' >/tmp/rs_users.xml
