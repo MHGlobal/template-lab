@@ -36,8 +36,8 @@ function javaHtml(src, method) {
 }
 
 const hot = fs.readFileSync(hotPath, 'utf8');
-const baseCss = javaHtml(hot, 'v42Css');
-const baseJs = javaHtml(hot, 'v42Helpers');
+const productionCss = ['css','v42Css','v43Css','v433Css','rsFileV47Css'].map(m => javaHtml(hot, m)).join('\n');
+const productionJs = ['jsHelpers','v42Helpers','v43Helpers','v433Helpers','rsFileGestureHelpers','rsFileV47Helpers'].map(m => javaHtml(hot, m)).join('\n');
 const esc = s => String(s).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 
 function row(id, p, name, dir = false) {
@@ -48,13 +48,13 @@ function row(id, p, name, dir = false) {
 function html(url) {
   const u = new URL(url, 'http://local');
   const dir = u.searchParams.get('d') || '/storage/RS Storage';
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${baseCss}
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${productionCss}
   <link rel="stylesheet" href="/rs-dynamic/rs-file-v477-workspace.css"><link rel="stylesheet" href="/rs-dynamic/rs-file-v478-completion.css"><link rel="stylesheet" href="/rs-dynamic/rs-file-v479-overlays.css"><link rel="stylesheet" href="/rs-dynamic/rs-file-v4710-global-nav.css">
   <style>body{margin:0;background:#090909;color:#fff;font-family:Arial,sans-serif}.admin-layout{min-height:100vh}.admin-layout main{min-width:0}.toolbar,.upload,.panel,header{padding:12px}.list{display:grid}.file{display:flex;align-items:center;gap:10px;padding:16px 12px;border-bottom:1px solid #222;color:#fff;text-decoration:none}.fname{display:grid;flex:1}.more{margin-left:auto;width:40px;height:40px}</style></head><body>
   <button class="rs-menu-fab" type="button" aria-label="Abrir menu" aria-controls="rsGlobalMenu" aria-expanded="false" onclick="rsMenuToggle()">☰</button>
   <div id="rsGlobalMenu" class="rs-global-menu" aria-hidden="true"><button class="rs-menu-backdrop" type="button" aria-label="Fechar menu" onclick="rsMenuToggle(false)"></button><div class="rs-menu-panel" role="navigation" aria-label="Navegação principal"><div class="rs-menu-brand"><b>RS Storage</b></div><a href="/admin/files">File Storage</a><a href="/cinema">RS Cinema</a><a href="/ai">RS IA</a><a href="/admin/clients">Clientes</a></div></div>
   <div class="admin-layout rs43-shell" data-rs-csrf="audit"><main><header><h1>Ficheiros</h1><p>${esc(dir)}</p></header><div class="toolbar"><a class="back" href="/admin/files?d=%2Fstorage">Voltar</a></div><section class="upload"><input id="upfiles" type="file" multiple></section><section class="panel"><div class="list">${row('folder','/storage/Projetos','Projetos',true)}${row('file','/storage/RS Storage/demo-video.mp4','demo-video.mp4')}${row('file2','/storage/RS Storage/relatorio.pdf','relatorio.pdf')}</div></section></main></div>
-  ${baseJs}<script src="/rs-dynamic/rs-file-v471.js"></script><script src="/rs-dynamic/rs-file-v471-hardening.js"></script><script src="/rs-dynamic/rs-file-v477-workspace.js"></script><script src="/rs-dynamic/rs-file-v478-completion.js"></script><script src="/rs-dynamic/rs-file-v479-overlays.js"></script><script src="/rs-dynamic/rs-file-v4710-global-nav.js"></script></body></html>`;
+  ${productionJs}<script src="/rs-dynamic/rs-file-v471.js"></script><script src="/rs-dynamic/rs-file-v471-hardening.js"></script><script src="/rs-dynamic/rs-file-v477-workspace.js"></script><script src="/rs-dynamic/rs-file-v478-completion.js"></script><script src="/rs-dynamic/rs-file-v479-overlays.js"></script><script src="/rs-dynamic/rs-file-v4710-global-nav.js"></script></body></html>`;
 }
 
 const server = http.createServer((req, res) => {
