@@ -17,6 +17,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
       - name: Install Android SDK and NDK
         run: yes | sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" >/dev/null || true
       - name: Decode final V4 source
