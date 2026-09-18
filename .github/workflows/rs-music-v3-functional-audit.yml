@@ -83,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :core:domain:test testDebugUnitTest lintDebug :app:assembleQa :app:assembleAndroidTest --stacktrace --no-daemon
+          ./gradlew :core:domain:test testDebugUnitTest lintDebug :app:assembleQa :app:assembleAndroidTest --stacktrace --no-daemon --no-parallel
           mkdir -p ../audit-out
           APK="$(find app/build/outputs/apk/qa -type f -name '*.apk' | head -1)"
           TEST_APK="$(find app/build/outputs/apk/androidTest -type f -name '*.apk' | head -1)"
@@ -106,7 +106,7 @@ jobs:
           disable-animations: false
           script: |
             test -x target/gradlew
-            target/gradlew -p target :core:database:connectedAndroidTest :app:connectedAndroidTest --stacktrace --no-daemon
+            target/gradlew -p target :core:database:connectedAndroidTest :app:connectedAndroidTest --stacktrace --no-daemon --no-parallel
             mkdir -p audit-out/runtime
             adb shell pm clear com.mhglobal.rsmusic >/dev/null 2>&1 || true
             adb install -r audit-out/RS-Music-V3-QA.apk >/dev/null
