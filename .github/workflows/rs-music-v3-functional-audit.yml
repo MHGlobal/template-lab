@@ -72,10 +72,10 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :core:domain:test testDebugUnitTest lintDebug :app:assembleQa :app:assembleQaAndroidTest --stacktrace --no-daemon
+          ./gradlew :core:domain:test testDebugUnitTest lintDebug :app:assembleQa :app:assembleAndroidTest --stacktrace --no-daemon
           mkdir -p ../audit-out
           APK="$(find app/build/outputs/apk/qa -type f -name '*.apk' | head -1)"
-          TEST_APK="$(find app/build/outputs/apk/androidTest/qa -type f -name '*.apk' | head -1)"
+          TEST_APK="$(find app/build/outputs/apk/androidTest -type f -name '*.apk' | head -1)"
           test -s "$APK"
           test -s "$TEST_APK"
           cp "$APK" ../audit-out/RS-Music-V3-QA.apk
@@ -95,7 +95,7 @@ jobs:
           script: |
             set -euo pipefail
             cd target
-            ./gradlew :core:database:connectedDebugAndroidTest :app:connectedQaAndroidTest --stacktrace --no-daemon
+            ./gradlew :core:database:connectedAndroidTest :app:connectedAndroidTest --stacktrace --no-daemon
             cd ..
             mkdir -p audit-out/runtime
             adb install -r audit-out/RS-Music-V3-QA.apk >/dev/null
