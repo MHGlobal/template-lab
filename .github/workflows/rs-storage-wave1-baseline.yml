@@ -142,6 +142,21 @@ jobs:
           python3 scripts/audit_v478_android_runtime_quality.py source/current-v4.3.0
           python3 scripts/audit_v478_product_refinement.py source/current-v4.3.0
           python3 scripts/audit_v479_reported_bugs.py source/current-v4.3.0
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('source/current-v4.3.0/rsapp/src/main')
+          main=(root/'java/com/rs/localstorage/MainActivity.java').read_text(encoding='utf-8')
+          ai=(root/'java/com/rs/localstorage/AiActivity.kt').read_text(encoding='utf-8')
+          web=(root/'assets/rs-ai/app.js').read_text(encoding='utf-8')
+          assert 'putExtra("rs_ai_target",target)' in main
+          assert 'getStringExtra("rs_ai_target")' in ai
+          for target in ('"providers" -> showProviders()','"chat" -> openLocalWeb("/ai?mode=chat")','"agent", "engineer" -> openLocalWeb("/ai?mode=engineer")','"editor" -> openLocalWeb("/ai?mode=editor")'):
+              assert target in ai, target
+          assert "new URLSearchParams(location.search).get('mode')" in web
+          assert "['chat','engineer','editor']" in web
+          print('RSIA_NATIVE_TARGET_ROUTING=PASS')
+          print('RSIA_WEB_MODE_ROUTING=PASS')
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: wave1-agent-contracts
