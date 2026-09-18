@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
+WS="${1:?workspace path required}"
 set -euo pipefail
-OUT="${{ github.workspace }}/audit-out/wave4"
-APK="${{ github.workspace }}/private-builds/candidate.apk"
+OUT="$WS/audit-out/wave4"
+APK="$WS/private-builds/candidate.apk"
 mkdir -p "$OUT"
 exec > >(tee "$OUT/runtime.log") 2>&1
 
