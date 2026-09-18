@@ -92,6 +92,15 @@ jobs:
           python3 target/scripts/apply_llama_rs_compat.py external/llama.cpp
           python3 target/scripts/apply_v434_load_progress.py external/llama.cpp
           python3 target/scripts/apply_v450_llama_runtime.py external/llama.cpp
+          # CI emulator optimization only: build the native library for x86_64 only.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('external/llama.cpp/examples/llama.android/lib/build.gradle.kts')
+          s=p.read_text(encoding='utf-8')
+          old='abiFilters += listOf("arm64-v8a", "x86_64")'
+          assert old in s, p
+          p.write_text(s.replace(old,'abiFilters += listOf("x86_64")'),encoding='utf-8')
+          PY
           SETTINGS=external/llama.cpp/examples/llama.android/settings.gradle.kts
           grep -q 'include(":rsapp")' "$SETTINGS" || printf '\ninclude(":rsapp")\n' >> "$SETTINGS"
           chmod +x external/llama.cpp/examples/llama.android/gradlew
