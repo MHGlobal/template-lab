@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: rs-music-v3-template-lab
+  cancel-in-progress: true
+
 env:
   TARGET_REF: ${{ inputs.target_ref || 'feat/rs-music-v3-product' }}
 
@@ -83,6 +87,7 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK" > ../audit-out/apksigner.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" > ../audit-out/aapt-badging.txt
           sha256sum ../audit-out/RS-Music-V3-QA.apk > ../audit-out/SHA256SUMS.txt
+          touch ../audit-out/STAGE_STATIC_PASS
 
       - name: Android emulator functional gates
         uses: reactivecircus/android-emulator-runner@v2
@@ -98,6 +103,7 @@ jobs:
             ./gradlew :core:database:connectedAndroidTest :app:connectedAndroidTest --stacktrace --no-daemon
             cd ..
             mkdir -p audit-out/runtime
+            adb shell pm clear com.mhglobal.rsmusic >/dev/null 2>&1 || true
             adb install -r audit-out/RS-Music-V3-QA.apk >/dev/null
             adb logcat -c
             adb shell am force-stop com.mhglobal.rsmusic
@@ -111,23 +117,24 @@ jobs:
               echo 'RS Music runtime crash/ANR detected' >&2
               exit 1
             fi
+            touch audit-out/STAGE_RUNTIME_PASS
 
       - name: Write audit summary
         if: always()
         shell: bash
         run: |
           mkdir -p audit-out
+          STATIC=NOT_COMPLETED
+          RUNTIME=NOT_COMPLETED
+          test -f audit-out/STAGE_STATIC_PASS && STATIC=PASS
+          test -f audit-out/STAGE_RUNTIME_PASS && RUNTIME=PASS
           cat > audit-out/TEMPLATE_LAB_RS_MUSIC_V3_AUDIT.md <<EOF
           # Template Lab — RS Music V3 Audit
           - Target ref: ${TARGET_REF}
           - Template Lab commit: ${GITHUB_SHA}
-          - Unit tests: executed
-          - Lint: executed
-          - QA APK: assembled and signature checked
-          - Compose UI tests: executed
-          - Favorite database persistence: executed
-          - Android runtime launch: executed
-          - Gfx/memory/logcat evidence: captured
+          - Static/build gate: ${STATIC}
+          - Android runtime/UI gate: ${RUNTIME}
+          - Runtime gate includes Compose UI, database favorite persistence, real playback transition test, crash/ANR scan, gfx and memory capture.
           EOF
 
       - name: Upload RS Music audit evidence
