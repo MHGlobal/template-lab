@@ -8,6 +8,7 @@ on:
       - '.github/workflows/rs-storage-wave3-android-runtime.yml'
       - 'audit/rsstorage_wave3_android_served_web.mjs'
       - 'reports/rs-storage-wave2-findings.md'
+      - 'audit/rsstorage_wave3_android_runtime.sh'
 
 permissions:
   contents: read
