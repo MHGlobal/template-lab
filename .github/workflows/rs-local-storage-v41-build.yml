@@ -11,22 +11,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check legacy V4.1 source chunks
+        id: legacy
+        shell: bash
+        run: |
+          available=true
+          for i in 00 01 02 03 04 05 06; do
+            [ -f "rs-v41-part-$i" ] || available=false
+          done
+          echo "available=$available" >> "$GITHUB_OUTPUT"
+          if [ "$available" = true ]; then
+            echo "LEGACY_V41_SOURCE=AVAILABLE"
+          else
+            echo "LEGACY_V41_SOURCE=NOT_APPLICABLE — historical source chunks are not present in the public Template Lab history."
+          fi
+      - name: Record legacy V4.1 applicability
+        if: steps.legacy.outputs.available != 'true'
+        run: echo "LEGACY_V41_WORKFLOW=NOT_APPLICABLE"
 
       - uses: actions/setup-java@v5
+        if: steps.legacy.outputs.available == 'true'
         with:
           distribution: temurin
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
+        if: steps.legacy.outputs.available == 'true'
         with:
           packages: ''
 
       - name: Install Android SDK, NDK and CMake
+        if: steps.legacy.outputs.available == 'true'
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
 
       - name: Repair, decode and verify RS Local Storage V4.1 source
+        if: steps.legacy.outputs.available == 'true'
         run: |
           mkdir -p rs-local-storage-v41
           python3 - <<'PY'
@@ -83,23 +104,27 @@ jobs:
           test -f rs-local-storage-v41/rsapp/build.gradle.kts
 
       - name: Clone pinned llama.cpp
+        if: steps.legacy.outputs.available == 'true'
         run: |
           git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git llama.cpp
           cd llama.cpp
           git checkout 8ef78e644f559db4e8716b59bf76b8e11619337d
 
       - name: Inject RS Local Storage V4.1 module
+        if: steps.legacy.outputs.available == 'true'
         run: |
           cp -R rs-local-storage-v41/rsapp llama.cpp/examples/llama.android/rsapp
           printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
 
       - name: Build V4.1 APK
+        if: steps.legacy.outputs.available == 'true'
         working-directory: llama.cpp/examples/llama.android
         run: |
           chmod +x gradlew
           ./gradlew :rsapp:assembleDebug --stacktrace
 
       - name: Inspect APK
+        if: steps.legacy.outputs.available == 'true'
         run: |
           APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
           test -s "$APK"
@@ -108,6 +133,7 @@ jobs:
           sha256sum RS-Local-Storage-v4.1.apk
 
       - uses: actions/upload-artifact@v4
+        if: steps.legacy.outputs.available == 'true'
         with:
           name: RS-Local-Storage-v4.1-APK
           path: RS-Local-Storage-v4.1.apk
