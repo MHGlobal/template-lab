@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+WS="${1:?workspace path required}"
 set -euo pipefail
-WS="${{ github.workspace }}"
+WS="$WS"
 mkdir -p "$WS/audit-out/android"
 APK=$(find "$WS/external/llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug" -type f -name '*.apk' | head -1)
 test -s "$APK"
