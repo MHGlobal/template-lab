@@ -323,7 +323,7 @@ jobs:
 
   android-emulator-visual:
     name: Android emulator visual evidence
-    runs-on: ubuntu-latest
+    runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -375,6 +375,8 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: |
             set -euo pipefail
             mkdir -p audit-out/android
