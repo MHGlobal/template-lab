@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/rs-storage-wave5-local-network-protection.yml'
       - 'audit/RsLocalNetworkPolicyContractTest.java'
+      - 'audit/rsstorage_wave5_lnp_runtime.sh'
 
 permissions:
   contents: read
