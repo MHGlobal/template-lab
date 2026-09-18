@@ -9,8 +9,8 @@
 ## Job conclusions
 
 - `Agent runtime tool surface`: **success**
-- `Workspace guard + undo/redo real task`: **success**
 - `Completion gate cannot self-approve`: **success**
+- `Workspace guard + undo/redo real task`: **success**
 - `Wave 2 production gate`: **success**
 
 ## Sanitized gate markers
