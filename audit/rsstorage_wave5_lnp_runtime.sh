@@ -3,6 +3,7 @@ WS="${1:?workspace path required}"
 set -euo pipefail
 OUT="$WS/audit-out/wave5"
 mkdir -p "$OUT"
+git -C "$WS/target" rev-parse HEAD > "$OUT/target-sha.txt"
 exec > >(tee "$OUT/lnp-runtime.log") 2>&1
 
 wait_boot() {
