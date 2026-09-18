@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/rs-storage-wave1-baseline.yml'
       - 'audit/rsfile_visual_capture.mjs'
+      - 'audit/rsstorage_wave1_android_visual.sh'
 
 permissions:
   contents: read
