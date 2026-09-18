@@ -2,3 +2,4 @@ RS Storage audit public-workflow coverage trigger.
 Target product branch: release/v4.7.13-agent-harness
 No RS-Storage main changes.
 Refresh after SDK bootstrap repair.
+Refresh after legacy payload applicability classification.
