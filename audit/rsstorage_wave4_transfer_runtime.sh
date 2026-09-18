@@ -4,6 +4,7 @@ set -euo pipefail
 OUT="$WS/audit-out/wave4"
 APK="$WS/private-builds/candidate.apk"
 mkdir -p "$OUT"
+git -C "$WS/target" rev-parse HEAD > "$OUT/target-sha.txt"
 exec > >(tee "$OUT/runtime.log") 2>&1
 
 tap_ui() {
