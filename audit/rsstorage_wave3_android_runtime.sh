@@ -7,6 +7,55 @@ OLD="$WS/private-builds/previous.apk"
 NEW="$WS/private-builds/candidate.apk"
 mkdir -p "$OUT" "$WEB"
 git -C "$WS/target" rev-parse HEAD > "$OUT/target-sha.txt"
+wait_android_ready() {
+  adb wait-for-device
+  for ((i=1;i<=240;i++)); do
+    local boot
+    boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+    if [ "$boot" = 1 ] && adb shell cmd package list packages >/dev/null 2>&1; then
+      echo "ANDROID_PACKAGE_MANAGER_READY=true"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "ANDROID_PACKAGE_MANAGER_READY=false" >&2
+  adb devices -l || true
+  adb shell getprop 2>/dev/null | tail -80 || true
+  return 1
+}
+adb_install_bounded() {
+  local mode="$1" apk="$2" log="$3"
+  for attempt in 1 2; do
+    echo "ADB_INSTALL_MODE=$mode ATTEMPT=$attempt APK=$(basename "$apk")" | tee -a "$log"
+    if python3 - "$mode" "$apk" "$log" <<'PY'
+import subprocess,sys
+mode,apk,log=sys.argv[1:]
+cmd=['adb','install','--no-streaming']
+if mode=='upgrade': cmd.append('-r')
+cmd.append(apk)
+with open(log,'a',encoding='utf-8') as fh:
+    fh.write('CMD='+' '.join(cmd)+'\n'); fh.flush()
+    try:
+        p=subprocess.run(cmd,stdout=fh,stderr=subprocess.STDOUT,timeout=300)
+        raise SystemExit(p.returncode)
+    except subprocess.TimeoutExpired:
+        fh.write('ADB_INSTALL_TIMEOUT_SECONDS=300\n'); fh.flush()
+        raise SystemExit(124)
+PY
+    then
+      echo "ADB_INSTALL_${mode^^}=PASS" | tee -a "$log"
+      return 0
+    fi
+    echo "ADB_INSTALL_${mode^^}_ATTEMPT_${attempt}=FAIL" | tee -a "$log"
+    adb kill-server || true
+    sleep 2
+    adb start-server
+    wait_android_ready || true
+  done
+  echo "ADB_INSTALL_${mode^^}=FAIL" | tee -a "$log"
+  return 1
+}
+
 tap_ui() {
   local wanted="$1"
   adb shell uiautomator dump /sdcard/rs-audit-window.xml >/dev/null
@@ -27,8 +76,9 @@ PY
   adb shell input tap $xy
   sleep 1
 }
+wait_android_ready
 echo 'Installing previous production baseline without uninstall path...' | tee "$OUT/upgrade-evidence.txt"
-adb install "$OLD" >/dev/null
+adb_install_bounded baseline "$OLD" "$OUT/baseline-install.log"
 AUDIT_PASS="RsAudit-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-A9!"
 export AUDIT_PASS
 python3 - <<'PY' >/tmp/rs_users.xml
@@ -52,7 +102,7 @@ adb exec-out run-as com.rs.localstorage sh -c 'cat > shared_prefs/rs_ui.xml' < /
 adb shell mkdir -p /sdcard/RSAgentWorkspace
 adb shell "echo external-upgrade-marker-${GITHUB_RUN_ID} > /sdcard/RSAgentWorkspace/rs-audit-preserve.txt"
 echo 'Applying candidate with adb install -r (no uninstall)...' | tee -a "$OUT/upgrade-evidence.txt"
-adb install -r "$NEW" >/dev/null
+adb_install_bounded upgrade "$NEW" "$OUT/candidate-update-install.log"
 adb shell dumpsys package com.rs.localstorage | grep -E 'versionName=|versionCode=' | head -4 | tee -a "$OUT/upgrade-evidence.txt"
 adb shell dumpsys package com.rs.localstorage | grep -q 'versionName=4.7.13'
 adb exec-out run-as com.rs.localstorage cat files/rs-audit-preserve.txt | grep -q "upgrade-marker-${GITHUB_RUN_ID}"
