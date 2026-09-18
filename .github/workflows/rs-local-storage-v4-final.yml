@@ -12,26 +12,46 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+      - name: Check legacy V4 source payload
+        id: legacy
+        shell: bash
+        run: |
+          if [ -f v4/final-src.b64 ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "LEGACY_V4_SOURCE=AVAILABLE"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "LEGACY_V4_SOURCE=NOT_APPLICABLE — v4/final-src.b64 is not present in the public Template Lab history."
+          fi
+      - name: Record legacy V4 applicability
+        if: steps.legacy.outputs.available != 'true'
+        run: echo "LEGACY_V4_WORKFLOW=NOT_APPLICABLE"
       - uses: actions/setup-java@v5
+        if: steps.legacy.outputs.available == 'true'
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        if: steps.legacy.outputs.available == 'true'
         with:
           packages: ''
       - name: Install Android SDK and NDK
+        if: steps.legacy.outputs.available == 'true'
         run: yes | sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" >/dev/null || true
       - name: Decode final V4 source
+        if: steps.legacy.outputs.available == 'true'
         run: |
           mkdir -p /tmp/rs-v4
           base64 -d v4/final-src.b64 > /tmp/rs-v4/src.tar.gz
           tar -xzf /tmp/rs-v4/src.tar.gz -C /tmp/rs-v4
       - name: Clone pinned llama.cpp
+        if: steps.legacy.outputs.available == 'true'
         run: |
           git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
           cd /tmp/llama.cpp
           git checkout 8ef78e644f559db4e8716b59bf76b8e11619337d
       - name: Tune llama.cpp for 8 GB Android
+        if: steps.legacy.outputs.available == 'true'
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -44,24 +64,29 @@ jobs:
           assert 'BATCH_SIZE              = 256' in s
           PY
       - name: Inject RS Local Storage V4 module
+        if: steps.legacy.outputs.available == 'true'
         run: |
           cp -R /tmp/rs-v4/rsapp /tmp/llama.cpp/examples/llama.android/rsapp
           printf '\ninclude(":rsapp")\n' >> /tmp/llama.cpp/examples/llama.android/settings.gradle.kts
       - name: Compile JVM sources
+        if: steps.legacy.outputs.available == 'true'
         working-directory: /tmp/llama.cpp/examples/llama.android
         run: ./gradlew :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
       - name: Build final APK
+        if: steps.legacy.outputs.available == 'true'
         working-directory: /tmp/llama.cpp/examples/llama.android
         env:
           ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/29.0.13113456
         run: ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
       - name: Validate APK
+        if: steps.legacy.outputs.available == 'true'
         run: |
           APK=/tmp/llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk
           test -s "$APK"
           ls -lh "$APK"
           $ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK" | head -20
       - uses: actions/upload-artifact@v4
+        if: steps.legacy.outputs.available == 'true'
         with:
           name: RS-Local-Storage-v4-Final-APK
           path: /tmp/llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk
