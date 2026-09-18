@@ -1,0 +1,4 @@
+RS Music source branch: feat/rs-music-ui-v2
+Validated source revision: 424c8fe1fbe69d07bd5c2437e5ac8ad08853f923
+Version: 0.1.1-qa.3 (versionCode 4)
+Purpose: accepted RS Music UI with QA.3 fixes. Library track-backed lists use native LazyColumn vertical scrolling without row/pinch pointer interception. Motion uses direction lock, finger-follow state during touch, velocity-aware commit and post-release spring/tween settling outside the restricted pointer scope. Full-screen player overlays the persistent app shell for true swipe-down reveal/minimize. Dynamic accent/motion settings, visible RS Pulse branding, adaptive/themed launcher identity and branded system media fallback artwork are included. No redesign.
