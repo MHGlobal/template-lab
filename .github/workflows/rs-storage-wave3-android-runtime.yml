@@ -92,15 +92,6 @@ jobs:
           python3 target/scripts/apply_llama_rs_compat.py external/llama.cpp
           python3 target/scripts/apply_v434_load_progress.py external/llama.cpp
           python3 target/scripts/apply_v450_llama_runtime.py external/llama.cpp
-          # CI emulator optimization only: build the native library for x86_64 only.
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('external/llama.cpp/examples/llama.android/lib/build.gradle.kts')
-          s=p.read_text(encoding='utf-8')
-          old='abiFilters += listOf("arm64-v8a", "x86_64")'
-          assert old in s, p
-          p.write_text(s.replace(old,'abiFilters += listOf("x86_64")'),encoding='utf-8')
-          PY
           SETTINGS=external/llama.cpp/examples/llama.android/settings.gradle.kts
           grep -q 'include(":rsapp")' "$SETTINGS" || printf '\ninclude(":rsapp")\n' >> "$SETTINGS"
           chmod +x external/llama.cpp/examples/llama.android/gradlew
@@ -128,9 +119,6 @@ jobs:
           grep -q "versionName='4.7.13'" audit-out/android/candidate-badging.txt
           grep -q "versionCode='90'" audit-out/android/previous-badging.txt
           grep -q "versionCode='103'" audit-out/android/candidate-badging.txt
-          unzip -l private-builds/previous.apk | grep -q 'lib/x86_64/'
-          unzip -l private-builds/candidate.apk | grep -q 'lib/x86_64/'
-          echo 'X86_64_APK_ABI=PASS' | tee audit-out/android/x86-abi.txt
 
       - name: Boot emulator and execute upgrade + real visual/runtime gates
         uses: reactivecircus/android-emulator-runner@v2
@@ -140,14 +128,12 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
-          emulator-boot-timeout: 900
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: |
             set -euo pipefail
-            OUT="$GITHUB_WORKSPACE/audit-out/android"
-            WEB="$GITHUB_WORKSPACE/audit-out/web-android-served"
-            OLD="$GITHUB_WORKSPACE/private-builds/previous.apk"
-            NEW="$GITHUB_WORKSPACE/private-builds/candidate.apk"
+            OUT="${{ github.workspace }}/audit-out/android"
+            WEB="${{ github.workspace }}/audit-out/web-android-served"
+            OLD="${{ github.workspace }}/private-builds/previous.apk"
+            NEW="${{ github.workspace }}/private-builds/candidate.apk"
             mkdir -p "$OUT" "$WEB"
             tap_ui() {
               local wanted="$1"
@@ -216,7 +202,7 @@ jobs:
             tap_ui 'Ativar servidor'
             adb forward tcp:18080 tcp:8080
             ok=0
-            for ((i=1;i<=75;i++)); do if curl -fsS --max-time 2 http://127.0.0.1:18080/login >/dev/null 2>&1; then ok=1; break; fi; sleep 1; done
+            for i in $(seq 1 75); do if curl -fsS --max-time 2 http://127.0.0.1:18080/login >/dev/null 2>&1; then ok=1; break; fi; sleep 1; done
             test "$ok" = 1
             echo 'ANDROID_EMBEDDED_SERVER_8080=true' | tee -a "$OUT/upgrade-evidence.txt"
             adb exec-out screencap -p > "$OUT/02-native-server-running.png"
