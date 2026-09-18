@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -euo pipefail
+OUT="${{ github.workspace }}/audit-out/wave5"
+mkdir -p "$OUT"
+exec > >(tee "$OUT/lnp-runtime.log") 2>&1
+
+wait_boot() {
+  adb wait-for-device
+  for ((i=1;i<=120;i++)); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && return 0; sleep 1; done
+  return 1
+}
+tap_text() {
+  local wanted="$1"
+  adb shell uiautomator dump /sdcard/rs-wave5.xml >/dev/null
+  adb pull /sdcard/rs-wave5.xml /tmp/rs-wave5.xml >/dev/null
+  local xy
+  xy=$(python3 - "$wanted" <<'PY'
+import re,sys,xml.etree.ElementTree as ET
+wanted=sys.argv[1].lower()
+root=ET.parse('/tmp/rs-wave5.xml').getroot()
+for n in root.iter('node'):
+    text=(n.attrib.get('text') or n.attrib.get('content-desc') or '').lower()
+    if text==wanted or wanted in text:
+        m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+        if m:
+            x1,y1,x2,y2=map(int,m.groups()); print((x1+x2)//2,(y1+y2)//2); raise SystemExit
+raise SystemExit(3)
+PY
+  )
+  adb shell input tap $xy
+  sleep 1
+}
+
+adb install "${{ github.workspace }}/private-builds/candidate.apk" >/dev/null
+AUDIT_PASS="RsLnp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-C5!"
+export AUDIT_PASS
+python3 - <<'PY' >/tmp/rs_users.xml
+import base64,hashlib,os,secrets
+salt=secrets.token_bytes(16)
+digest=hashlib.pbkdf2_hmac('sha256',os.environ['AUDIT_PASS'].encode(),salt,180000,dklen=32)
+print('<?xml version="1.0" encoding="utf-8" standalone="yes" ?>')
+print('<map><string name="admin_user">admin</string><string name="admin_salt">'+base64.b64encode(salt).decode()+'</string><string name="admin_hash">'+base64.b64encode(digest).decode()+'</string></map>')
+PY
+cat >/tmp/rs_onboarding.xml <<'EOF'
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<map><boolean name="v4710_exact_targets_done" value="true" /></map>
+EOF
+adb shell run-as com.rs.localstorage mkdir -p shared_prefs
+adb exec-out run-as com.rs.localstorage sh -c 'cat > shared_prefs/rs_users.xml' < /tmp/rs_users.xml
+adb exec-out run-as com.rs.localstorage sh -c 'cat > shared_prefs/rs_onboarding.xml' < /tmp/rs_onboarding.xml
+adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
+adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || true
+
+adb shell am compat enable RESTRICT_LOCAL_NETWORK com.rs.localstorage
+adb reboot
+wait_boot
+adb shell pm revoke com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES || true
+adb shell dumpsys package com.rs.localstorage | grep -A4 'NEARBY_WIFI_DEVICES' > "$OUT/permission-denied.txt" || true
+
+python3 -m http.server 19090 --bind 0.0.0.0 >/tmp/wave5-host-http.log 2>&1 &
+HOST_PID=$!
+trap 'kill $HOST_PID 2>/dev/null || true' EXIT
+sleep 1
+
+set +e
+adb shell "run-as com.rs.localstorage sh -c 'printf \"HEAD / HTTP/1.0\\r\\n\\r\\n\" | /system/bin/toybox nc -w 3 10.0.2.2 19090 >/dev/null 2>/sdcard/rs-lnp-denied.err'"
+DENIED_RC=$?
+set -e
+echo "LNP_DENIED_APP_UID_RC=$DENIED_RC"
+test "$DENIED_RC" -ne 0
+echo 'LNP_DENIED_APP_UID_LAN_BLOCKED=true'
+
+adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1 >/dev/null
+sleep 3
+tap_text 'Ativar servidor'
+sleep 2
+adb exec-out screencap -p > "$OUT/01-nearby-permission-request.png"
+if ! tap_text "don't allow"; then
+  tap_text 'não permitir'
+fi
+sleep 6
+adb shell dumpsys activity services com.rs.localstorage > "$OUT/services-after-denial.txt"
+grep -q 'HotspotServerService' "$OUT/services-after-denial.txt"
+echo 'DENIED_NEARBY_SERVER_SERVICE_STARTED=true'
+adb forward tcp:18081 tcp:8080
+if curl -fsS --max-time 3 http://127.0.0.1:18081/login >/dev/null; then
+  echo 'DENIED_NEARBY_LOOPBACK_SERVER_RUNNING=true'
+else
+  echo 'DENIED_NEARBY_LOOPBACK_SERVER_RUNNING=false'
+fi
+
+adb shell pm grant com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES
+adb shell dumpsys package com.rs.localstorage | grep -A4 'NEARBY_WIFI_DEVICES' > "$OUT/permission-granted.txt" || true
+adb shell "run-as com.rs.localstorage sh -c 'printf \"HEAD / HTTP/1.0\\r\\n\\r\\n\" | /system/bin/toybox nc -w 3 10.0.2.2 19090 >/dev/null'"
+echo 'LNP_GRANTED_APP_UID_LAN_WORKS=true'
+
+adb exec-out run-as com.rs.localstorage cat shared_prefs/rs.xml > "$OUT/server-prefs-after-grant.xml" 2>/dev/null || true
+adb logcat -d -t 1200 | grep -E 'AndroidRuntime|FATAL EXCEPTION|EPERM|ECONNABORTED|JmDNS|com\.rs\.localstorage' > "$OUT/logcat-tail.txt" || true
+echo 'ANDROID16_LNP_REAL_UID_GATE=PASS'
+echo 'FINAL_AUDIT_COMPLETE=NO'
