@@ -10,6 +10,10 @@ on:
       - 'reports/rs-storage-wave2-findings.md'
       - 'audit/rsstorage_wave3_android_runtime.sh'
 
+concurrency:
+  group: rs-storage-wave3-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
