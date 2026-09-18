@@ -52,11 +52,16 @@ jobs:
           policy=Path('target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/RsLocalNetworkPolicy.java').read_text(encoding='utf-8')
           discovery=Path('target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/LocalDiscoveryManager.java').read_text(encoding='utf-8')
           main=Path('target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/MainActivity.java').read_text(encoding='utf-8')
+          service=Path('target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage/HotspotServerService.java').read_text(encoding='utf-8')
           assert 'return sameSubnet(remote, local, 24);' in policy
           assert 'interfaceScore(name)' in discovery and 'selectBestAddress()' in discovery
+          assert 'refreshIfAddressChanged' in discovery
+          assert 'startDiscoveryRefresh()' in service and 'refreshDiscoveryBinding()' in service
+          assert 'networkHandler.removeCallbacks(networkRefresh)' in service
           assert 'if(nearbyMissing)toast(' in main and 'startServerAfterPermissions();' in main
           print('NETWORK_RISK_PREFIX_FALLBACK_24=true')
-          print('NETWORK_RISK_MDNS_SINGLE_HEURISTIC_INTERFACE=true')
+          print('NETWORK_MDNS_REBIND_ON_ADDRESS_CHANGE=true')
+          print('NETWORK_RISK_MDNS_STALE_BINDING=false')
           print('DENIED_NEARBY_CALLBACK_CAN_START_SERVER=true')
           print('PHYSICAL_NETWORK_GATE=NOT_RUN')
           PY
