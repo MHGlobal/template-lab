@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+WS="${1:?workspace path required}"
 set -euo pipefail
-OUT="${{ github.workspace }}/audit-out/wave5"
+OUT="$WS/audit-out/wave5"
 mkdir -p "$OUT"
 exec > >(tee "$OUT/lnp-runtime.log") 2>&1
 
@@ -31,7 +32,7 @@ PY
   sleep 1
 }
 
-adb install "${{ github.workspace }}/private-builds/candidate.apk" >/dev/null
+adb install "$WS/private-builds/candidate.apk" >/dev/null
 AUDIT_PASS="RsLnp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-C5!"
 export AUDIT_PASS
 python3 - <<'PY' >/tmp/rs_users.xml
