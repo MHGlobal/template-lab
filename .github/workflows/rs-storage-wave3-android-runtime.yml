@@ -143,6 +143,8 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: bash "${{ github.workspace }}/audit/rsstorage_wave3_android_runtime.sh" "${{ github.workspace }}"
       - name: Publish visual/runtime evidence only
         if: always()
