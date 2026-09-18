@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
+WS="${1:?workspace path required}"
 set -euo pipefail
-OUT="${{ github.workspace }}/audit-out/android"
-WEB="${{ github.workspace }}/audit-out/web-android-served"
-OLD="${{ github.workspace }}/private-builds/previous.apk"
-NEW="${{ github.workspace }}/private-builds/candidate.apk"
+OUT="$WS/audit-out/android"
+WEB="$WS/audit-out/web-android-served"
+OLD="$WS/private-builds/previous.apk"
+NEW="$WS/private-builds/candidate.apk"
 mkdir -p "$OUT" "$WEB"
 tap_ui() {
   local wanted="$1"
