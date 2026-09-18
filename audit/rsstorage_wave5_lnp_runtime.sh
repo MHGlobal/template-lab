@@ -8,7 +8,16 @@ exec > >(tee "$OUT/lnp-runtime.log") 2>&1
 
 wait_boot() {
   adb wait-for-device
-  for ((i=1;i<=120;i++)); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && return 0; sleep 1; done
+  for ((i=1;i<=300;i++)); do
+    boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+    if [ "$boot" = 1 ] && adb shell cmd package list packages >/dev/null 2>&1; then
+      echo "ANDROID_PACKAGE_MANAGER_READY=true"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "ANDROID_PACKAGE_MANAGER_READY=false" >&2
+  adb devices -l || true
   return 1
 }
 tap_text() {
