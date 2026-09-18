@@ -7,6 +7,51 @@ mkdir -p "$OUT"
 git -C "$WS/target" rev-parse HEAD > "$OUT/target-sha.txt"
 exec > >(tee "$OUT/runtime.log") 2>&1
 
+wait_android_ready() {
+  adb wait-for-device
+  for ((i=1;i<=240;i++)); do
+    local boot
+    boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+    if [ "$boot" = 1 ] && adb shell cmd package list packages >/dev/null 2>&1; then
+      echo "ANDROID_PACKAGE_MANAGER_READY=true"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "ANDROID_PACKAGE_MANAGER_READY=false" >&2
+  return 1
+}
+adb_install_bounded() {
+  local apk="$1" log="$2"
+  for attempt in 1 2; do
+    echo "ADB_INSTALL_ATTEMPT=$attempt APK=$(basename "$apk")" | tee -a "$log"
+    if python3 - "$apk" "$log" <<'PY'
+import subprocess,sys
+apk,log=sys.argv[1:]
+cmd=['adb','install','--no-streaming',apk]
+with open(log,'a',encoding='utf-8') as fh:
+    fh.write('CMD='+' '.join(cmd)+'\n'); fh.flush()
+    try:
+        p=subprocess.run(cmd,stdout=fh,stderr=subprocess.STDOUT,timeout=300)
+        raise SystemExit(p.returncode)
+    except subprocess.TimeoutExpired:
+        fh.write('ADB_INSTALL_TIMEOUT_SECONDS=300\n'); fh.flush()
+        raise SystemExit(124)
+PY
+    then
+      echo "ADB_INSTALL=PASS" | tee -a "$log"
+      return 0
+    fi
+    echo "ADB_INSTALL_ATTEMPT_${attempt}=FAIL" | tee -a "$log"
+    adb kill-server || true
+    sleep 2
+    adb start-server
+    wait_android_ready || true
+  done
+  echo "ADB_INSTALL=FAIL" | tee -a "$log"
+  return 1
+}
+
 tap_ui() {
   local wanted="$1"
   adb shell uiautomator dump /sdcard/rs-wave4.xml >/dev/null
@@ -28,7 +73,8 @@ PY
   sleep 1
 }
 
-adb install "$APK" >/dev/null
+wait_android_ready
+adb_install_bounded "$APK" "$OUT/adb-install.log"
 AUDIT_PASS="RsWave4-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-B7!"
 export AUDIT_PASS
 python3 - <<'PY' >/tmp/rs_users.xml
