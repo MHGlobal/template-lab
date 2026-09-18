@@ -35,8 +35,30 @@ async function captureSet(label,viewport){
     if(page.url().includes('/login'))throw new Error(`${route} lost authenticated session`);
     await page.screenshot({path:path.join(out,`${label}-${name}.png`),fullPage:true});
     if(route==='/ai'){
-      const modes=page.locator('.mode');
-      if(await modes.count()>=2){await modes.nth(1).click();await page.waitForTimeout(250);await page.screenshot({path:path.join(out,`${label}-ai-agent.png`),fullPage:true});}
+      for(const mode of ['engineer','editor']){
+        const button=page.locator(`.mode[data-mode="${mode}"]`);
+        if(await button.count()!==1)throw new Error(`Missing RS IA mode: ${mode}`);
+        await button.click();
+        await page.waitForTimeout(250);
+        const active=await button.evaluate(el=>el.classList.contains('active'));
+        const primary=await page.evaluate(()=>window.rsAgentPrimary||'');
+        observations.pages.push({label,route:'/ai',name:`ai-${mode}`,status,active,primary,overflows:await overflowSnapshot(page)});
+        if(!active||primary!==mode)throw new Error(`RS IA mode routing failed for ${mode}: active=${active} primary=${primary}`);
+        await page.screenshot({path:path.join(out,`${label}-ai-${mode}.png`),fullPage:true});
+      }
+      const chat=page.locator('.mode[data-mode="chat"]');
+      await chat.click();
+      await page.waitForTimeout(180);
+      const picker=page.locator('#providerBtn');
+      if(await picker.count()!==1)throw new Error('Missing RS IA model picker button');
+      await picker.click();
+      await page.locator('#modelDialog451[open]').waitFor({state:'visible',timeout:10000});
+      const pickerText=await page.locator('#modelDialog451').innerText();
+      if(!/Modelos disponíveis/i.test(pickerText))throw new Error('RS IA model picker did not open');
+      observations.pages.push({label,route:'/ai',name:'ai-model-picker',status,overflows:await overflowSnapshot(page)});
+      await page.screenshot({path:path.join(out,`${label}-ai-model-picker.png`),fullPage:true});
+      const close=page.locator('#modelClose451');
+      if(await close.count())await close.click();
     }
     if(route==='/admin/files'&&label==='mobile'){
       const more=page.locator('.more').first();
@@ -50,7 +72,7 @@ await captureSet('desktop',{width:1440,height:1000});
 await captureSet('mobile',{width:390,height:844});
 fs.writeFileSync(path.join(out,'web-observations.json'),JSON.stringify(observations,null,2));
 const pngs=fs.readdirSync(out).filter(x=>x.endsWith('.png'));
-if(pngs.length<8)throw new Error(`Insufficient Android-served Web screenshots: ${pngs.length}`);
+if(pngs.length<15)throw new Error(`Insufficient Android-served Web screenshots: ${pngs.length}`);
 if(observations.pageErrors.length)throw new Error(`Browser page errors detected: ${JSON.stringify(observations.pageErrors)}`);
 console.log(`ANDROID_SERVED_WEB_SCREENSHOTS=${pngs.length}`);
 console.log(`ANDROID_SERVED_WEB_PAGES=${observations.pages.length}`);
