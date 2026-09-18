@@ -3,6 +3,7 @@ WS="${1:?workspace path required}"
 set -euo pipefail
 WS="$WS"
 mkdir -p "$WS/audit-out/android"
+git -C "$WS/target" rev-parse HEAD > "$WS/audit-out/android/target-sha.txt"
 APK=$(find "$WS/external/llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug" -type f -name '*.apk' | head -1)
 test -s "$APK"
 adb install -r "$APK"
