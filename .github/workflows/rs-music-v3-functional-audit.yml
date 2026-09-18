@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # qa3-v3 integration gate r2
+  # qa3-v3 integration gate r3
   TARGET_REF: ${{ inputs.target_ref || 'feat/rs-music-v3-on-qa3' }}
 
 jobs:
