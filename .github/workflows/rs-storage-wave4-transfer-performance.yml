@@ -17,7 +17,7 @@ env:
 jobs:
   android-real-transfer-gates:
     name: Android real server transfer integrity + performance
-    runs-on: ubuntu-latest
+    runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
       - name: Checkout Template Lab
@@ -88,6 +88,8 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: |
             set -euo pipefail
             OUT="$GITHUB_WORKSPACE/audit-out/wave4"
@@ -144,7 +146,7 @@ jobs:
             sleep 3
             tap_ui 'Ativar servidor'
             adb forward tcp:18080 tcp:8080
-            for i in $(seq 1 75); do curl -fsS --max-time 2 http://127.0.0.1:18080/login >/dev/null 2>&1 && break; sleep 1; done
+            for ((i=1;i<=75;i++)); do curl -fsS --max-time 2 http://127.0.0.1:18080/login >/dev/null 2>&1 && break; sleep 1; done
             curl -fsS http://127.0.0.1:18080/login >/dev/null
 
             curl -sS -c /tmp/rs-cookies -D /tmp/login-headers -o /dev/null -X POST \
@@ -166,8 +168,8 @@ jobs:
             echo "::add-mask::$CSRF"
 
             echo '--- 32 MiB streaming upload integrity/performance ---'
-            dd if=/dev/urandom of=/tmp/upload32.bin bs=1M count=32 status=none
-            HOST_SHA=$(sha256sum /tmp/upload32.bin | awk '{print $1}')
+            python3 -c "import os; open('/tmp/upload32.bin','wb').write(os.urandom(32*1024*1024))"
+            HOST_SHA=$(shasum -a 256 /tmp/upload32.bin | awk '{print $1}')
             UP_METRIC=$(curl -fsS -b /tmp/rs-cookies -o /tmp/upload-response.json \
               -w '%{http_code} %{size_upload} %{time_total} %{speed_upload}' \
               --request POST --data-binary @/tmp/upload32.bin \
@@ -188,7 +190,7 @@ jobs:
               http://127.0.0.1:18080/admin/download)
             echo "DOWNLOAD_RAW_METRIC=$DL_METRIC"
             echo "$DL_METRIC" | awk '$1==200 && $2>=33554432 {ok=1} END{exit ok?0:1}'
-            test "$(sha256sum /tmp/download32.bin | awk '{print $1}')" = "$HOST_SHA"
+            test "$(shasum -a 256 /tmp/download32.bin | awk '{print $1}')" = "$HOST_SHA"
             curl -fsS -b /tmp/rs-cookies --get --data-urlencode "id=$TID" http://127.0.0.1:18080/api/admin/transfer > /tmp/dl-state.json
             python3 - <<'PY'
             import json
@@ -211,7 +213,7 @@ jobs:
             }
             wait_transfer() {
               local id="$1" expected="$2" max="${3:-120}"
-              for i in $(seq 1 "$max"); do
+              for ((i=1;i<=max;i++)); do
                 curl -fsS -b /tmp/rs-cookies --get --data-urlencode "id=$id" http://127.0.0.1:18080/api/admin/transfer > /tmp/state.json
                 S=$(python3 -c 'import json; print(json.load(open("/tmp/state.json")).get("status",""))')
                 [ "$S" = "$expected" ] && return 0
@@ -228,9 +230,9 @@ jobs:
             sleep .1
             COPY_ID=$(newest_transfer)
             test -n "$COPY_ID"
-            COPY_START=$(date +%s%N)
+            COPY_START=$(python3 -c 'import time; print(time.time_ns())')
             wait_transfer "$COPY_ID" completed 180
-            COPY_END=$(date +%s%N)
+            COPY_END=$(python3 -c 'import time; print(time.time_ns())')
             COPY_SHA=$(adb shell "sha256sum '$BASE/copydst/payload32.bin'" | tr -d '\r' | awk '{print $1}')
             test "$COPY_SHA" = "$HOST_SHA"
             COPY_SEC=$(python3 - <<PY
@@ -254,7 +256,7 @@ jobs:
             echo '--- deterministic queued cancellation + partial cleanup ---'
             adb shell "mkdir -p '$BASE/stress-src'"
             adb shell "for d in 0 1 2 3 4 5 6 7 8 9; do mkdir -p '$BASE/stress-src/d'; done"
-            for d in $(seq 0 9); do
+            for d in {0..9}; do
               adb shell "for i in \$(seq 1 500); do printf '%08d-%08d-wave4-audit-data' '$d' \$i > '$BASE/stress-src/d/f'\$i'.txt'; done"
             done
             test "$(api_action copy "$BASE/stress-src" "$BASE/stress-d1" /tmp/s1.out)" = 302
