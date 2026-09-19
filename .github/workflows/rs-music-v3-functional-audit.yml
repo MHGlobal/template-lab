@@ -21,7 +21,7 @@ concurrency:
 
 env:
   # qa3-v3 product-polish gate r5
-  TARGET_REF: ${{ inputs.target_ref || '52ae5336137ac42f40437c150700f016764cbe88' }}
+  TARGET_REF: ${{ inputs.target_ref || 'e6b8fedf1c3a5eb18c5767dcb95fd18e7a50fee3' }}
 
 jobs:
   audit:
