@@ -60,14 +60,14 @@ PY
       return 0
     fi
     echo "ADB_INSTALL_ATTEMPT_${attempt}=FAIL" | tee -a "$log"
-    print_install_diagnostics "$apk" "$log"
+    grep -E "INSTALL_FAILED_|Failure|protocol fault|device offline|error:" "$log" | tail -12 || true
     adb devices -l || true
     adb kill-server || true
     sleep 2
     adb start-server
     wait_boot || true
   done
-  print_install_diagnostics "$apk" "$log"
+  grep -E "INSTALL_FAILED_|Failure|protocol fault|device offline|error:" "$log" | tail -12 || true
   echo "ADB_INSTALL=FAIL" | tee -a "$log"
   return 1
 }
