@@ -1,6 +1,6 @@
 # RS Storage / RSIA — Auditoria Canónica de Continuidade
 
-**Última atualização:** 15 de setembro de 2026  
+**Última atualização:** 19 de setembro de 2026  
 **Documento de handoff entre chats:** SIM  
 **Repositório alvo:** `MHGlobal/RS-Storage`  
 **Branch alvo:** `release/v4.7.13-agent-harness`  
@@ -149,11 +149,13 @@ repo: MHGlobal/RS-Storage
 branch: release/v4.7.13-agent-harness
 ```
 
-HEAD observado durante esta auditoria:
+HEAD observado nesta retomada:
 
 ```text
-6a11bda5ab9c072ad0f14370a33d7b90bb1926f8
+a2856148961be6c6e4242feb2d81dbfc3ba94b91
 ```
+
+O commit `a2856148` altera apenas `.github/workflows/rs-storage-v4713-agent-harness.yml`. O código do produto auditado pelos Waves 1/3/4/5 permanece em `3b93d08a1b24d80fb392eaf26561ca3de685cf0e`.
 
 Confirmar novamente em cada sessão.
 
@@ -766,3 +768,96 @@ Este ficheiro é a fonte de continuidade entre chats.
 Há progresso real e vários gates passam, mas ainda existem falhas no harness público a corrigir/rerodar, Wave 3/4/5 pendentes, upgrade/data-preservation não comprovado, validação visual Android incompleta e network/hotspot físico incompleto.
 
 Regra final: **evidência primeiro, aprovação depois.**
+
+
+---
+
+# 22. Retomada de 19/09/2026 — estado fresco
+
+## Identidade
+
+```text
+RS Storage branch HEAD          a2856148961be6c6e4242feb2d81dbfc3ba94b91
+Product/app SHA auditado        3b93d08a1b24d80fb392eaf26561ca3de685cf0e
+Diferença 3b93 -> a285          apenas workflow YAML; nenhum ficheiro do app
+Template Lab antes deste handoff c2be1036908779eb3fd3ecc8bace1c064c7ec5b0
+MAIN                            não alterada
+```
+
+O preflight público fresco resolveu corretamente o HEAD `a2856148` e passou.
+
+## Gates frescos
+
+```text
+Wave 1 anterior                 35430714200  SUCCESS automatizado, mas evidência Android invalidada por revisão humana
+Wave 1 corrigido                35433151831  IN_PROGRESS
+Wave 2                          35430759107  SUCCESS
+Agent Tool Parity               35430761879  SUCCESS
+Wave 3                          35430718876  IN_PROGRESS
+Wave 4                          35430728242  IN_PROGRESS
+Wave 5                          35430730728  IN_PROGRESS attempt 2; static network policy SUCCESS
+Full Audit/preflight fresco     35433151712  SUCCESS
+```
+
+## Findings de rede resolvidos no produto atual
+
+- NET-001: UI Android 16 agora distingue servidor local de acesso LAN bloqueado quando `NEARBY_WIFI_DEVICES` é negado.
+- NET-002: mDNS possui refresh/rebind periódico quando interface/endereço muda.
+- NET-003: sessão HTTP é vinculada ao endereço remoto e invalidada em mudança da origem.
+- NET-004: policy local agora cobre RFC1918, CGNAT `100.64/10`, IPv4 link-local `169.254/16` e prefixos IPv6 de interfaces locais, excluindo WWAN/VPN/túneis.
+- O contrato estático Wave 5 passou essas regras.
+- Android 16 continua corretamente testado com `RESTRICT_LOCAL_NETWORK` + `NEARBY_WIFI_DEVICES`. Android 17/API 37 exigirá roadmap para `ACCESS_LOCAL_NETWORK`; não é blocker da 4.7.13 targetSdk 36.
+
+## Revisão visual humana Wave 1
+
+A revisão das screenshots do run `35430714200` detectou que o PASS automatizado não era suficiente:
+
+1. Android:
+   - `01-main-launch.png`: diálogo do sistema “Bluetooth keeps stopping”.
+   - `02-after-back.png`: diálogo “System UI isn't responding”.
+   - `activity.txt`: `MainActivity` ainda estava com `reportedDrawn=false`.
+   - classificação: `RUNNER_INFRA_FAILURE` + evidência visual inválida; não é prova de defeito do RS Storage.
+
+2. Web:
+   - a captura desktop aparecia artificialmente limitada a ~235 px.
+   - causa: fixture sintética do auditor criava `.admin-layout` sem `aside`, mas mantinha o grid de produção `235px 1fr`; o `main` caía na primeira coluna.
+   - classificação: `AUDIT_HARNESS_DEFECT`, não `PRODUCT_DEFECT`.
+
+Correções no Template Lab:
+
+```text
+9779799ab8078a4ca110add1d386a1f71e52d068
+fix(audit): render Wave 1 file fixture at full desktop width
+
+cf576b0f3f39282c196f1ed932c99be37216cf76
+fix(audit): reject invalid Android visual evidence
+
+c2be1036908779eb3fd3ecc8bace1c064c7ec5b0
+fix(audit): scope Android drawn check to RS Storage activity
+```
+
+O novo Wave 1 deve ser revisado visualmente novamente; PASS automático continua insuficiente.
+
+## Workflow físico do RS Storage
+
+Existe `.github/workflows/rs-storage-v4713-agent-harness.yml` com:
+- `mandatory-gates` em hosted runner;
+- `redmi-note-13-pro-install` em `[self-hosted, android, redmi-note-13-pro-4g]`;
+- instalação física via `adb install -r`, launch, PID e versionName.
+
+O gate privado tinha uma lista `javac` desatualizada sem `RuntimeToolExecutors`; corrigido no branch:
+
+```text
+a2856148961be6c6e4242feb2d81dbfc3ba94b91
+fix(ci): compile runtime tool executors in v4.7.13 gates
+```
+
+O hosted job privado subsequente terminou sem registrar steps, portanto não foi usado como substituto dos runners públicos. O Redmi continuou skipped. Mesmo um PASS do Redmi provaria instalação/launch físico, mas não substitui o requisito final de Wi-Fi/hotspot real com segundo cliente.
+
+## Estado de encerramento
+
+```text
+FINAL_AUDIT_COMPLETE=NO
+```
+
+Ainda obrigatórios: conclusão limpa de Wave 1 corrigido, Wave 3, Wave 4 e Wave 5; revisão humana dos novos screenshots Android/Web; evidência de upgrade sem perda; artefactos/metrics finais; e teste Wi-Fi/hotspot físico com cliente real.
