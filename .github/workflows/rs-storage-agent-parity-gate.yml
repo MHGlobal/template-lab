@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF: release/v4.7.13-agent-harness
+  TARGET_REF: 3b93d08a1b24d80fb392eaf26561ca3de685cf0e
   ROOT: target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage
 
 jobs:
