@@ -116,10 +116,7 @@ jobs:
             rm -rf target/core/database/schemas target/core/database/build/generated/ksp
             target/gradlew -p target :app:connectedAndroidTest --stacktrace --no-daemon --no-parallel --no-build-cache
             mkdir -p audit-out/runtime/ui-audit
-            for shot in 01-home 02-search-empty 03-search-results 04-player 05-lyrics-viewer 06-lyrics-tools 07-search-return 08-you 09-settings-top 10-settings-scrolled; do
-              adb exec-out run-as com.mhglobal.rsmusic cat "cache/audit/$shot.png" > "audit-out/runtime/ui-audit/$shot.png"
-              test -s "audit-out/runtime/ui-audit/$shot.png"
-            done
+            for shot in 01-home 02-search-empty 03-search-results 04-player 05-lyrics-viewer 06-lyrics-tools 07-search-return 08-you 09-settings-top 10-settings-scrolled; do adb exec-out run-as com.mhglobal.rsmusic cat "cache/audit/$shot.png" > "audit-out/runtime/ui-audit/$shot.png" && test -s "audit-out/runtime/ui-audit/$shot.png" || exit 1; done
             find audit-out/runtime/ui-audit -type f -name '*.png' | wc -l | tr -d ' ' > audit-out/runtime/ui-audit-count.raw
             test "$(cat audit-out/runtime/ui-audit-count.raw)" -eq 10
             printf 'PRODUCT_POLISH_SCREENSHOTS=%s\n' "$(cat audit-out/runtime/ui-audit-count.raw)" > audit-out/runtime/ui-audit-count.txt
