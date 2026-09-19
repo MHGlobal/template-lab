@@ -75,7 +75,13 @@ jobs:
           assert 'Session s=session(h,remote)' in service
           assert '!s.remote.equals(remote)' in service
           assert 'transfers.entrySet().removeIf(e->tok.equals(e.getValue().ownerToken))' in service
-          assert 'if(nearbyMissing)toast(' in main and 'startServerAfterPermissions();' in main
+          assert 'if(nearbyMissing)' in main and 'startServerAfterPermissions();' in main
+          assert 'boolean lanAccessAllowed()' in service
+          assert 'Build.VERSION.SDK_INT<36' in service
+          assert 'if(!lanAccessAllowed())' in service
+          assert 'mDNS: bloqueado' in service
+          assert 'Endereços LAN ocultos' in service
+          assert 'putString("server_preferred","")' in service
           print('NETWORK_UNRESOLVED_INTERFACE_FAIL_CLOSED=true')
           print('NETWORK_WWAN_VPN_EXCLUDED=true')
           print('NETWORK_ACCEPTS_CGNAT_100_64=true')
@@ -85,7 +91,8 @@ jobs:
           print('NETWORK_MDNS_REBIND_ON_ADDRESS_CHANGE=true')
           print('NETWORK_RISK_MDNS_STALE_BINDING=false')
           print('SESSION_SOURCE_IP_BINDING=true')
-          print('DENIED_NEARBY_CALLBACK_CAN_START_SERVER=true')
+          print('DENIED_NEARBY_LOCAL_SERVICE_ONLY=true')
+          print('DENIED_NEARBY_LAN_ADVERTISEMENT_SUPPRESSED=true')
           print('PHYSICAL_NETWORK_GATE=NOT_RUN')
           PY
 
