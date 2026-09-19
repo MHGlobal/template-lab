@@ -14,15 +14,23 @@ adb shell am force-stop com.rs.localstorage
 adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1
 sleep 8
 adb shell pidof com.rs.localstorage | tee "$WS/audit-out/android/pid.txt"
-adb shell dumpsys activity activities > "$WS/audit-out/android/activity.txt"
-adb shell uiautomator dump /sdcard/rs-window.xml || true
-adb pull /sdcard/rs-window.xml "$WS/audit-out/android/window.xml" || true
-if grep -Eqi "isn't responding|keeps stopping|has stopped|not responding" "$WS/audit-out/android/window.xml"; then
-  echo "ANDROID_VISUAL_SYSTEM_DIALOG=FAIL" >&2
-  exit 1
-fi
-grep -q 'topResumedActivity=.*com.rs.localstorage/.MainActivity' "$WS/audit-out/android/activity.txt"
-if grep -q 'reportedDrawn=false' "$WS/audit-out/android/activity.txt"; then
+READY=0
+for _ in $(seq 1 20); do
+  adb shell dumpsys activity activities > "$WS/audit-out/android/activity.txt"
+  adb shell uiautomator dump /sdcard/rs-window.xml >/dev/null 2>&1 || true
+  adb pull /sdcard/rs-window.xml "$WS/audit-out/android/window.xml" >/dev/null 2>&1 || true
+  if [ -f "$WS/audit-out/android/window.xml" ] && grep -Eqi "isn't responding|keeps stopping|has stopped|not responding" "$WS/audit-out/android/window.xml"; then
+    echo "ANDROID_VISUAL_SYSTEM_DIALOG=FAIL" >&2
+    exit 1
+  fi
+  APP_DRAWN="$(awk '/mActivityComponent=com.rs.localstorage\\/.MainActivity/{app=1} app && /reportedDrawn=/{print; exit}' "$WS/audit-out/android/activity.txt")"
+  if grep -q 'topResumedActivity=.*com.rs.localstorage/.MainActivity' "$WS/audit-out/android/activity.txt" && printf '%s' "$APP_DRAWN" | grep -q 'reportedDrawn=true'; then
+    READY=1
+    break
+  fi
+  sleep 1
+done
+if [ "$READY" != 1 ]; then
   echo "ANDROID_VISUAL_APP_NOT_DRAWN=FAIL" >&2
   exit 1
 fi
