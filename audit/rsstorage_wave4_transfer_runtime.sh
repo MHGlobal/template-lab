@@ -33,7 +33,7 @@ except OSError:
 keep=[]
 for line in lines:
     safe=line.replace(apk,'<apk>')
-    if re.search(r'INSTALL_FAILED_[A-Z0-9_]+|Failure \\[|ADB_INSTALL_TIMEOUT_SECONDS=|protocol fault|device offline|error:|adb: failed to install',safe,re.I):
+    if re.search(r'INSTALL_FAILED_[A-Z0-9_]+|Failure \[|ADB_INSTALL_TIMEOUT_SECONDS=|protocol fault|device offline|error:|adb: failed to install',safe,re.I):
         keep.append(safe[:500])
 for line in keep[-12:]:
     print('ADB_INSTALL_DIAGNOSTIC='+line)
