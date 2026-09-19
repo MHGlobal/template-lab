@@ -14,10 +14,19 @@ adb shell am force-stop com.rs.localstorage
 adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1
 sleep 8
 adb shell pidof com.rs.localstorage | tee "$WS/audit-out/android/pid.txt"
-adb exec-out screencap -p > "$WS/audit-out/android/01-main-launch.png"
 adb shell dumpsys activity activities > "$WS/audit-out/android/activity.txt"
 adb shell uiautomator dump /sdcard/rs-window.xml || true
 adb pull /sdcard/rs-window.xml "$WS/audit-out/android/window.xml" || true
+if grep -Eqi "isn't responding|keeps stopping|has stopped|not responding" "$WS/audit-out/android/window.xml"; then
+  echo "ANDROID_VISUAL_SYSTEM_DIALOG=FAIL" >&2
+  exit 1
+fi
+grep -q 'topResumedActivity=.*com.rs.localstorage/.MainActivity' "$WS/audit-out/android/activity.txt"
+if grep -q 'reportedDrawn=false' "$WS/audit-out/android/activity.txt"; then
+  echo "ANDROID_VISUAL_APP_NOT_DRAWN=FAIL" >&2
+  exit 1
+fi
+adb exec-out screencap -p > "$WS/audit-out/android/01-main-launch.png"
 adb shell input keyevent 4 || true
 sleep 2
 adb exec-out screencap -p > "$WS/audit-out/android/02-after-back.png"
