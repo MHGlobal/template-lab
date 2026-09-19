@@ -17,7 +17,7 @@ permissions:
 
 env:
   TARGET_REF: release/v4.7.13-agent-harness
-  AUDIT_TARGET_SHA: 53aba6ded8c6af08d353bd50017029a043e05137
+  AUDIT_TARGET_SHA: 3b93d08a1b24d80fb392eaf26561ca3de685cf0e
   ROOT: target/source/current-v4.3.0
 
 jobs:
