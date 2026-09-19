@@ -21,7 +21,7 @@ concurrency:
 
 env:
   # qa3-v3 product-polish gate r5
-  TARGET_REF: ${{ inputs.target_ref || '425a75fcd1559994b63bcb899a942d2c662f9fe1' }}
+  TARGET_REF: ${{ inputs.target_ref || '52ae5336137ac42f40437c150700f016764cbe88' }}
 
 jobs:
   audit:
@@ -117,9 +117,9 @@ jobs:
             target/gradlew -p target :app:connectedAndroidTest --stacktrace --no-daemon --no-parallel --no-build-cache
             mkdir -p audit-out/runtime/ui-audit
             adb pull /sdcard/Android/data/com.mhglobal.rsmusic/files/audit/. audit-out/runtime/ui-audit/ >/dev/null 2>&1 || true
-            UI_SHOTS="$(find audit-out/runtime/ui-audit -type f -name '*.png' | wc -l | tr -d ' ')"
-            test "$UI_SHOTS" -ge 10
-            printf 'PRODUCT_POLISH_SCREENSHOTS=%s\n' "$UI_SHOTS" > audit-out/runtime/ui-audit-count.txt
+            find audit-out/runtime/ui-audit -type f -name '*.png' | wc -l | tr -d ' ' > audit-out/runtime/ui-audit-count.raw
+            test "$(cat audit-out/runtime/ui-audit-count.raw)" -ge 10
+            printf 'PRODUCT_POLISH_SCREENSHOTS=%s\n' "$(cat audit-out/runtime/ui-audit-count.raw)" > audit-out/runtime/ui-audit-count.txt
             mkdir -p audit-out/runtime
             adb shell pm clear com.mhglobal.rsmusic >/dev/null 2>&1 || true
             adb install -r audit-out/RS-Music-V3-QA.apk >/dev/null
