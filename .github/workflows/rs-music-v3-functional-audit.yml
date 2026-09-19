@@ -21,7 +21,7 @@ concurrency:
 
 env:
   # qa3-v3 integration gate r4
-  TARGET_REF: ${{ inputs.target_ref || 'feat/rs-music-v3-on-qa3' }}
+  TARGET_REF: ${{ inputs.target_ref || '7880a7dd0437a1b0e5a6ab7771e0b8add2aade8d' }}
 
 jobs:
   audit:
