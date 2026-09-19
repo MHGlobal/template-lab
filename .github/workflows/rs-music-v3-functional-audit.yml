@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # qa3-v3 product-polish gate r6
-  TARGET_REF: ${{ inputs.target_ref || '2542f7a73bb5593c7ef8a1d40c938745aebfb54e' }}
+  # qa3-v3 product-polish gate r7
+  TARGET_REF: ${{ inputs.target_ref || 'cdfd1b2e1e4e1916c3a6fdb5e8e17acece2620b0' }}
 
 jobs:
   audit:
@@ -116,7 +116,8 @@ jobs:
             rm -rf target/core/database/schemas target/core/database/build/generated/ksp
             target/gradlew -p target :app:connectedAndroidTest --stacktrace --no-daemon --no-parallel --no-build-cache
             mkdir -p audit-out/runtime/ui-audit
-            for shot in 01-home 02-search-empty 03-search-results 04-player 05-lyrics-viewer 06-lyrics-tools 07-search-return 08-you 09-settings-top 10-settings-scrolled; do adb exec-out run-as com.mhglobal.rsmusic cat "cache/audit/$shot.png" > "audit-out/runtime/ui-audit/$shot.png" && test -s "audit-out/runtime/ui-audit/$shot.png" || exit 1; done
+            adb pull /sdcard/Download/rs-music-audit/. audit-out/runtime/ui-audit/ >/dev/null
+            for shot in 01-home 02-search-empty 03-search-results 04-player 05-lyrics-viewer 06-lyrics-tools 07-search-return 08-you 09-settings-top 10-settings-scrolled; do file "audit-out/runtime/ui-audit/$shot.png" | grep -q 'PNG image data' || exit 1; done
             find audit-out/runtime/ui-audit -type f -name '*.png' | wc -l | tr -d ' ' > audit-out/runtime/ui-audit-count.raw
             test "$(cat audit-out/runtime/ui-audit-count.raw)" -eq 10
             printf 'PRODUCT_POLISH_SCREENSHOTS=%s\n' "$(cat audit-out/runtime/ui-audit-count.raw)" > audit-out/runtime/ui-audit-count.txt
