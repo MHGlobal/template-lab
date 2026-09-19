@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # qa3-v3 integration gate r4
-  TARGET_REF: ${{ inputs.target_ref || '7880a7dd0437a1b0e5a6ab7771e0b8add2aade8d' }}
+  # qa3-v3 product-polish gate r5
+  TARGET_REF: ${{ inputs.target_ref || '60926d4907439412a06e49ef0ef6b3412de33e90' }}
 
 jobs:
   audit:
