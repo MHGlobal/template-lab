@@ -20,9 +20,27 @@ wait_boot() {
   adb devices -l || true
   return 1
 }
+print_install_diagnostics() {
+  local apk="$1" log="$2"
+  python3 - "$apk" "$log" <<'PY'
+import re,sys
+apk,log=sys.argv[1:]
+try:
+    lines=open(log,encoding='utf-8',errors='ignore').read().splitlines()
+except OSError:
+    raise SystemExit
+keep=[]
+for line in lines:
+    safe=line.replace(apk,'<apk>')
+    if re.search(r'INSTALL_FAILED_[A-Z0-9_]+|Failure \\[|ADB_INSTALL_TIMEOUT_SECONDS=|protocol fault|device offline|error:|adb: failed to install',safe,re.I):
+        keep.append(safe[:500])
+for line in keep[-12:]:
+    print('ADB_INSTALL_DIAGNOSTIC='+line)
+PY
+}
 adb_install_bounded() {
   local apk="$1" log="$2"
-  for attempt in 1 2; do
+  for attempt in 1 2 3; do
     echo "ADB_INSTALL_ATTEMPT=$attempt APK=$(basename "$apk")" | tee -a "$log"
     if python3 - "$apk" "$log" <<'PY'
 import subprocess,sys
@@ -42,11 +60,14 @@ PY
       return 0
     fi
     echo "ADB_INSTALL_ATTEMPT_${attempt}=FAIL" | tee -a "$log"
+    print_install_diagnostics "$apk" "$log"
+    adb devices -l || true
     adb kill-server || true
     sleep 2
     adb start-server
     wait_boot || true
   done
+  print_install_diagnostics "$apk" "$log"
   echo "ADB_INSTALL=FAIL" | tee -a "$log"
   return 1
 }
