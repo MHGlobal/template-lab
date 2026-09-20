@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # qa3-v3 secondary-tools polish gate r11
-  TARGET_REF: ${{ inputs.target_ref || 'ce03e94e1f7e4fbe855ea4169ece9a6ef18421ec' }}
+  # qa3-v3 secondary-tools polish gate r12
+  TARGET_REF: ${{ inputs.target_ref || '150a7ed30f336c80d7deade1fbf50d39ee6e0301' }}
 
 jobs:
   audit:
@@ -115,7 +115,7 @@ jobs:
             target/gradlew -p target :core:database:connectedAndroidTest --stacktrace --no-daemon --no-parallel --no-build-cache
             rm -rf target/core/database/schemas target/core/database/build/generated/ksp
             adb shell rm -rf /sdcard/Download/rs-music-audit >/dev/null 2>&1 || true
-            target/gradlew -p target :app:connectedAndroidTest --stacktrace --no-daemon --no-parallel --no-build-cache
+            TEST_STATUS=0; target/gradlew -p target :app:connectedAndroidTest --stacktrace --no-daemon --no-parallel --no-build-cache || TEST_STATUS=$?; mkdir -p audit-out/runtime/android-test-report; cp -R target/app/build/reports/androidTests/connected/debug/. audit-out/runtime/android-test-report/ 2>/dev/null || true; cp -R target/app/build/outputs/androidTest-results/connected/debug audit-out/runtime/android-test-results 2>/dev/null || true; test "$TEST_STATUS" -eq 0
             mkdir -p audit-out/runtime/ui-audit
             adb pull /sdcard/Download/rs-music-audit/. audit-out/runtime/ui-audit/ >/dev/null
             for shot in 01-home 02-search-empty 03-search-results 04-player 05-lyrics-viewer 06-lyrics-tools 07-search-return 08-you 09-settings-top 10-settings-scrolled 11-sort-compact 12-player-metadata-fallback 13-sleep-timer 14-equalizer-top 15-equalizer-advanced 16-playback-tools; do file "audit-out/runtime/ui-audit/$shot.png" | grep -q 'PNG image data' || exit 1; done
