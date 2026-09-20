@@ -122,8 +122,8 @@ PY
 
 tap_ui() {
   local wanted="$1"
-  adb shell uiautomator dump /sdcard/rs-audit-window.xml >/dev/null
-  adb pull /sdcard/rs-audit-window.xml /tmp/rs-audit-window.xml >/dev/null
+  adb shell uiautomator dump /data/local/tmp/rs-audit-window.xml >/dev/null
+  adb pull /data/local/tmp/rs-audit-window.xml /tmp/rs-audit-window.xml >/dev/null
   local xy
   xy=$(python3 - "$wanted" <<'PY'
 import re,sys,xml.etree.ElementTree as ET
@@ -181,12 +181,13 @@ adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || 
 adb shell pm grant com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES || true
 adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
 adb shell am force-stop com.rs.localstorage
-adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1 >/dev/null
-sleep 4
+adb shell am start -W -n com.rs.localstorage/.MainActivity >/tmp/rs-wave3-am-start.txt
+grep -Eq 'Status: ok|Complete' /tmp/rs-wave3-am-start.txt
+sleep 5
 adb shell pidof com.rs.localstorage | tee "$OUT/pid.txt"
 adb exec-out screencap -p > "$OUT/01-native-server-stopped.png"
-adb shell uiautomator dump /sdcard/rs-native.xml >/dev/null || true
-adb pull /sdcard/rs-native.xml "$OUT/01-native-server-stopped.xml" >/dev/null || true
+adb shell uiautomator dump /data/local/tmp/rs-native.xml >/dev/null || true
+adb pull /data/local/tmp/rs-native.xml "$OUT/01-native-server-stopped.xml" >/dev/null || true
 tap_ui 'Ativar servidor'
 adb forward tcp:18080 tcp:8080
 ok=0
@@ -201,14 +202,14 @@ tap_ui 'Definições'; adb exec-out screencap -p > "$OUT/06-native-settings.png"
 tap_ui 'IA'; sleep 2; adb exec-out screencap -p > "$OUT/07-native-rsia.png"
 tap_ui 'APIs & endpoints'; sleep 2
 adb exec-out screencap -p > "$OUT/08-native-rsia-providers.png"
-adb shell uiautomator dump /sdcard/rs-rsia-providers.xml >/dev/null || true
-adb pull /sdcard/rs-rsia-providers.xml "$OUT/08-native-rsia-providers.xml" >/dev/null || true
+adb shell uiautomator dump /data/local/tmp/rs-rsia-providers.xml >/dev/null || true
+adb pull /data/local/tmp/rs-rsia-providers.xml "$OUT/08-native-rsia-providers.xml" >/dev/null || true
 adb shell input keyevent 4 || true; sleep 1
 adb shell input keyevent 4 || true; sleep 1
 tap_ui 'Modelos & runtime'; sleep 2
 adb exec-out screencap -p > "$OUT/09-native-rsia-models-runtime.png"
-adb shell uiautomator dump /sdcard/rs-rsia-models.xml >/dev/null || true
-adb pull /sdcard/rs-rsia-models.xml "$OUT/09-native-rsia-models-runtime.xml" >/dev/null || true
+adb shell uiautomator dump /data/local/tmp/rs-rsia-models.xml >/dev/null || true
+adb pull /data/local/tmp/rs-rsia-models.xml "$OUT/09-native-rsia-models-runtime.xml" >/dev/null || true
 adb shell input keyevent 4 || true; sleep 1
 curl -sS -D /tmp/rs-login.headers -o /dev/null -X POST --data-urlencode 'u=admin' --data-urlencode "p=$AUDIT_PASS" http://127.0.0.1:18080/login
 RSSESSION=$(python3 - <<'PY'
@@ -220,8 +221,8 @@ PY
 )
 echo "::add-mask::$RSSESSION"
 AUDIT_RSSESSION="$RSSESSION" node audit/rsstorage_wave3_android_served_web.mjs http://127.0.0.1:18080 "$WEB"
-adb shell uiautomator dump /sdcard/rs-final.xml >/dev/null || true
-adb pull /sdcard/rs-final.xml "$OUT/final-window.xml" >/dev/null || true
+adb shell uiautomator dump /data/local/tmp/rs-final.xml >/dev/null || true
+adb pull /data/local/tmp/rs-final.xml "$OUT/final-window.xml" >/dev/null || true
 adb shell dumpsys activity activities > "$OUT/activity.txt"
 adb logcat -d -t 1000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|com\.rs\.localstorage' > "$OUT/logcat-app-tail.txt" || true
 test "$(find "$OUT" -name '*.png' | wc -l)" -ge 9
