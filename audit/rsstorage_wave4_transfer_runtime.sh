@@ -202,6 +202,24 @@ PY
 echo 'DOWNLOAD_HASH_MATCH=true'
 echo 'DOWNLOAD_TRACKING_COMPLETED=true'
 
+echo '--- HTTP Range 206 integrity ---'
+RANGE_URL=$(python3 - "$BASE/upload/payload32.bin" <<'PY'
+import sys,urllib.parse
+print('http://127.0.0.1:18080/admin/download?'+urllib.parse.urlencode({'f':sys.argv[1]}))
+PY
+)
+RANGE_METRIC=$(curl -fsS -b /tmp/rs-cookies -o /tmp/range1m.bin -H 'Range: bytes=0-1048575' -w '%{http_code} %{size_download}' "$RANGE_URL")
+echo "RANGE_RAW_METRIC=$RANGE_METRIC"
+echo "$RANGE_METRIC" | awk '$1==206 && $2==1048576 {ok=1} END{exit ok?0:1}'
+python3 - <<'PY'
+import hashlib
+full=open('/tmp/upload32.bin','rb').read(1048576)
+part=open('/tmp/range1m.bin','rb').read()
+assert len(part)==1048576
+assert hashlib.sha256(full).digest()==hashlib.sha256(part).digest()
+PY
+echo 'RANGE_206_HASH_MATCH=true'
+
 api_action() {
   local action="$1" src="$2" dest="$3" out="$4"
   curl -fsS -b /tmp/rs-cookies -o "$out" -w '%{http_code}' -X POST \
