@@ -43,7 +43,7 @@ for attempt in $(seq 1 20); do
     echo "ANDROID_VISUAL_RUNNER_SYSTEM_DIALOG=FAIL" >&2
     exit 1
   fi
-  APP_DRAWN="$(awk '/mActivityComponent=com.rs.localstorage\\/.MainActivity/{app=1} app && /reportedDrawn=/{print; exit}' "$WS/audit-out/android/activity.txt")"
+  APP_DRAWN="$(grep -A12 -F 'mActivityComponent=com.rs.localstorage/.MainActivity' "$WS/audit-out/android/activity.txt" | grep -m1 'reportedDrawn=' || true)"
   if grep -q 'topResumedActivity=.*com.rs.localstorage/.MainActivity' "$WS/audit-out/android/activity.txt" && printf '%s' "$APP_DRAWN" | grep -q 'reportedDrawn=true'; then
     READY=1
     break
