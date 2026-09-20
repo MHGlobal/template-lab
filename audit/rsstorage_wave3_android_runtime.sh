@@ -49,7 +49,7 @@ adb_install_bounded() {
     if python3 - "$mode" "$apk" "$log" <<'PY'
 import subprocess,sys
 mode,apk,log=sys.argv[1:]
-cmd=['adb','install','--no-streaming']
+cmd=['adb','install']
 if mode=='upgrade': cmd.append('-r')
 cmd.append(apk)
 with open(log,'a',encoding='utf-8') as fh:
