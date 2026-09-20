@@ -167,12 +167,16 @@ echo "::add-mask::$CSRF"
 echo '--- 32 MiB streaming upload integrity/performance ---'
 python3 -c "import os; open('/tmp/upload32.bin','wb').write(os.urandom(32*1024*1024))"
 HOST_SHA=$(shasum -a 256 /tmp/upload32.bin | awk '{print $1}')
+UPLOAD_URL=$(python3 - "$BASE/upload" "$CSRF" <<'PY'
+import sys,urllib.parse
+path,csrf=sys.argv[1:]
+q=urllib.parse.urlencode({'d':path,'name':'payload32.bin','conflict':'replace','csrf':csrf})
+print('http://127.0.0.1:18080/admin/upload?'+q)
+PY
+)
 UP_METRIC=$(curl -fsS -b /tmp/rs-cookies -o /tmp/upload-response.json \
   -w '%{http_code} %{size_upload} %{time_total} %{speed_upload}' \
-  --request POST --data-binary @/tmp/upload32.bin \
-  --get --data-urlencode "d=$BASE/upload" --data-urlencode 'name=payload32.bin' \
-  --data-urlencode 'conflict=replace' --data-urlencode "csrf=$CSRF" \
-  http://127.0.0.1:18080/admin/upload)
+  --data-binary @/tmp/upload32.bin "$UPLOAD_URL")
 echo "UPLOAD_RAW_METRIC=$UP_METRIC"
 echo "$UP_METRIC" | awk '$1==200 && $2>=33554432 {ok=1} END{exit ok?0:1}'
 DEVICE_SHA=$(adb shell "sha256sum '$BASE/upload/payload32.bin'" | tr -d '\r' | awk '{print $1}')
