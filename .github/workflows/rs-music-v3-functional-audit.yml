@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # qa3-v3 product-polish gate r7
-  TARGET_REF: ${{ inputs.target_ref || 'cdfd1b2e1e4e1916c3a6fdb5e8e17acece2620b0' }}
+  # qa3-v3 secondary-tools polish gate r8
+  TARGET_REF: ${{ inputs.target_ref || 'baa4c53031173922fd89eee93024bb9fdea232f7' }}
 
 jobs:
   audit:
@@ -114,12 +114,13 @@ jobs:
             rm -rf target/core/database/schemas target/core/database/build/generated/ksp
             target/gradlew -p target :core:database:connectedAndroidTest --stacktrace --no-daemon --no-parallel --no-build-cache
             rm -rf target/core/database/schemas target/core/database/build/generated/ksp
+            adb shell rm -rf /sdcard/Download/rs-music-audit >/dev/null 2>&1 || true
             target/gradlew -p target :app:connectedAndroidTest --stacktrace --no-daemon --no-parallel --no-build-cache
             mkdir -p audit-out/runtime/ui-audit
             adb pull /sdcard/Download/rs-music-audit/. audit-out/runtime/ui-audit/ >/dev/null
-            for shot in 01-home 02-search-empty 03-search-results 04-player 05-lyrics-viewer 06-lyrics-tools 07-search-return 08-you 09-settings-top 10-settings-scrolled; do file "audit-out/runtime/ui-audit/$shot.png" | grep -q 'PNG image data' || exit 1; done
+            for shot in 01-home 02-search-empty 03-search-results 04-player 05-lyrics-viewer 06-lyrics-tools 07-search-return 08-you 09-settings-top 10-settings-scrolled 11-sort-compact 12-player-metadata-fallback 13-sleep-timer 14-equalizer-top 15-equalizer-advanced 16-playback-tools; do file "audit-out/runtime/ui-audit/$shot.png" | grep -q 'PNG image data' || exit 1; done
             find audit-out/runtime/ui-audit -type f -name '*.png' | wc -l | tr -d ' ' > audit-out/runtime/ui-audit-count.raw
-            test "$(cat audit-out/runtime/ui-audit-count.raw)" -eq 10
+            test "$(cat audit-out/runtime/ui-audit-count.raw)" -eq 16
             printf 'PRODUCT_POLISH_SCREENSHOTS=%s\n' "$(cat audit-out/runtime/ui-audit-count.raw)" > audit-out/runtime/ui-audit-count.txt
             mkdir -p audit-out/runtime
             adb shell pm clear com.mhglobal.rsmusic >/dev/null 2>&1 || true
