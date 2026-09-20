@@ -117,14 +117,21 @@ jobs:
         with:
           packages: ''
       - name: Enable and verify KVM acceleration
+        id: accel
         shell: bash
         run: |
           set -euo pipefail
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -c /dev/kvm
-          test -r /dev/kvm -a -w /dev/kvm
+          if [ -c /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+            test -r /dev/kvm -a -w /dev/kvm
+            echo 'mode=on' >> "$GITHUB_OUTPUT"
+            echo 'ANDROID_EMULATOR_ACCELERATION=KVM'
+          else
+            echo 'mode=off' >> "$GITHUB_OUTPUT"
+            echo 'ANDROID_EMULATOR_ACCELERATION=SOFTWARE_FALLBACK'
+          fi
       - name: Install Android build toolchain
         shell: bash
         run: |
@@ -184,7 +191,7 @@ jobs:
           heap-size: 512M
           disable-animations: true
           emulator-boot-timeout: 1500
-          emulator-options: -no-window -gpu swiftshader_indirect -accel on -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
+          emulator-options: -no-window -gpu swiftshader_indirect -accel ${{ steps.accel.outputs.mode }} -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: bash "${{ github.workspace }}/audit/rsstorage_wave5_lnp_runtime.sh" "${{ github.workspace }}"
       - name: Publish safe Wave 5 evidence only
         if: always()
