@@ -135,18 +135,33 @@ tap_ui() {
 import re,sys,xml.etree.ElementTree as ET
 wanted=sys.argv[1].casefold()
 root=ET.parse('/tmp/rs-wave4.xml').getroot()
-for n in root.iter('node'):
+nodes=list(root.iter('node'))
+for n in nodes:
+    label=((n.attrib.get('text') or n.attrib.get('content-desc') or '')).casefold()
+    if label in {'close app','wait','fechar app','aguardar'}:
+        m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+        if m:
+            x1,y1,x2,y2=map(int,m.groups());print('RECOVER',(x1+x2)//2,(y1+y2)//2);raise SystemExit
+for n in nodes:
     labels=[n.attrib.get('text',''),n.attrib.get('content-desc','')]
     if any(wanted == label.casefold() or wanted in label.casefold() for label in labels):
         m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
         if m:
-            x1,y1,x2,y2=map(int,m.groups());print((x1+x2)//2,(y1+y2)//2);raise SystemExit
+            x1,y1,x2,y2=map(int,m.groups());print('TARGET',(x1+x2)//2,(y1+y2)//2);raise SystemExit
 raise SystemExit(3)
 PY
       )
       rc=$?
       set -e
-      if [ "$rc" = 0 ] && [ -n "$xy" ]; then break; fi
+      if [ "$rc" = 0 ] && [[ "$xy" =~ ^RECOVER\ [0-9]+\ [0-9]+$ ]]; then
+        read -r _ recover_x recover_y <<<"$xy"
+        adb shell input tap "$recover_x" "$recover_y" || true
+        adb shell am start -W -n com.rs.localstorage/.MainActivity >/tmp/rs-wave4-am-recover.txt 2>&1 || true
+        sleep 3
+        xy=""
+        continue
+      fi
+      if [ "$rc" = 0 ] && [[ "$xy" =~ ^TARGET\ [0-9]+\ [0-9]+$ ]]; then break; fi
     fi
     echo "UI_TARGET_RETRY=$attempt TARGET=$wanted"
     adb shell input keyevent 4 || true
@@ -157,7 +172,8 @@ PY
     echo "UI_TARGET_NOT_FOUND=$wanted" >&2
     return 3
   fi
-  adb shell input tap $xy
+  read -r _ target_x target_y <<<"$xy"
+  adb shell input tap "$target_x" "$target_y"
   sleep 1
 }
 

@@ -133,15 +133,29 @@ except Exception:
     raise SystemExit(3)
 for n in root.iter('node'):
     text=(n.attrib.get('text') or n.attrib.get('content-desc') or '').lower()
+    if text in {'close app','wait','fechar app','aguardar'}:
+        m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+        if m:
+            x1,y1,x2,y2=map(int,m.groups()); print('RECOVER',(x1+x2)//2,(y1+y2)//2); raise SystemExit
+for n in root.iter('node'):
+    text=(n.attrib.get('text') or n.attrib.get('content-desc') or '').lower()
     if text==wanted or wanted in text:
         m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
         if m:
-            x1,y1,x2,y2=map(int,m.groups()); print((x1+x2)//2,(y1+y2)//2); raise SystemExit
+            x1,y1,x2,y2=map(int,m.groups()); print('TARGET',(x1+x2)//2,(y1+y2)//2); raise SystemExit
 raise SystemExit(3)
 PY
     )"
-    if [[ "$xy" =~ ^[0-9]+\ [0-9]+$ ]]; then
-      adb shell input tap $xy
+    if [[ "$xy" =~ ^RECOVER\ [0-9]+\ [0-9]+$ ]]; then
+      read -r _ recover_x recover_y <<<"$xy"
+      adb shell input tap "$recover_x" "$recover_y" || true
+      adb shell am start -W -n com.rs.localstorage/.MainActivity >/dev/null 2>&1 || true
+      sleep 2
+      continue
+    fi
+    if [[ "$xy" =~ ^TARGET\ [0-9]+\ [0-9]+$ ]]; then
+      read -r _ target_x target_y <<<"$xy"
+      adb shell input tap "$target_x" "$target_y"
       sleep 1
       return 0
     fi
