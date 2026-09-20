@@ -120,8 +120,8 @@ jobs:
           src=Path('audit-out/wave4/runtime.log')
           text=src.read_text(errors='ignore') if src.exists() else ''
           pats=[
-            r'UPLOAD_RAW_METRIC=[0-9. ]+',r'DOWNLOAD_RAW_METRIC=[0-9. ]+',r'COPY_SECONDS=[0-9.]+',
-            r'UPLOAD_HASH_MATCH=(?:true|false)',r'DOWNLOAD_HASH_MATCH=(?:true|false)',r'DOWNLOAD_TRACKING_COMPLETED=(?:true|false)',
+            r'UPLOAD_RAW_METRIC=[0-9. ]+',r'DOWNLOAD_RAW_METRIC=[0-9. ]+',r'RANGE_RAW_METRIC=[0-9. ]+',r'COPY_SECONDS=[0-9.]+',
+            r'UPLOAD_HASH_MATCH=(?:true|false)',r'DOWNLOAD_HASH_MATCH=(?:true|false)',r'DOWNLOAD_TRACKING_COMPLETED=(?:true|false)',r'RANGE_206_HASH_MATCH=(?:true|false)',
             r'COPY_HASH_MATCH=(?:true|false)',r'MOVE_SOURCE_REMOVED=(?:true|false)',r'MOVE_HASH_MATCH=(?:true|false)',
             r'QUEUED_OR_ACTIVE_CANCEL_COMPLETED=(?:true|false)',r'CANCEL_PARTIAL_CLEANUP=(?:true|false)',
             r'SERVER_RESPONSIVE_AFTER_STRESS=(?:true|false)',r'WAVE4_[A-Z0-9_=-]+[^\n]*',
