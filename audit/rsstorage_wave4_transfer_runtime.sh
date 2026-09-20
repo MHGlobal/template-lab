@@ -26,7 +26,7 @@ wait_runtime_health() {
     if adb shell service check package 2>/dev/null | grep -qi found &&
        adb shell service check activity 2>/dev/null | grep -qi found &&
        adb shell service check appops 2>/dev/null | grep -qi found &&
-       adb shell "test -d /storage/emulated/0 && touch /storage/emulated/0/.rs-wave4-ready && rm -f /storage/emulated/0/.rs-wave4-ready" >/dev/null 2>&1; then
+       adb shell "test -d /storage/emulated/0 && touch /storage/emulated/0/Download/.rs-wave4-ready && rm -f /storage/emulated/0/Download/.rs-wave4-ready" >/dev/null 2>&1; then
       echo "ANDROID_RUNTIME_HEALTH=PASS"
       return 0
     fi
@@ -39,7 +39,7 @@ wait_runtime_health() {
     if adb shell service check package 2>/dev/null | grep -qi found &&
        adb shell service check activity 2>/dev/null | grep -qi found &&
        adb shell service check appops 2>/dev/null | grep -qi found &&
-       adb shell "test -d /storage/emulated/0 && touch /storage/emulated/0/.rs-wave4-ready && rm -f /storage/emulated/0/.rs-wave4-ready" >/dev/null 2>&1; then
+       adb shell "test -d /storage/emulated/0 && touch /storage/emulated/0/Download/.rs-wave4-ready && rm -f /storage/emulated/0/Download/.rs-wave4-ready" >/dev/null 2>&1; then
       echo "ANDROID_RUNTIME_HEALTH=PASS"
       return 0
     fi
