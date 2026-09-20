@@ -46,7 +46,7 @@ adb_install_bounded() {
     if python3 - "$apk" "$log" <<'PY'
 import subprocess,sys
 apk,log=sys.argv[1:]
-cmd=['adb','install','--no-streaming',apk]
+cmd=['adb','install',apk]
 with open(log,'a',encoding='utf-8') as fh:
     fh.write('CMD='+' '.join(cmd)+'\n'); fh.flush()
     try:
