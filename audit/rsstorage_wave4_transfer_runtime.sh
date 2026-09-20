@@ -21,6 +21,34 @@ wait_android_ready() {
   echo "ANDROID_PACKAGE_MANAGER_READY=false" >&2
   return 1
 }
+wait_runtime_health() {
+  for attempt in $(seq 1 60); do
+    if adb shell service check package 2>/dev/null | grep -qi found &&
+       adb shell service check activity 2>/dev/null | grep -qi found &&
+       adb shell service check appops 2>/dev/null | grep -qi found &&
+       adb shell "test -d /storage/emulated/0 && touch /storage/emulated/0/.rs-wave4-ready && rm -f /storage/emulated/0/.rs-wave4-ready" >/dev/null 2>&1; then
+      echo "ANDROID_RUNTIME_HEALTH=PASS"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "ANDROID_RUNTIME_HEALTH_RECOVERY=reboot"
+  adb reboot || true
+  wait_android_ready
+  for attempt in $(seq 1 60); do
+    if adb shell service check package 2>/dev/null | grep -qi found &&
+       adb shell service check activity 2>/dev/null | grep -qi found &&
+       adb shell service check appops 2>/dev/null | grep -qi found &&
+       adb shell "test -d /storage/emulated/0 && touch /storage/emulated/0/.rs-wave4-ready && rm -f /storage/emulated/0/.rs-wave4-ready" >/dev/null 2>&1; then
+      echo "ANDROID_RUNTIME_HEALTH=PASS"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "ANDROID_RUNTIME_HEALTH=FAIL" >&2
+  return 1
+}
+
 print_install_diagnostics() {
   local apk="$1" log="$2"
   python3 - "$apk" "$log" <<'PY'
@@ -95,8 +123,8 @@ PY
 
 tap_ui() {
   local wanted="$1"
-  adb shell uiautomator dump /sdcard/rs-wave4.xml >/dev/null
-  adb pull /sdcard/rs-wave4.xml /tmp/rs-wave4.xml >/dev/null
+  adb shell uiautomator dump /data/local/tmp/rs-wave4.xml >/dev/null
+  adb pull /data/local/tmp/rs-wave4.xml /tmp/rs-wave4.xml >/dev/null
   local xy
   xy=$(python3 - "$wanted" <<'PY'
 import re,sys,xml.etree.ElementTree as ET
@@ -136,11 +164,13 @@ EOF
 adb shell run-as com.rs.localstorage mkdir -p shared_prefs
 run_as_write_file /tmp/rs_users.xml shared_prefs/rs_users.xml
 run_as_write_file /tmp/rs_onboarding.xml shared_prefs/rs_onboarding.xml
+wait_runtime_health
 adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || true
 adb shell pm grant com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES || true
 adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
-adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1 >/dev/null
-sleep 3
+adb shell am start -W -n com.rs.localstorage/.MainActivity >/tmp/rs-wave4-am-start.txt
+grep -Eq 'Status: ok|Complete' /tmp/rs-wave4-am-start.txt
+sleep 5
 tap_ui 'Ativar servidor'
 adb forward tcp:18080 tcp:8080
 for ((i=1;i<=75;i++)); do curl -fsS --max-time 2 http://127.0.0.1:18080/login >/dev/null 2>&1 && break; sleep 1; done
