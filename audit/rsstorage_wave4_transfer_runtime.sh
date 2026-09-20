@@ -307,6 +307,22 @@ wait_transfer() {
   cat /tmp/state.json
   return 3
 }
+snapshot_transfers() {
+  curl -fsS -b /tmp/rs-cookies http://127.0.0.1:18080/api/admin/transfers > "$1"
+}
+new_transfer_between() {
+  python3 - "$1" "$2" <<'PY'
+import json,sys
+before={x['id'] for x in json.load(open(sys.argv[1])).get('transfers',[])}
+after=[x['id'] for x in json.load(open(sys.argv[2])).get('transfers',[]) if x['id'] not in before]
+assert len(after)==1, f'expected one new transfer, got {after}'
+print(after[0])
+PY
+}
+transfer_status() {
+  curl -fsS -b /tmp/rs-cookies --get --data-urlencode "id=$1" http://127.0.0.1:18080/api/admin/transfer |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])'
+}
 
 echo '--- copy and move via actual server queue ---'
 BEFORE=$(curl -fsS -b /tmp/rs-cookies http://127.0.0.1:18080/api/admin/transfers)
@@ -371,14 +387,63 @@ PARTIAL_COUNT=$(adb shell "find '$BASE/stress-d3' -maxdepth 1 -name '.rs-*.parti
 test "$PARTIAL_COUNT" = 0
 echo 'QUEUED_OR_ACTIVE_CANCEL_COMPLETED=true'
 echo 'CANCEL_PARTIAL_CLEANUP=true'
+
+echo '--- foreground download priority while file-operation workers are saturated ---'
+PRIORITY_TID="prio$(python3 -c 'import secrets;print(secrets.token_hex(8))')"
+PRIORITY_START=$(python3 -c 'import time;print(time.time_ns())')
+curl -fsS -b /tmp/rs-cookies -o /tmp/priority-download.bin \
+  --get --data-urlencode "f=$BASE/upload/payload32.bin" --data-urlencode "tid=$PRIORITY_TID" \
+  http://127.0.0.1:18080/download
+PRIORITY_END=$(python3 -c 'import time;print(time.time_ns())')
+test "$(shasum -a 256 /tmp/priority-download.bin | awk '{print $1}')" = "$HOST_SHA"
+PRIORITY_SEC=$(python3 - <<PY
+print((${PRIORITY_END}-${PRIORITY_START})/1e9)
+PY
+)
+python3 - "$PRIORITY_SEC" <<'PY'
+import sys
+assert float(sys.argv[1]) < 30.0, sys.argv[1]
+PY
+echo "PRIORITY_DOWNLOAD_SECONDS=$PRIORITY_SEC"
+echo 'INTERACTIVE_DOWNLOAD_PRIORITY=PASS'
+
+echo '--- atomic destination exclusion under a queued collision ---'
+adb shell "mkdir -p '$BASE/collision-a' '$BASE/collision-b' '$BASE/collision-dst'; cp '$BASE/upload/payload32.bin' '$BASE/collision-a/same.bin'; dd if=/dev/zero of='$BASE/collision-b/same.bin' bs=1048576 count=32 2>/dev/null"
+COLLISION_A_SHA=$(adb shell "sha256sum '$BASE/collision-a/same.bin'" | tr -d '\r' | awk '{print $1}')
+COLLISION_B_SHA=$(adb shell "sha256sum '$BASE/collision-b/same.bin'" | tr -d '\r' | awk '{print $1}')
+test "$COLLISION_A_SHA" != "$COLLISION_B_SHA"
+snapshot_transfers /tmp/collision-before.json
+test "$(api_action copy "$BASE/collision-a/same.bin" "$BASE/collision-dst" /tmp/collision-a.out)" = 302
+snapshot_transfers /tmp/collision-after-a.json
+COLLISION_A_ID=$(new_transfer_between /tmp/collision-before.json /tmp/collision-after-a.json)
+test "$(api_action copy "$BASE/collision-b/same.bin" "$BASE/collision-dst" /tmp/collision-b.out)" = 302
+snapshot_transfers /tmp/collision-after-b.json
+COLLISION_B_ID=$(new_transfer_between /tmp/collision-after-a.json /tmp/collision-after-b.json)
+
 wait_transfer "$ID1" completed 360
 wait_transfer "$ID2" completed 360
+for i in $(seq 1 360); do
+  COLLISION_A_STATUS=$(transfer_status "$COLLISION_A_ID")
+  COLLISION_B_STATUS=$(transfer_status "$COLLISION_B_ID")
+  if [[ "$COLLISION_A_STATUS" =~ ^(completed|error)$ ]] && [[ "$COLLISION_B_STATUS" =~ ^(completed|error)$ ]]; then break; fi
+  sleep .25
+done
+python3 - "$COLLISION_A_STATUS" "$COLLISION_B_STATUS" <<'PY'
+import sys
+assert sorted(sys.argv[1:]) == ['completed','error'], sys.argv[1:]
+PY
+COLLISION_DST_SHA=$(adb shell "sha256sum '$BASE/collision-dst/same.bin'" | tr -d '\r' | awk '{print $1}')
+test "$COLLISION_DST_SHA" = "$COLLISION_A_SHA" -o "$COLLISION_DST_SHA" = "$COLLISION_B_SHA"
+test "$(adb shell "find '$BASE/collision-dst' -maxdepth 1 -name '.rs-*.partial' 2>/dev/null | wc -l" | tr -d '\r ')" = 0
+echo 'DESTINATION_COLLISION_EXCLUSION=PASS'
+echo 'DESTINATION_COLLISION_PARTIAL_CLEANUP=PASS'
 
 echo '--- memory/responsiveness evidence ---'
 curl -fsS -b /tmp/rs-cookies http://127.0.0.1:18080/api/admin/transfers > "$OUT/final-transfers.json"
 adb shell dumpsys meminfo com.rs.localstorage > "$OUT/meminfo.txt"
 adb shell dumpsys cpuinfo | grep com.rs.localstorage > "$OUT/cpuinfo.txt" || true
 adb logcat -d -t 1200 | grep -E 'AndroidRuntime|FATAL EXCEPTION|OutOfMemory|com\.rs\.localstorage' > "$OUT/logcat-tail.txt" || true
+! grep -Eqi 'FATAL EXCEPTION.*com\.rs\.localstorage|OutOfMemoryError.*com\.rs\.localstorage' "$OUT/logcat-tail.txt"
 curl -fsS -b /tmp/rs-cookies --max-time 3 http://127.0.0.1:18080/admin/files >/dev/null
 echo 'SERVER_RESPONSIVE_AFTER_STRESS=true'
 echo 'WAVE4_ANDROID_LOOPBACK_TRANSFER_GATES=PASS'

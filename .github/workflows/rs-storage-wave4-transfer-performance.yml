@@ -54,9 +54,13 @@ jobs:
             echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
             sudo udevadm control --reload-rules
             sudo udevadm trigger --name-match=kvm
-            test -r /dev/kvm -a -w /dev/kvm
-            echo 'mode=on' >> "$GITHUB_OUTPUT"
-            echo 'ANDROID_EMULATOR_ACCELERATION=KVM'
+            if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+              echo 'mode=on' >> "$GITHUB_OUTPUT"
+              echo 'ANDROID_EMULATOR_ACCELERATION=KVM'
+            else
+              echo 'mode=off' >> "$GITHUB_OUTPUT"
+              echo 'ANDROID_EMULATOR_ACCELERATION=SOFTWARE_FALLBACK_UNUSABLE_KVM'
+            fi
           else
             echo 'mode=off' >> "$GITHUB_OUTPUT"
             echo 'ANDROID_EMULATOR_ACCELERATION=SOFTWARE_FALLBACK'
@@ -142,7 +146,9 @@ jobs:
             r'UPLOAD_RAW_METRIC=[0-9. ]+',r'DOWNLOAD_RAW_METRIC=[0-9. ]+',r'RANGE_RAW_METRIC=[0-9. ]+',r'COPY_SECONDS=[0-9.]+',
             r'UPLOAD_HASH_MATCH=(?:true|false)',r'DOWNLOAD_HASH_MATCH=(?:true|false)',r'DOWNLOAD_TRACKING_COMPLETED=(?:true|false)',r'RANGE_206_HASH_MATCH=(?:true|false)',
             r'COPY_HASH_MATCH=(?:true|false)',r'MOVE_SOURCE_REMOVED=(?:true|false)',r'MOVE_HASH_MATCH=(?:true|false)',
-            r'QUEUED_OR_ACTIVE_CANCEL_COMPLETED=(?:true|false)',r'CANCEL_PARTIAL_CLEANUP=(?:true|false)',
+              r'QUEUED_OR_ACTIVE_CANCEL_COMPLETED=(?:true|false)',r'CANCEL_PARTIAL_CLEANUP=(?:true|false)',
+              r'PRIORITY_DOWNLOAD_SECONDS=[0-9.]+',r'INTERACTIVE_DOWNLOAD_PRIORITY=(?:PASS|FAIL)',
+              r'DESTINATION_COLLISION_EXCLUSION=(?:PASS|FAIL)',r'DESTINATION_COLLISION_PARTIAL_CLEANUP=(?:PASS|FAIL)',
             r'SERVER_RESPONSIVE_AFTER_STRESS=(?:true|false)',r'WAVE4_[A-Z0-9_=-]+[^\n]*',
             r'PHYSICAL_WIFI_PERFORMANCE_GATE=[^\n]*',r'FINAL_AUDIT_COMPLETE=[^\n]*'
           ]
