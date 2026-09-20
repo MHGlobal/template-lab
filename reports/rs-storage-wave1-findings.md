@@ -58,3 +58,21 @@ Earlier public Android emulator evidence jobs were affected by obsolete SDK boot
 ## Wave 2 public-runner rerun
 
 This ledger refresh intentionally triggers the current Wave 2 real-task workflow on the public Template Lab runner. The reporter records only allow-listed gate markers and job conclusions; it never publishes the private RS Storage source tree.
+
+
+## 20/09/2026 — current Web visual evidence manually reviewed
+
+Run `35481080188` produced the corrected Web visual evidence set after the capture fixture was aligned with the production `globalMenu(...)` markup.
+
+A prior capture made the global navigation look like plain underlined links because the audit fixture used `.rs-menu-brand` and direct child anchors, while the production CSS expects `.rs-menu-title` plus a `<nav>` wrapper. This was classified as `AUDIT_HARNESS_DEFECT`, not a product UI defect, and corrected in Template Lab commit `8f7ca31742421d85959cb06e5b7c5cccb83d0558`.
+
+Human review covered 12 screenshots at:
+- 360×800 mobile;
+- 412×915 mobile;
+- 1366×768 desktop;
+
+for Files, global menu, file context menu and Transfers. The corrected production-markup evidence shows no confirmed clipping, horizontal overflow or unreachable primary action in those captured states. Context actions through `Eliminar` are visible on narrow mobile, the Transfers sheet remains inside the viewport, and desktop content uses the available width.
+
+Artifact: `wave1-web-visual-evidence`, digest `sha256:9acb571c900da9ab2d533c645d6b7c9217604450706b64968d03416c6cd31ae1`.
+
+Decision for this evidence slice: **WEB VISUAL = PASS (human reviewed)**. This does not substitute for Android-served Web evidence in Wave 3.
