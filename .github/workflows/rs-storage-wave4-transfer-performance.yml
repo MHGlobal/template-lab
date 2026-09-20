@@ -10,7 +10,7 @@ on:
 
 concurrency:
   group: rs-storage-wave4-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -24,7 +24,7 @@ jobs:
   android-real-transfer-gates:
     name: Android real server transfer integrity + performance
     runs-on: macos-15-intel
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - name: Checkout Template Lab
         uses: actions/checkout@v4
