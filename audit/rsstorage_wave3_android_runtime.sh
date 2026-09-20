@@ -122,23 +122,52 @@ PY
 
 tap_ui() {
   local wanted="$1"
-  adb shell uiautomator dump /data/local/tmp/rs-audit-window.xml >/dev/null
-  adb pull /data/local/tmp/rs-audit-window.xml /tmp/rs-audit-window.xml >/dev/null
-  local xy
-  xy=$(python3 - "$wanted" <<'PY'
+  local xy attempt
+  for attempt in {1..8}; do
+    adb shell uiautomator dump /data/local/tmp/rs-audit-window.xml >/dev/null 2>&1 || true
+    adb pull /data/local/tmp/rs-audit-window.xml /tmp/rs-audit-window.xml >/dev/null 2>&1 || true
+    xy="$(python3 - "$wanted" <<'PY' || true
 import re,sys,xml.etree.ElementTree as ET
-wanted=sys.argv[1]
-root=ET.parse('/tmp/rs-audit-window.xml').getroot()
+wanted=sys.argv[1].casefold()
+try:
+    root=ET.parse('/tmp/rs-audit-window.xml').getroot()
+except Exception:
+    raise SystemExit(3)
 for n in root.iter('node'):
-    if n.attrib.get('text')==wanted or n.attrib.get('content-desc')==wanted:
+    label=((n.attrib.get('text') or n.attrib.get('content-desc') or '')).casefold()
+    if label in {'close app','wait','fechar app','aguardar'}:
         m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
         if m:
-            x1,y1,x2,y2=map(int,m.groups());print((x1+x2)//2,(y1+y2)//2);raise SystemExit
+            x1,y1,x2,y2=map(int,m.groups());print('RECOVER',(x1+x2)//2,(y1+y2)//2);raise SystemExit
+for n in root.iter('node'):
+    labels=[n.attrib.get('text','').casefold(),n.attrib.get('content-desc','').casefold()]
+    if any(wanted == label or wanted in label for label in labels):
+        m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+        if m:
+            x1,y1,x2,y2=map(int,m.groups());print('TARGET',(x1+x2)//2,(y1+y2)//2);raise SystemExit
 raise SystemExit(3)
 PY
-  )
-  adb shell input tap $xy
-  sleep 1
+    )"
+    if [[ "$xy" =~ ^RECOVER\ [0-9]+\ [0-9]+$ ]]; then
+      read -r _ recover_x recover_y <<<"$xy"
+      adb shell input tap "$recover_x" "$recover_y" || true
+      adb shell am start -W -n com.rs.localstorage/.MainActivity >/dev/null 2>&1 || true
+      sleep 2
+      continue
+    fi
+    if [[ "$xy" =~ ^TARGET\ [0-9]+\ [0-9]+$ ]]; then
+      read -r _ target_x target_y <<<"$xy"
+      adb shell input tap "$target_x" "$target_y"
+      sleep 1
+      return 0
+    fi
+    adb shell input swipe 540 1850 540 700 450 || true
+    sleep 2
+  done
+  adb exec-out screencap -p > "$OUT/ui-target-not-found.png" || true
+  cp /tmp/rs-audit-window.xml "$OUT/ui-target-not-found.xml" 2>/dev/null || true
+  echo "UI_TARGET_NOT_FOUND=$wanted" >&2
+  return 3
 }
 wait_android_ready
 echo 'Installing previous production baseline without uninstall path...' | tee "$OUT/upgrade-evidence.txt"
