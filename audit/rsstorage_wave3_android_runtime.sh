@@ -25,7 +25,7 @@ wait_android_ready() {
 }
 wait_external_storage() {
   for attempt in $(seq 1 60); do
-    if adb shell "test -d /storage/emulated/0 && touch /storage/emulated/0/.rs-audit-ready && rm -f /storage/emulated/0/.rs-audit-ready" >/dev/null 2>&1; then
+    if adb shell "test -d /storage/emulated/0 && touch /storage/emulated/0/Download/.rs-audit-ready && rm -f /storage/emulated/0/Download/.rs-audit-ready" >/dev/null 2>&1; then
       echo "ANDROID_EXTERNAL_STORAGE_READY=true"
       return 0
     fi
@@ -35,7 +35,7 @@ wait_external_storage() {
   adb reboot || true
   wait_android_ready
   for attempt in $(seq 1 60); do
-    if adb shell "test -d /storage/emulated/0 && touch /storage/emulated/0/.rs-audit-ready && rm -f /storage/emulated/0/.rs-audit-ready" >/dev/null 2>&1; then
+    if adb shell "test -d /storage/emulated/0 && touch /storage/emulated/0/Download/.rs-audit-ready && rm -f /storage/emulated/0/Download/.rs-audit-ready" >/dev/null 2>&1; then
       echo "ANDROID_EXTERNAL_STORAGE_READY=true"
       return 0
     fi
@@ -165,15 +165,15 @@ run_as_write_file /tmp/rs_users.xml shared_prefs/rs_users.xml
 run_as_write_file /tmp/rs_onboarding.xml shared_prefs/rs_onboarding.xml
 run_as_write_file /tmp/rs_ui.xml shared_prefs/rs_ui.xml
 wait_external_storage
-adb shell mkdir -p /storage/emulated/0/RSAgentWorkspace
-adb shell "echo external-upgrade-marker-${GITHUB_RUN_ID} > /storage/emulated/0/RSAgentWorkspace/rs-audit-preserve.txt"
+adb shell mkdir -p /storage/emulated/0/Download/RSAgentWorkspace
+adb shell "echo external-upgrade-marker-${GITHUB_RUN_ID} > /storage/emulated/0/Download/RSAgentWorkspace/rs-audit-preserve.txt"
 echo 'Applying candidate with adb install -r (no uninstall)...' | tee -a "$OUT/upgrade-evidence.txt"
 adb_install_bounded upgrade "$NEW" "$OUT/candidate-update-install.log"
 adb shell dumpsys package com.rs.localstorage | grep -E 'versionName=|versionCode=' | head -4 | tee -a "$OUT/upgrade-evidence.txt"
 adb shell dumpsys package com.rs.localstorage | grep -q 'versionName=4.7.13'
 adb exec-out run-as com.rs.localstorage cat files/rs-audit-preserve.txt | grep -q "upgrade-marker-${GITHUB_RUN_ID}"
 adb exec-out run-as com.rs.localstorage cat shared_prefs/rs_users.xml | grep -q 'admin_hash'
-adb shell cat /storage/emulated/0/RSAgentWorkspace/rs-audit-preserve.txt | grep -q "external-upgrade-marker-${GITHUB_RUN_ID}"
+adb shell cat /storage/emulated/0/Download/RSAgentWorkspace/rs-audit-preserve.txt | grep -q "external-upgrade-marker-${GITHUB_RUN_ID}"
 echo 'UPGRADE_INTERNAL_DATA_PRESERVED=true' | tee -a "$OUT/upgrade-evidence.txt"
 echo 'UPGRADE_SHARED_PREFS_PRESERVED=true' | tee -a "$OUT/upgrade-evidence.txt"
 echo 'UPGRADE_EXTERNAL_WORKSPACE_PRESERVED=true' | tee -a "$OUT/upgrade-evidence.txt"
