@@ -10,17 +10,37 @@ adb install -r "$APK"
 adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || true
 adb shell pm grant com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES || true
 adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
+# Give hosted Intel emulator system services time to settle. Previous evidence
+# contained Bluetooth/SystemUI dialogs unrelated to RS Storage.
+sleep 20
+adb shell input keyevent 3 >/dev/null 2>&1 || true
 adb shell am force-stop com.rs.localstorage
 adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1
 sleep 8
 adb shell pidof com.rs.localstorage | tee "$WS/audit-out/android/pid.txt"
 READY=0
-for _ in $(seq 1 20); do
+for attempt in $(seq 1 20); do
   adb shell dumpsys activity activities > "$WS/audit-out/android/activity.txt"
   adb shell uiautomator dump /sdcard/rs-window.xml >/dev/null 2>&1 || true
   adb pull /sdcard/rs-window.xml "$WS/audit-out/android/window.xml" >/dev/null 2>&1 || true
   if [ -f "$WS/audit-out/android/window.xml" ] && grep -Eqi "isn't responding|keeps stopping|has stopped|not responding" "$WS/audit-out/android/window.xml"; then
-    echo "ANDROID_VISUAL_SYSTEM_DIALOG=FAIL" >&2
+    if grep -Eqi "com\\.rs\\.localstorage|RS Storage" "$WS/audit-out/android/window.xml"; then
+      echo "ANDROID_VISUAL_APP_DIALOG=FAIL" >&2
+      exit 1
+    fi
+    cp "$WS/audit-out/android/window.xml" "$WS/audit-out/android/transient-system-dialog-$attempt.xml" || true
+    adb exec-out screencap -p > "$WS/audit-out/android/transient-system-dialog-$attempt.png" || true
+    if [ "$attempt" -le 3 ]; then
+      echo "ANDROID_VISUAL_TRANSIENT_SYSTEM_DIALOG=RECOVER"
+      adb shell input keyevent 4 >/dev/null 2>&1 || true
+      adb shell input keyevent 3 >/dev/null 2>&1 || true
+      sleep 3
+      adb shell am force-stop com.rs.localstorage || true
+      adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1 >/dev/null || true
+      sleep 5
+      continue
+    fi
+    echo "ANDROID_VISUAL_RUNNER_SYSTEM_DIALOG=FAIL" >&2
     exit 1
   fi
   APP_DRAWN="$(awk '/mActivityComponent=com.rs.localstorage\\/.MainActivity/{app=1} app && /reportedDrawn=/{print; exit}' "$WS/audit-out/android/activity.txt")"
