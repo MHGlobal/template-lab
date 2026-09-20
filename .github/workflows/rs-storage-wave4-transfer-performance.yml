@@ -9,7 +9,7 @@ on:
       - 'audit/rsstorage_wave4_transfer_runtime.sh'
 
 concurrency:
-  group: rs-storage-wave4-${{ github.ref }}
+  group: rs-storage-wave4-stable-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
