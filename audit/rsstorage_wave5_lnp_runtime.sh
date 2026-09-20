@@ -175,7 +175,7 @@ trap 'kill $HOST_PID 2>/dev/null || true' EXIT
 sleep 1
 
 set +e
-adb shell "run-as com.rs.localstorage sh -c 'printf \"HEAD / HTTP/1.0\\r\\n\\r\\n\" | /system/bin/toybox nc -w 3 10.0.2.2 19090 >/dev/null 2>/sdcard/rs-lnp-denied.err'"
+adb shell "run-as com.rs.localstorage sh -c 'printf \"HEAD / HTTP/1.0\\r\\n\\r\\n\" | /system/bin/toybox nc -w 3 10.0.2.2 19090 >/dev/null 2>/dev/null'"
 DENIED_RC=$?
 set -e
 echo "LNP_DENIED_APP_UID_RC=$DENIED_RC"
