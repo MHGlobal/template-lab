@@ -20,6 +20,32 @@ wait_boot() {
   adb devices -l || true
   return 1
 }
+wait_core_services() {
+  for attempt in $(seq 1 60); do
+    if adb shell service check package 2>/dev/null | grep -qi found &&
+       adb shell service check activity 2>/dev/null | grep -qi found &&
+       adb shell service check appops 2>/dev/null | grep -qi found; then
+      echo "ANDROID_CORE_SERVICES=PASS"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "ANDROID_CORE_SERVICES_RECOVERY=reboot"
+  adb reboot || true
+  wait_boot
+  for attempt in $(seq 1 60); do
+    if adb shell service check package 2>/dev/null | grep -qi found &&
+       adb shell service check activity 2>/dev/null | grep -qi found &&
+       adb shell service check appops 2>/dev/null | grep -qi found; then
+      echo "ANDROID_CORE_SERVICES=PASS"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "ANDROID_CORE_SERVICES=FAIL" >&2
+  return 1
+}
+
 print_install_diagnostics() {
   local apk="$1" log="$2"
   python3 - "$apk" "$log" <<'PY'
@@ -94,8 +120,8 @@ PY
 
 tap_text() {
   local wanted="$1"
-  adb shell uiautomator dump /sdcard/rs-wave5.xml >/dev/null
-  adb pull /sdcard/rs-wave5.xml /tmp/rs-wave5.xml >/dev/null
+  adb shell uiautomator dump /data/local/tmp/rs-wave5.xml >/dev/null
+  adb pull /data/local/tmp/rs-wave5.xml /tmp/rs-wave5.xml >/dev/null
   local xy
   xy=$(python3 - "$wanted" <<'PY'
 import re,sys,xml.etree.ElementTree as ET
@@ -132,12 +158,14 @@ EOF
 adb shell run-as com.rs.localstorage mkdir -p shared_prefs
 run_as_write_file /tmp/rs_users.xml shared_prefs/rs_users.xml
 run_as_write_file /tmp/rs_onboarding.xml shared_prefs/rs_onboarding.xml
+wait_core_services
 adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
 adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || true
 
 adb shell am compat enable RESTRICT_LOCAL_NETWORK com.rs.localstorage
 adb reboot
 wait_boot
+wait_core_services
 adb shell pm revoke com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES || true
 adb shell dumpsys package com.rs.localstorage | grep -A4 'NEARBY_WIFI_DEVICES' > "$OUT/permission-denied.txt" || true
 
@@ -154,8 +182,9 @@ echo "LNP_DENIED_APP_UID_RC=$DENIED_RC"
 test "$DENIED_RC" -ne 0
 echo 'LNP_DENIED_APP_UID_LAN_BLOCKED=true'
 
-adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1 >/dev/null
-sleep 3
+adb shell am start -W -n com.rs.localstorage/.MainActivity >/tmp/rs-wave5-am-start.txt
+grep -Eq 'Status: ok|Complete' /tmp/rs-wave5-am-start.txt
+sleep 5
 tap_text 'Ativar servidor'
 sleep 2
 adb exec-out screencap -p > "$OUT/01-nearby-permission-request.png"
