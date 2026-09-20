@@ -861,3 +861,67 @@ FINAL_AUDIT_COMPLETE=NO
 ```
 
 Ainda obrigatórios: conclusão limpa de Wave 1 corrigido, Wave 3, Wave 4 e Wave 5; revisão humana dos novos screenshots Android/Web; evidência de upgrade sem perda; artefactos/metrics finais; e teste Wi-Fi/hotspot físico com cliente real.
+
+# 23. Retomada de 20/09/2026 — estabilização do runtime de auditoria
+
+Diagnóstico confirmado nos logs:
+
+- Wave 1 falhava por diálogo/crash do System UI/Bluetooth do emulator, classificado como `RUNNER_INFRA_FAILURE`, não como defeito provado do produto.
+- Waves 3/4/5 anteriores atingiam o limite do job durante os gates Android reais.
+- Wave 4 ficou bloqueada durante `adb install --no-streaming`.
+- Wave 5 instalou o APK, depois ficou presa após reboot do emulator.
+- `cancel-in-progress: true` agravava o histórico cancelando runs válidos durante correções do próprio auditor.
+
+Correções aplicadas no Template Lab:
+
+```text
+fef4508a6ebd71c72dc268631fce3760c27c2659  stabilize Wave 3 runtime
+5346bc7ce80b5b337211cf0a7d3b269131c4a27e  stabilize Wave 4 runtime
+ee654431d3f351bbaca36ce2bb6473109345447e  stabilize Wave 5 runtime
+84ac79e9aaf9f8ef03adcdc116b0043b71648ee0  stabilize Wave 1 runtime
+e55266aa70fdd373aa8d7ecd49a5a5fe4ae8896e  Wave 3 streaming adb install
+058f0350e58c6a32cfbb4755099e9fba32ccdf8c  Wave 4 streaming adb install
+7def57e42b26a18ccdc3d4e102f42fc3d6934c29  Wave 1 stable concurrency generation
+9795a93e20cf0bb23b29eb12228b37d31a177957  Wave 3 stable concurrency generation
+f831fae70070b3634cfc36737fe334f7268b4bd5  Wave 4 stable concurrency generation
+f5f9d29b8898418cc711a0ca3eea4017b5ec9199  Wave 5 stable concurrency generation
+```
+
+Mudanças:
+- Android macOS jobs: timeout elevado para 300 min como proteção contra falso timeout.
+- `cancel-in-progress` desativado na geração estabilizada.
+- Wave 3 e Wave 4 passaram a usar instalação ADB streaming normal em vez de `--no-streaming`.
+- grupos de concurrency estabilizados foram isolados para não depender dos runs antigos ainda em execução.
+
+Runs estabilizados disparados:
+
+```text
+Wave 1  run 35481552162  queued
+Wave 3  run 35481555017  queued
+Wave 4  run 35481557227  queued
+Wave 5  run 35481559983  queued
+```
+
+Runs anteriores ainda ocupando runner no momento do handoff:
+
+```text
+Wave 1  35481080188  in_progress
+Wave 3  35480687305  in_progress
+Wave 4  35481177632  in_progress
+Wave 5  35480692520  in_progress
+```
+
+Estado da auditoria neste ponto:
+
+```text
+WAVE2                  PASS
+AGENT TOOL PARITY      PASS
+WAVE1                  rerun estabilizado pendente
+WAVE3                  rerun estabilizado pendente
+WAVE4                  rerun estabilizado pendente
+WAVE5 STATIC POLICY    PASS
+WAVE5 ANDROID RUNTIME  rerun estabilizado pendente
+FINAL_AUDIT_COMPLETE   NO
+```
+
+Não marcar release como aprovado enquanto os Android runtime gates e a validação física Wi-Fi/hotspot não tiverem evidência válida.
