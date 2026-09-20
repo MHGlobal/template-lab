@@ -10,7 +10,7 @@ on:
       - 'audit/rsstorage_wave1_android_visual.sh'
 
 concurrency:
-  group: rs-storage-wave1-${{ github.ref }}
+  group: rs-storage-wave1-stable-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
