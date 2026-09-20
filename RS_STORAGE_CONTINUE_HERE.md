@@ -8,7 +8,21 @@ Documento canónico de continuidade:
 
 `reports/RS_STORAGE_AUDIT_CONTINUITY.md`
 
-Para um chat novo, basta dizer:
+Handoff operacional mais recente para ChatGPT Work:
+
+`reports/RS_STORAGE_WORK_HANDOFF_2026-09-20.md`
+
+## Ordem obrigatória de leitura
+
+1. `skills/ARSF/SKILL.md`
+2. `RS_STORAGE_CONTINUE_HERE.md`
+3. `reports/RS_STORAGE_AUDIT_CONTINUITY.md`
+4. `reports/RS_STORAGE_WORK_HANDOFF_2026-09-20.md`
+5. Confirmar HEADs e runs atuais antes de alterar qualquer coisa.
+
+## Para um chat novo
+
+Basta dizer:
 
 ```text
 ARSF
@@ -17,7 +31,7 @@ ARSF
 Ou, de forma explícita:
 
 ```text
-ARSF — retome a Auditoria RS Storage Full pelo `MHGlobal/template-lab`, branch `editor`. Leia `skills/ARSF/SKILL.md`, depois `RS_STORAGE_CONTINUE_HERE.md` e o handoff canónico inteiro, confira os workflows atuais e continue do primeiro gate real pendente. Não altere main e não aprove a auditoria apenas por testes automatizados.
+ARSF — retome a Auditoria RS Storage Full pelo MHGlobal/template-lab, branch editor. Leia skills/ARSF/SKILL.md, RS_STORAGE_CONTINUE_HERE.md, reports/RS_STORAGE_AUDIT_CONTINUITY.md e reports/RS_STORAGE_WORK_HANDOFF_2026-09-20.md. Confirme os HEADs atuais e os workflows/runs mais recentes antes de mexer no produto. Continue do primeiro gate real pendente. Separe PRODUCT FAILURE de HARNESS/RUNNER FAILURE. Não altere main e não aprove a auditoria apenas por testes automatizados.
 ```
 
-O ficheiro canónico deve ser atualizado antes de encerrar cada sessão de auditoria.
+O ficheiro canónico de continuidade e o handoff operacional devem ser atualizados antes de encerrar uma sessão relevante de auditoria.
