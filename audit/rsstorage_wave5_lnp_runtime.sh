@@ -72,6 +72,26 @@ PY
   return 1
 }
 
+run_as_write_file() {
+  local local_file="$1" remote_file="$2"
+  python3 - "$local_file" "$remote_file" <<'PY'
+import base64,subprocess,sys
+local_file,remote_file=sys.argv[1:]
+data=base64.b64encode(open(local_file,'rb').read()).decode('ascii')
+remote=f"run-as com.rs.localstorage sh -c 'printf %s {data} | toybox base64 -d > {remote_file}'"
+try:
+    p=subprocess.run(['adb','shell',remote],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+except subprocess.TimeoutExpired:
+    print(f"ADB_RUN_AS_WRITE_TIMEOUT={remote_file}", file=sys.stderr)
+    raise SystemExit(124)
+if p.returncode:
+    print(f"ADB_RUN_AS_WRITE_FAILED={remote_file}", file=sys.stderr)
+    print(p.stdout[-2000:], file=sys.stderr)
+    raise SystemExit(p.returncode)
+print(f"ADB_RUN_AS_WRITE_PASS={remote_file}")
+PY
+}
+
 tap_text() {
   local wanted="$1"
   adb shell uiautomator dump /sdcard/rs-wave5.xml >/dev/null
@@ -110,8 +130,8 @@ cat >/tmp/rs_onboarding.xml <<'EOF'
 <map><boolean name="v4710_exact_targets_done" value="true" /></map>
 EOF
 adb shell run-as com.rs.localstorage mkdir -p shared_prefs
-adb exec-out run-as com.rs.localstorage sh -c 'cat > shared_prefs/rs_users.xml' < /tmp/rs_users.xml
-adb exec-out run-as com.rs.localstorage sh -c 'cat > shared_prefs/rs_onboarding.xml' < /tmp/rs_onboarding.xml
+run_as_write_file /tmp/rs_users.xml shared_prefs/rs_users.xml
+run_as_write_file /tmp/rs_onboarding.xml shared_prefs/rs_onboarding.xml
 adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
 adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || true
 
