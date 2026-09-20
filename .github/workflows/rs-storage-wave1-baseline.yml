@@ -11,7 +11,7 @@ on:
 
 concurrency:
   group: rs-storage-wave1-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -347,7 +347,7 @@ jobs:
   android-emulator-visual:
     name: Android emulator visual evidence
     runs-on: macos-15-intel
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with: { persist-credentials: false }
