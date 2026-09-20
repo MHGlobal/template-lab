@@ -925,3 +925,29 @@ FINAL_AUDIT_COMPLETE   NO
 ```
 
 Não marcar release como aprovado enquanto os Android runtime gates e a validação física Wi-Fi/hotspot não tiverem evidência válida.
+
+
+## 2026-09-20 — Android runtime harness remediation
+
+Current product audit target remains `3b93d08a1b24d80fb392eaf26561ca3de685cf0e`. Subsequent commits on `release/v4.7.13-agent-harness` observed during this pass only changed CI/workflow files; no product source delta was introduced to force the audit green.
+
+Confirmed classifications from failed runtime evidence:
+
+- Wave 1 Android visual: `AUDIT_HARNESS_DEFECT`. APK installed and process launched, then the visual script exited because its awk expression for `MainActivity/reportedDrawn` was syntactically invalid on the hosted macOS awk. Remediated by commit `1a235af3513c8b53808dd673e9c15b65e8f7ffb7`; explicit `am start -W` launch added in `6c0a5e3242f50ccfa7f5ad258fa9def383ae6a4f`.
+- Wave 3 Android upgrade/runtime: `AUDIT_HARNESS_OR_EMULATOR_INFRA`. Baseline install and bounded internal `run-as` writes passed. Failure occurred before candidate update because emulator external storage returned `Transport endpoint is not connected` / `Permission denied` on root `/sdcard`. Added external-storage readiness/reboot recovery and moved preservation marker to `/storage/emulated/0/Download/RSAgentWorkspace` in commits `2f22907ca406ae2cc476647c1875ce3d96e8a01f`, `4e55af3d6b54144718e904540563af11033e4e4f`, `1c7ef1abf1d677130e980ed11b3022cb6892a6aa`.
+- Wave 4 transfer runtime: `EMULATOR_INFRA` for the observed failure. Candidate install and preference writes passed, then hosted Android produced `ANR in com.android.phone`, ~100% CPU and `uiautomator` returned a null root before the transfer server was started. Added core-service + writable-storage stabilization and explicit activity launch in `ebd85e916f0ed651cee4aa620b822f219bb9c641`; writable health probe corrected to Download in `0cff383cae343ca74096e4340d2009974a0d4a8e`.
+- Wave 5 Android 16 LNP runtime: `EMULATOR_INFRA` for the observed failure. Candidate install and bounded preference writes passed; Android services then disappeared/broke (`appops: Broken pipe`, `Can't find service: package/activity`). Added critical-service readiness and recovery around both boots in `e5c38fca7a34727e1c97ca4e6e9aab4543109385`.
+
+Previously validated slices remain valid:
+- Wave 1 Agent Harness contracts: PASS.
+- Wave 1 Security + permission baseline: PASS.
+- Wave 1 Web runtime/browser gates: PASS.
+- Wave 1 corrected Web visual evidence: PASS after human review.
+- Wave 1 ARM64 build/unit baseline: PASS on run `35481080188`.
+- Wave 2 real-task scenarios: PASS.
+- Agent Tool Parity Gate: PASS.
+- Wave 5 production network policy contract: PASS.
+
+Physical Redmi gate remains unresolved: independent workflow run `35481441071` / job `105999875085` is queued and has never started a step, so no physical-device result may be claimed yet.
+
+Do not set `FINAL_AUDIT_COMPLETE=YES` until the current remediated Android runtime gates are evaluated and the remaining physical-device requirement is either executed or explicitly dispositioned according to ARSF policy.
