@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # qa3-v3 secondary-tools polish gate r14
-  TARGET_REF: ${{ inputs.target_ref || '38b81dcc8332ca81bcb1c7912dc87375fd12f06d' }}
+  # qa3-v3 secondary-tools polish gate r15
+  TARGET_REF: ${{ inputs.target_ref || '9be87835c31342a2cdd2d8a45c50929b5acd5431' }}
 
 jobs:
   audit:
