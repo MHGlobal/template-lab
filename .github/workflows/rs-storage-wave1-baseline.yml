@@ -11,7 +11,7 @@ on:
 
 concurrency:
   group: rs-storage-wave1-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
