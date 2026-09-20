@@ -123,21 +123,40 @@ PY
 
 tap_ui() {
   local wanted="$1"
-  adb shell uiautomator dump /data/local/tmp/rs-wave4.xml >/dev/null
-  adb pull /data/local/tmp/rs-wave4.xml /tmp/rs-wave4.xml >/dev/null
-  local xy
-  xy=$(python3 - "$wanted" <<'PY'
+  local xy=""
+  for attempt in $(seq 1 8); do
+    adb exec-out screencap -p > "$OUT/android-ui-before-server.png" || true
+    adb shell dumpsys activity activities > "$OUT/activity-before-server.txt" || true
+    if adb shell uiautomator dump /data/local/tmp/rs-wave4.xml >/dev/null 2>&1 &&
+       adb pull /data/local/tmp/rs-wave4.xml /tmp/rs-wave4.xml >/dev/null 2>&1; then
+      cp /tmp/rs-wave4.xml "$OUT/ui-before-server.xml"
+      set +e
+      xy=$(python3 - "$wanted" <<'PY'
 import re,sys,xml.etree.ElementTree as ET
-wanted=sys.argv[1]
+wanted=sys.argv[1].casefold()
 root=ET.parse('/tmp/rs-wave4.xml').getroot()
 for n in root.iter('node'):
-    if n.attrib.get('text')==wanted or n.attrib.get('content-desc')==wanted:
+    labels=[n.attrib.get('text',''),n.attrib.get('content-desc','')]
+    if any(wanted == label.casefold() or wanted in label.casefold() for label in labels):
         m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
         if m:
             x1,y1,x2,y2=map(int,m.groups());print((x1+x2)//2,(y1+y2)//2);raise SystemExit
 raise SystemExit(3)
 PY
-  )
+      )
+      rc=$?
+      set -e
+      if [ "$rc" = 0 ] && [ -n "$xy" ]; then break; fi
+    fi
+    echo "UI_TARGET_RETRY=$attempt TARGET=$wanted"
+    adb shell input keyevent 4 || true
+    adb shell am start -W -n com.rs.localstorage/.MainActivity >/tmp/rs-wave4-am-retry.txt 2>&1 || true
+    sleep 3
+  done
+  if [ -z "$xy" ]; then
+    echo "UI_TARGET_NOT_FOUND=$wanted" >&2
+    return 3
+  fi
   adb shell input tap $xy
   sleep 1
 }

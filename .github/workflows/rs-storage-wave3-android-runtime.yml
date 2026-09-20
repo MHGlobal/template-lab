@@ -26,7 +26,7 @@ env:
 jobs:
   android-upgrade-served-web:
     name: Android upgrade + native visual + Android-served Web
-    runs-on: macos-15-intel
+    runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
       - name: Checkout Template Lab
@@ -61,12 +61,16 @@ jobs:
         with:
           packages: ''
 
-      - name: Verify hosted Intel macOS architecture
+      - name: Enable and verify KVM acceleration
         shell: bash
         run: |
           set -euo pipefail
-          uname -a
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
           test "$(uname -m)" = x86_64
+          test -c /dev/kvm
+          test -r /dev/kvm -a -w /dev/kvm
 
       - name: Install Android and browser toolchains
         shell: bash
@@ -75,7 +79,7 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
           npm install --no-save --no-audit --no-fund playwright@1.55.0
-          npx playwright install chromium
+          npx playwright install --with-deps chromium
 
       - name: Build candidate and previous install with the same debug signer
         shell: bash
@@ -142,9 +146,12 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
           disable-animations: true
           emulator-boot-timeout: 1200
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
+          emulator-options: -no-window -gpu swiftshader_indirect -accel on -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: bash "${{ github.workspace }}/audit/rsstorage_wave3_android_runtime.sh" "${{ github.workspace }}"
       - name: Publish visual/runtime evidence only
         if: always()

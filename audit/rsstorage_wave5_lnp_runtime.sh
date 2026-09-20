@@ -71,7 +71,7 @@ adb_install_bounded() {
     if python3 - "$apk" "$log" <<'PY'
 import subprocess,sys
 apk,log=sys.argv[1:]
-cmd=['adb','install','--no-streaming',apk]
+cmd=['adb','install',apk]
 with open(log,'a',encoding='utf-8') as fh:
     fh.write('CMD='+' '.join(cmd)+'\n'); fh.flush()
     try:
@@ -141,6 +141,7 @@ PY
 }
 
 wait_boot
+wait_core_services
 adb_install_bounded "$WS/private-builds/candidate.apk" "$OUT/adb-install.log"
 AUDIT_PASS="RsLnp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-C5!"
 export AUDIT_PASS

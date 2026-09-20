@@ -23,7 +23,7 @@ env:
 jobs:
   android-real-transfer-gates:
     name: Android real server transfer integrity + performance
-    runs-on: macos-15-intel
+    runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
       - name: Checkout Template Lab
@@ -45,6 +45,15 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: ''
+      - name: Enable and verify KVM acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -c /dev/kvm
+          test -r /dev/kvm -a -w /dev/kvm
 
       - name: Install Android build toolchain
         shell: bash
@@ -104,9 +113,12 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
           disable-animations: true
           emulator-boot-timeout: 1200
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
+          emulator-options: -no-window -gpu swiftshader_indirect -accel on -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: bash "${{ github.workspace }}/audit/rsstorage_wave4_transfer_runtime.sh" "${{ github.workspace }}"
       - name: Extract sanitized metrics
         if: always()
@@ -133,6 +145,9 @@ jobs:
               x=m.group(0).strip()
               if x not in found: found.append(x)
           Path('audit-out/wave4-public/metrics.txt').write_text('\n'.join(found)+'\n')
+          screenshot=Path('audit-out/wave4/android-ui-before-server.png')
+          if screenshot.exists():
+              Path('audit-out/wave4-public/android-ui-before-server.png').write_bytes(screenshot.read_bytes())
           PY
           cat audit-out/wave4-public/metrics.txt
 
