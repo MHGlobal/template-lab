@@ -120,13 +120,17 @@ PY
 
 tap_text() {
   local wanted="$1"
-  adb shell uiautomator dump /data/local/tmp/rs-wave5.xml >/dev/null
-  adb pull /data/local/tmp/rs-wave5.xml /tmp/rs-wave5.xml >/dev/null
-  local xy
-  xy=$(python3 - "$wanted" <<'PY'
+  local xy attempt
+  for attempt in {1..8}; do
+    adb shell uiautomator dump /data/local/tmp/rs-wave5.xml >/dev/null || true
+    adb pull /data/local/tmp/rs-wave5.xml /tmp/rs-wave5.xml >/dev/null || true
+    xy="$(python3 - "$wanted" <<'PY' || true
 import re,sys,xml.etree.ElementTree as ET
 wanted=sys.argv[1].lower()
-root=ET.parse('/tmp/rs-wave5.xml').getroot()
+try:
+    root=ET.parse('/tmp/rs-wave5.xml').getroot()
+except Exception:
+    raise SystemExit(3)
 for n in root.iter('node'):
     text=(n.attrib.get('text') or n.attrib.get('content-desc') or '').lower()
     if text==wanted or wanted in text:
@@ -135,9 +139,21 @@ for n in root.iter('node'):
             x1,y1,x2,y2=map(int,m.groups()); print((x1+x2)//2,(y1+y2)//2); raise SystemExit
 raise SystemExit(3)
 PY
-  )
-  adb shell input tap $xy
-  sleep 1
+    )"
+    if [[ "$xy" =~ ^[0-9]+\ [0-9]+$ ]]; then
+      adb shell input tap $xy
+      sleep 1
+      return 0
+    fi
+    adb shell am start -W -n com.rs.localstorage/.MainActivity >/dev/null 2>&1 || true
+    adb shell input keyevent 4 >/dev/null 2>&1 || true
+    sleep 2
+  done
+  adb exec-out screencap -p > "$OUT/ui-target-not-found.png" || true
+  adb shell dumpsys activity activities > "$OUT/activities-target-not-found.txt" || true
+  cp /tmp/rs-wave5.xml "$OUT/ui-target-not-found.xml" 2>/dev/null || true
+  echo "UI_TARGET_NOT_FOUND=$wanted" >&2
+  return 1
 }
 
 wait_boot
@@ -193,6 +209,9 @@ if ! tap_text "don't allow"; then
   tap_text 'não permitir'
 fi
 sleep 6
+adb exec-out screencap -p > "$OUT/02-after-nearby-denial.png"
+adb shell uiautomator dump /data/local/tmp/rs-wave5-after-denial.xml >/dev/null
+adb pull /data/local/tmp/rs-wave5-after-denial.xml "$OUT/02-after-nearby-denial.xml" >/dev/null
 adb shell dumpsys activity services com.rs.localstorage > "$OUT/services-after-denial.txt"
 grep -q 'HotspotServerService' "$OUT/services-after-denial.txt"
 echo 'DENIED_NEARBY_SERVER_SERVICE_STARTED=true'
