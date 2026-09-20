@@ -15,14 +15,15 @@ adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
 sleep 20
 adb shell input keyevent 3 >/dev/null 2>&1 || true
 adb shell am force-stop com.rs.localstorage
-adb shell monkey -p com.rs.localstorage -c android.intent.category.LAUNCHER 1
+adb shell am start -W -n com.rs.localstorage/.MainActivity >/tmp/rs-wave1-am-start.txt
+grep -Eq 'Status: ok|Complete' /tmp/rs-wave1-am-start.txt
 sleep 8
 adb shell pidof com.rs.localstorage | tee "$WS/audit-out/android/pid.txt"
 READY=0
 for attempt in $(seq 1 20); do
   adb shell dumpsys activity activities > "$WS/audit-out/android/activity.txt"
-  adb shell uiautomator dump /sdcard/rs-window.xml >/dev/null 2>&1 || true
-  adb pull /sdcard/rs-window.xml "$WS/audit-out/android/window.xml" >/dev/null 2>&1 || true
+  adb shell uiautomator dump /data/local/tmp/rs-window.xml >/dev/null 2>&1 || true
+  adb pull /data/local/tmp/rs-window.xml "$WS/audit-out/android/window.xml" >/dev/null 2>&1 || true
   if [ -f "$WS/audit-out/android/window.xml" ] && grep -Eqi "isn't responding|keeps stopping|has stopped|not responding" "$WS/audit-out/android/window.xml"; then
     if grep -Eqi "com\\.rs\\.localstorage|RS Storage" "$WS/audit-out/android/window.xml"; then
       echo "ANDROID_VISUAL_APP_DIALOG=FAIL" >&2
