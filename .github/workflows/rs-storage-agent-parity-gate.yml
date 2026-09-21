@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF: aafd75d13f2fde3747a341a133ee21b1bec92738
+  TARGET_REF: b9fb1042aaa504f8660e5c7c4d20f1b4fa8bd51f
   ROOT: target/source/current-v4.3.0/rsapp/src/main/java/com/rs/localstorage
 
 jobs:
