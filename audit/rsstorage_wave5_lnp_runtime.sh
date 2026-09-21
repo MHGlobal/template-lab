@@ -194,8 +194,8 @@ adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
 adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || true
 
 adb shell am compat enable RESTRICT_LOCAL_NETWORK com.rs.localstorage
-adb reboot
-wait_boot
+# Compat changes are process-scoped after restart; rebooting the whole API 36 emulator is unnecessary and unstable on software fallback.
+adb shell am force-stop com.rs.localstorage
 wait_core_services
 adb shell pm revoke com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES || true
 adb shell dumpsys package com.rs.localstorage | grep -A4 'NEARBY_WIFI_DEVICES' > "$OUT/permission-denied.txt" || true
