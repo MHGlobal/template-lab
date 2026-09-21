@@ -1,26 +1,22 @@
 # RS Storage Audit — Wave 3 latest evidence index
 
-- Run ID: `35541832331`
-- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35541832331
-- Workflow conclusion: **failure**
-- Template Lab head SHA: `d9ac3f123e92f5f182a2ef1baee356023fb54ece`
+- Run ID: `35609462318`
+- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35609462318
+- Workflow conclusion: **cancelled**
+- Template Lab head SHA: `ed549fad3804563f7c0d5efec641106d8babd390`
 - Target: `MHGlobal/RS-Storage` · `release/v4.7.13-agent-harness`
 
 ## Job conclusions
 
-- `Android upgrade + native visual + Android-served Web`: **failure**
+- `Android upgrade + native visual + Android-served Web`: **cancelled**
 - `Wave 3 evidence gate`: **failure**
 
 ## Evidence artifacts
 
-- `wave3-android-runtime-evidence` · artifact id `10615222549` · expired=`False`
+- `wave3-android-runtime-evidence` · artifact id `10643859504` · expired=`False`
 
 ## Sanitized markers
 
-- `UPGRADE_INTERNAL_DATA_PRESERVED=true`
-- `UPGRADE_SHARED_PREFS_PRESERVED=true`
-- `UPGRADE_EXTERNAL_WORKSPACE_PRESERVED=true`
-- `ANDROID_EMBEDDED_SERVER_8080=true`
 - `WAVE3_AUTOMATED_EVIDENCE=PASS'^[[0m`
 - `FINAL_AUDIT_COMPLETE=NO — screenshots still require human visual review; transfer/performance and physical Wi-Fi/hotspot gates remain mandatory.'^[[0m`
 
