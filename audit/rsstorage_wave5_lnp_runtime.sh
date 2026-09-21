@@ -239,7 +239,8 @@ if grep -Eq '<string name="server_preferred">[^<]+' "$OUT/server-prefs-after-den
   echo 'DENIED_NEARBY_PREFERRED_URL_HIDDEN=false' >&2
   exit 4
 fi
-grep -Eq 'Servidor ativo|Acesso LAN bloqueado' "$OUT/02-after-nearby-denial.xml"
+grep -q 'Servidor ativo' "$OUT/02-after-nearby-denial.xml"
+grep -q 'Acesso LAN bloqueado' "$OUT/02-after-nearby-denial.xml"
 echo 'DENIED_NEARBY_UI_BLOCKED_STATE=true'
 echo 'DENIED_NEARBY_PREFERRED_URL_HIDDEN=true'
 adb forward tcp:18081 tcp:8080
