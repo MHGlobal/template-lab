@@ -216,9 +216,10 @@ curl -sS -c /tmp/rs-cookies -D /tmp/login-headers -o /dev/null -X POST \
   http://127.0.0.1:18080/login
 grep -qi '^Set-Cookie: RSSESSION=' /tmp/login-headers
 ROOT_PATH=/storage/emulated/0
-BASE="$ROOT_PATH/Download/rs-audit-wave4"
-adb shell "rm -rf '$BASE'; mkdir -p '$BASE/upload' '$BASE/copydst' '$BASE/movedst' '$BASE/stress-d1' '$BASE/stress-d2' '$BASE/stress-d3'; chmod -R 0777 '$BASE'"
-curl -fsS -b /tmp/rs-cookies --get --data-urlencode "d=$BASE" http://127.0.0.1:18080/admin/files > /tmp/files.html
+PARENT="$ROOT_PATH/Download"
+BASE="$PARENT/rs-audit-wave4-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+adb shell "rm -rf '$BASE'" || true
+curl -fsS -b /tmp/rs-cookies --get --data-urlencode "d=$PARENT" http://127.0.0.1:18080/admin/files > /tmp/files.html
 CSRF=$(python3 - <<'PY'
 import re
 s=open('/tmp/files.html',encoding='utf-8',errors='ignore').read()
@@ -228,6 +229,18 @@ print(m.group(1))
 PY
 )
 echo "::add-mask::$CSRF"
+api_mkdir() {
+  local parent="$1" name="$2" status
+  status=$(curl -sS -b /tmp/rs-cookies -o /tmp/mkdir-response.html -w '%{http_code}' -X POST \
+    --data-urlencode "csrf=$CSRF" --data-urlencode 'action=mkdir' \
+    --data-urlencode "path=$parent" --data-urlencode "name=$name" \
+    http://127.0.0.1:18080/admin/action)
+  test "$status" = 302
+}
+api_mkdir "$PARENT" "$(basename "$BASE")"
+for dir in upload copydst movedst stress-d1 stress-d2 stress-d3; do api_mkdir "$BASE" "$dir"; done
+curl -fsS -b /tmp/rs-cookies --get --data-urlencode "d=$BASE" http://127.0.0.1:18080/admin/files >/dev/null
+echo 'APP_UID_DESTINATION_TREE_CREATED=true'
 
 echo '--- 32 MiB streaming upload integrity/performance ---'
 python3 -c "import os; open('/tmp/upload32.bin','wb').write(os.urandom(32*1024*1024))"
@@ -247,7 +260,7 @@ UPLOAD_STATUS=$(awk '{print $1}' <<<"$UP_METRIC")
 if [ "$UPLOAD_STATUS" != 200 ]; then
   echo "UPLOAD_HTTP_STATUS=$UPLOAD_STATUS" >&2
   if grep -q 'Acesso bloqueado' /tmp/upload-response.json; then echo 'UPLOAD_FAILURE_CLASS=PRODUCT_SECURITY_REJECTION' >&2; fi
-  adb shell "ls -ld '$BASE' '$BASE/upload'; run-as com.rs.localstorage sh -c 'test -w \"$BASE/upload\"'; echo APP_UID_DEST_WRITE_RC=\$?" >&2 || true
+  adb shell "ls -ld '$BASE' '$BASE/upload'" >&2 || true
   exit 22
 fi
 echo "$UP_METRIC" | awk '$1==200 && $2>=33554432 {ok=1} END{exit ok?0:1}'
