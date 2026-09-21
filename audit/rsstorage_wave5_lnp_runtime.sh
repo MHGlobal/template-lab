@@ -132,13 +132,13 @@ try:
 except Exception:
     raise SystemExit(3)
 for n in root.iter('node'):
-    text=(n.attrib.get('text') or n.attrib.get('content-desc') or '').lower()
+    text=(n.attrib.get('text') or n.attrib.get('content-desc') or '').lower().replace('’', "'")
     if text in {'close app','wait','fechar app','aguardar'}:
         m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
         if m:
             x1,y1,x2,y2=map(int,m.groups()); print('RECOVER',(x1+x2)//2,(y1+y2)//2); raise SystemExit
 for n in root.iter('node'):
-    text=(n.attrib.get('text') or n.attrib.get('content-desc') or '').lower()
+    text=(n.attrib.get('text') or n.attrib.get('content-desc') or '').lower().replace('’', "'")
     if text==wanted or wanted in text:
         m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
         if m:
@@ -223,12 +223,25 @@ if ! tap_text "don't allow"; then
   tap_text 'não permitir'
 fi
 sleep 6
+# Android may background the activity after a permission denial; return to the real app before UI/state assertions.
+adb shell am start -W -n com.rs.localstorage/.MainActivity >/tmp/rs-wave5-after-denial-start.txt
+grep -Eq 'Status: ok|Complete' /tmp/rs-wave5-after-denial-start.txt
+sleep 3
 adb exec-out screencap -p > "$OUT/02-after-nearby-denial.png"
 adb shell uiautomator dump /data/local/tmp/rs-wave5-after-denial.xml >/dev/null
 adb pull /data/local/tmp/rs-wave5-after-denial.xml "$OUT/02-after-nearby-denial.xml" >/dev/null
 adb shell dumpsys activity services com.rs.localstorage > "$OUT/services-after-denial.txt"
 grep -q 'HotspotServerService' "$OUT/services-after-denial.txt"
 echo 'DENIED_NEARBY_SERVER_SERVICE_STARTED=true'
+adb exec-out run-as com.rs.localstorage cat shared_prefs/rs.xml > "$OUT/server-prefs-after-denial.xml"
+grep -q 'Acesso LAN bloqueado' "$OUT/server-prefs-after-denial.xml"
+if grep -Eq '<string name="server_preferred">[^<]+' "$OUT/server-prefs-after-denial.xml"; then
+  echo 'DENIED_NEARBY_PREFERRED_URL_HIDDEN=false' >&2
+  exit 4
+fi
+grep -Eq 'Servidor ativo|Acesso LAN bloqueado' "$OUT/02-after-nearby-denial.xml"
+echo 'DENIED_NEARBY_UI_BLOCKED_STATE=true'
+echo 'DENIED_NEARBY_PREFERRED_URL_HIDDEN=true'
 adb forward tcp:18081 tcp:8080
 if curl -fsS --max-time 3 http://127.0.0.1:18081/login >/dev/null; then
   echo 'DENIED_NEARBY_LOOPBACK_SERVER_RUNNING=true'
@@ -240,6 +253,14 @@ adb shell pm grant com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES
 adb shell dumpsys package com.rs.localstorage | grep -A4 'NEARBY_WIFI_DEVICES' > "$OUT/permission-granted.txt" || true
 adb shell "run-as com.rs.localstorage sh -c 'printf \"HEAD / HTTP/1.0\\r\\n\\r\\n\" | /system/bin/toybox nc -w 3 10.0.2.2 19090 >/dev/null'"
 echo 'LNP_GRANTED_APP_UID_LAN_WORKS=true'
+sleep 6
+adb shell am start -W -n com.rs.localstorage/.MainActivity >/dev/null
+sleep 2
+adb exec-out screencap -p > "$OUT/03-after-nearby-grant.png"
+adb exec-out run-as com.rs.localstorage cat shared_prefs/rs.xml > "$OUT/server-prefs-after-grant.xml"
+! grep -q 'Acesso LAN bloqueado' "$OUT/server-prefs-after-grant.xml"
+grep -Eq '<string name="server_preferred">[^<]+' "$OUT/server-prefs-after-grant.xml"
+echo 'GRANTED_NEARBY_UI_AND_URL_RESTORED=true'
 
 adb exec-out run-as com.rs.localstorage cat shared_prefs/rs.xml > "$OUT/server-prefs-after-grant.xml" 2>/dev/null || true
 adb logcat -d -t 1200 | grep -E 'AndroidRuntime|FATAL EXCEPTION|EPERM|ECONNABORTED|JmDNS|com\.rs\.localstorage' > "$OUT/logcat-tail.txt" || true

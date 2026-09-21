@@ -135,6 +135,10 @@ except Exception:
     raise SystemExit(3)
 for n in root.iter('node'):
     label=((n.attrib.get('text') or n.attrib.get('content-desc') or '')).casefold()
+    if label in {'fechar guia','close guide'}:
+        m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+        if m:
+            x1,y1,x2,y2=map(int,m.groups());print('DISMISS',(x1+x2)//2,(y1+y2)//2);raise SystemExit
     if label in {'close app','wait','fechar app','aguardar'}:
         m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
         if m:
@@ -148,6 +152,12 @@ for n in root.iter('node'):
 raise SystemExit(3)
 PY
     )"
+    if [[ "$xy" =~ ^DISMISS\ [0-9]+\ [0-9]+$ ]]; then
+      read -r _ dismiss_x dismiss_y <<<"$xy"
+      adb shell input tap "$dismiss_x" "$dismiss_y" || true
+      sleep 2
+      continue
+    fi
     if [[ "$xy" =~ ^RECOVER\ [0-9]+\ [0-9]+$ ]]; then
       read -r _ recover_x recover_y <<<"$xy"
       adb shell input tap "$recover_x" "$recover_y" || true

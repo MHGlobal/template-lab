@@ -121,11 +121,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -c /dev/kvm ]; then
+          if [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
             echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
             sudo udevadm control --reload-rules
             sudo udevadm trigger --name-match=kvm
-            test -r /dev/kvm -a -w /dev/kvm
             echo 'mode=on' >> "$GITHUB_OUTPUT"
             echo 'ANDROID_EMULATOR_ACCELERATION=KVM'
           else

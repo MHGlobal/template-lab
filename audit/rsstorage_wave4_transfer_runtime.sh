@@ -217,7 +217,7 @@ curl -sS -c /tmp/rs-cookies -D /tmp/login-headers -o /dev/null -X POST \
 grep -qi '^Set-Cookie: RSSESSION=' /tmp/login-headers
 ROOT_PATH=/storage/emulated/0
 BASE="$ROOT_PATH/Download/rs-audit-wave4"
-adb shell "rm -rf '$BASE'; mkdir -p '$BASE/upload' '$BASE/copydst' '$BASE/movedst' '$BASE/stress-d1' '$BASE/stress-d2' '$BASE/stress-d3'"
+adb shell "rm -rf '$BASE'; mkdir -p '$BASE/upload' '$BASE/copydst' '$BASE/movedst' '$BASE/stress-d1' '$BASE/stress-d2' '$BASE/stress-d3'; chmod -R 0777 '$BASE'"
 curl -fsS -b /tmp/rs-cookies --get --data-urlencode "d=$BASE" http://127.0.0.1:18080/admin/files > /tmp/files.html
 CSRF=$(python3 - <<'PY'
 import re
@@ -239,10 +239,17 @@ q=urllib.parse.urlencode({'d':path,'name':'payload32.bin','conflict':'replace','
 print('http://127.0.0.1:18080/admin/upload?'+q)
 PY
 )
-UP_METRIC=$(curl -fsS -b /tmp/rs-cookies -o /tmp/upload-response.json \
+UP_METRIC=$(curl -sS -b /tmp/rs-cookies -o /tmp/upload-response.json \
   -w '%{http_code} %{size_upload} %{time_total} %{speed_upload}' \
   --data-binary @/tmp/upload32.bin "$UPLOAD_URL")
 echo "UPLOAD_RAW_METRIC=$UP_METRIC"
+UPLOAD_STATUS=$(awk '{print $1}' <<<"$UP_METRIC")
+if [ "$UPLOAD_STATUS" != 200 ]; then
+  echo "UPLOAD_HTTP_STATUS=$UPLOAD_STATUS" >&2
+  if grep -q 'Acesso bloqueado' /tmp/upload-response.json; then echo 'UPLOAD_FAILURE_CLASS=PRODUCT_SECURITY_REJECTION' >&2; fi
+  adb shell "ls -ld '$BASE' '$BASE/upload'; run-as com.rs.localstorage sh -c 'test -w \"$BASE/upload\"'; echo APP_UID_DEST_WRITE_RC=\$?" >&2 || true
+  exit 22
+fi
 echo "$UP_METRIC" | awk '$1==200 && $2>=33554432 {ok=1} END{exit ok?0:1}'
 DEVICE_SHA=$(adb shell "sha256sum '$BASE/upload/payload32.bin'" | tr -d '\r' | awk '{print $1}')
 test "$HOST_SHA" = "$DEVICE_SHA"
