@@ -10,6 +10,10 @@ adb install -r "$APK"
 adb shell pm grant com.rs.localstorage android.permission.POST_NOTIFICATIONS || true
 adb shell pm grant com.rs.localstorage android.permission.NEARBY_WIFI_DEVICES || true
 adb shell appops set com.rs.localstorage MANAGE_EXTERNAL_STORAGE allow || true
+# Keep the display awake on slow software-emulated runners; a sleeping display leaves MainActivity resumed but never drawn.
+adb shell svc power stayon true || true
+adb shell input keyevent KEYCODE_WAKEUP || true
+adb shell wm dismiss-keyguard || true
 # Give hosted Intel emulator system services time to settle. Previous evidence
 # contained Bluetooth/SystemUI dialogs unrelated to RS Storage.
 sleep 20
@@ -20,7 +24,9 @@ grep -Eq 'Status: ok|Complete' /tmp/rs-wave1-am-start.txt
 sleep 8
 adb shell pidof com.rs.localstorage | tee "$WS/audit-out/android/pid.txt"
 READY=0
-for attempt in $(seq 1 20); do
+for attempt in $(seq 1 40); do
+  adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+  adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
   adb shell dumpsys activity activities > "$WS/audit-out/android/activity.txt"
   adb shell uiautomator dump /data/local/tmp/rs-window.xml >/dev/null 2>&1 || true
   adb pull /data/local/tmp/rs-window.xml "$WS/audit-out/android/window.xml" >/dev/null 2>&1 || true
