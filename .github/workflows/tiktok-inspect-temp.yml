@@ -1,0 +1,54 @@
+name: Temporary TikTok inspect
+
+on:
+  push:
+    branches:
+      - editor
+    paths:
+      - ".github/workflows/tiktok-inspect-temp.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install downloader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade "yt-dlp[default,curl-cffi]"
+
+      - name: Download TikTok
+        run: |
+          mkdir -p out/frames
+          yt-dlp             --impersonate chrome             --no-playlist             --write-info-json             --write-description             --write-thumbnail             --convert-thumbnails jpg             --merge-output-format mp4             -o "out/video.%(ext)s"             "https://vt.tiktok.com/ZSqEB1BmU/"
+          ls -lah out
+
+      - name: Normalize video name
+        run: |
+          FILE="$(find out -maxdepth 1 -type f \( -name 'video.mp4' -o -name 'video.webm' -o -name 'video.mkv' \) | head -n 1)"
+          test -n "$FILE"
+          cp "$FILE" out/tiktok.mp4 || true
+
+      - name: Extract visual samples
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          DURATION="$(ffprobe -v error -show_entries format=duration -of csv=p=0 out/tiktok.mp4)"
+          echo "duration=$DURATION" | tee out/summary.txt
+          ffprobe -v error -show_format -show_streams out/tiktok.mp4 > out/ffprobe.txt
+          for P in 5 15 25 35 45 55 65 75 85 95; do
+            T="$(python -c "print(float('$DURATION')*$P/100.0)")"
+            ffmpeg -loglevel error -ss "$T" -i out/tiktok.mp4 -frames:v 1 -q:v 2 "out/frames/frame_${P}.jpg"
+          done
+
+      - name: Upload inspection bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiktok-inspection
+          path: out/
+          retention-days: 1
+          if-no-files-found: error
