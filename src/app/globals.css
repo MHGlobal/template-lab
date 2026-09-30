@@ -6,6 +6,18 @@
   --background: #ECFFEB;
   --foreground: #005C00;
   --primary: #27A300;
+  --card-bg: rgba(255, 255, 255, 0.6);
+  --card-border: rgba(255, 255, 255, 0.2);
+  --text-secondary: #166534;
+}
+
+[data-theme="dark"] {
+  --background: #0a1a0a;
+  --foreground: #e0f0e0;
+  --primary: #4ade80;
+  --card-bg: rgba(30, 50, 30, 0.7);
+  --card-border: rgba(74, 222, 128, 0.15);
+  --text-secondary: #86efac;
 }
 
 body {
