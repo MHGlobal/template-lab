@@ -19,7 +19,7 @@ async function overflowSnapshot(page){
 
 async function captureSet(label,viewport){
   const browser=await chromium.launch({headless:true});
-  const context=await browser.newContext({viewportSize:viewport,deviceScaleFactor:1});
+  const context=await browser.newContext({viewport,deviceScaleFactor:1});
   await context.addCookies([{name:'RSSESSION',value:session,url:base,httpOnly:true,sameSite:'Strict'}]);
   const page=await context.newPage();
   page.on('console',m=>{if(m.type()==='error')observations.consoleErrors.push({page:page.url(),text:m.text()});});
@@ -30,7 +30,9 @@ async function captureSet(label,viewport){
     const status=response?.status()||0;
     const title=await page.title();
     const overflows=await overflowSnapshot(page);
-    observations.pages.push({label,route,name,status,title,overflows});
+    const actualViewport=await page.evaluate(()=>({width:innerWidth,height:innerHeight}));
+    if(actualViewport.width!==viewport.width||actualViewport.height!==viewport.height)throw new Error(`Unexpected viewport: ${JSON.stringify(actualViewport)}`);
+    observations.pages.push({label,route,name,status,title,viewport:actualViewport,overflows});
     if(status!==200)throw new Error(`${route} returned ${status}`);
     if(page.url().includes('/login'))throw new Error(`${route} lost authenticated session`);
     await page.screenshot({path:path.join(out,`${label}-${name}.png`),fullPage:true});
@@ -76,3 +78,4 @@ if(pngs.length<15)throw new Error(`Insufficient Android-served Web screenshots: 
 if(observations.pageErrors.length)throw new Error(`Browser page errors detected: ${JSON.stringify(observations.pageErrors)}`);
 console.log(`ANDROID_SERVED_WEB_SCREENSHOTS=${pngs.length}`);
 console.log(`ANDROID_SERVED_WEB_PAGES=${observations.pages.length}`);
+
