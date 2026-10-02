@@ -987,3 +987,18 @@ Visual evidence actually downloaded and reviewed: Wave 1 artifact `11216523294`,
 F-SEC-001 remains open for shared/untrusted LAN: HTTP exposes credentials/session traffic to a network observer. No artificial self-signed TLS change was made. Automated auth/role/CSRF/storage-boundary checks are added to the real-server Wave 4, but do not encrypt transport or replace the physical threat-model disposition.
 
 `FINAL_AUDIT_COMPLETE=NO`, release remains `BLOCKED` while runtime/visual/transfer/signing/physical evidence is pending. Do not read reporter success as audit success. Next action: inspect current run outcomes/logs, classify each failure, download new visual artifacts and review images, then update this checkpoint with final results.
+
+
+## 2026-10-02 — visual review and corrected capture gates
+
+Product candidate is now `974c6271876cbae57f0ade9bb286491feaa7b48e`. Actual API 36 denial screenshot from Wave 5 showed the long LAN denial value compressing the `Acesso fácil` label. MainActivity now gives metric labels/values proportional 1:2 widths. This is a confirmed product UI defect and a committed correction, not yet a visually revalidated result. The Wave 5 runtime gate now checks label width, column separation and bounds in the actual denial hierarchy.
+
+Completed evidence: Wave 1 `36983719959` passed all seven jobs including ARM64 unit/build and Android emulator capture. Wave 5 `36983720007` passed policy, UID-local-network denial/grant and UI URL hiding/restoration. Artifacts `11216599508`, `11216619972`, `11216788271` were downloaded and screenshots inspected. Wave 1 native screenshots show the initial administrator modal; they do not prove a complete native journey. Wave 3 screenshots cover server stopped/running, Media, Clients, Access and Settings. Its supposed RSIA screenshot actually showed the tutorial/server page: the old substring matcher for `IA` clicked `Reabrir tutorial visual`.
+
+Wave 3 `36983719994` FAILED overall, but baseline install, candidate `adb install -r`, internal marker, SharedPreferences and external workspace preservation all actually PASSED before the navigation failure. Classification: audit navigation defect, not a failed product update. Harness commit `a9be9e52` prioritizes exact labels and forbids substring matching for short tab names.
+
+A second capture defect was found by inspecting the Playwright script: `viewportSize` is not the context option. Harness commit `36b1a2ca` uses `viewport` and asserts the actual `innerWidth/innerHeight` for each page. Historical Wave 3 labels alone are not evidence of mobile width.
+
+Current reruns: Wave 1 `36985180105`, Wave 5 `36985180107`, Wave 3 `36985315876`, Wave 4 `36985257098`, private signed release `36984913350`. All target product `974c6271`. Wave 2/parity run on `a7d1da00`; the sole subsequent product change is MainActivity metric layout, with no Agent/security implementation delta. Wave 4 probe distinguishes client-readable provider discovery from admin-only provider mutation (`adb366f8`), matching the current authorization contract.
+
+At this checkpoint the new runs are pending/running, not PASS. Physical probe attempt 2 still has no steps. HTTP shared-LAN finding F-SEC-001 remains open. `FINAL_AUDIT_COMPLETE=NO`; release remains BLOCKED.
