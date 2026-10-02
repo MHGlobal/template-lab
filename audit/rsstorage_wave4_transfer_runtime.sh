@@ -259,7 +259,7 @@ echo "UPLOAD_RAW_METRIC=$UP_METRIC"
 UPLOAD_STATUS=$(awk '{print $1}' <<<"$UP_METRIC")
 if [ "$UPLOAD_STATUS" != 200 ]; then
   echo "UPLOAD_HTTP_STATUS=$UPLOAD_STATUS" >&2
-  if grep -q 'Acesso bloqueado' /tmp/upload-response.json; then echo 'UPLOAD_FAILURE_CLASS=PRODUCT_SECURITY_REJECTION' >&2; fi
+  if grep -q 'Acesso bloqueado' /tmp/upload-response.json; then echo 'UPLOAD_FAILURE_CLASS=UNRESOLVED_SECURITY_REJECTION' >&2; fi
   adb shell "ls -ld '$BASE' '$BASE/upload'" >&2 || true
   exit 22
 fi
@@ -287,10 +287,28 @@ PY
 echo 'DOWNLOAD_HASH_MATCH=true'
 echo 'DOWNLOAD_TRACKING_COMPLETED=true'
 
+echo '--- upload cancellation preserves completed destination and removes staged part ---'
+set +e
+curl -sS -b /tmp/rs-cookies --limit-rate 256k --max-time 1 \
+  --data-binary @/tmp/upload32.bin "$UPLOAD_URL" >/tmp/cancel-upload-response.txt 2>/dev/null
+UPLOAD_CANCEL_RC=$?
+set -e
+test "$UPLOAD_CANCEL_RC" = 28
+for i in $(seq 1 60); do
+  UPLOAD_PARTS=$(adb shell "find '$BASE/upload' -maxdepth 1 -name '.rs-upload-*.part' | wc -l" | tr -d '\r ')
+  [ "$UPLOAD_PARTS" = 0 ] && break
+  sleep .25
+done
+test "$UPLOAD_PARTS" = 0
+test "$(adb shell "sha256sum '$BASE/upload/payload32.bin'" | tr -d '\r' | awk '{print $1}')" = "$HOST_SHA"
+echo 'UPLOAD_CANCEL_PRESERVES_EXISTING=true'
+echo 'UPLOAD_CANCEL_PART_CLEANUP=true'
+
+
 echo '--- HTTP Range 206 integrity ---'
 RANGE_URL=$(python3 - "$BASE/upload/payload32.bin" <<'PY'
 import sys,urllib.parse
-print('http://127.0.0.1:18080/admin/download?'+urllib.parse.urlencode({'f':sys.argv[1]}))
+print('http://127.0.0.1:18080/admin/raw?'+urllib.parse.urlencode({'f':sys.argv[1]}))
 PY
 )
 RANGE_METRIC=$(curl -fsS -b /tmp/rs-cookies -o /tmp/range1m.bin -H 'Range: bytes=0-1048575' -w '%{http_code} %{size_download}' "$RANGE_URL")
@@ -375,9 +393,9 @@ echo 'MOVE_HASH_MATCH=true'
 
 echo '--- deterministic queued cancellation + partial cleanup ---'
 adb shell "mkdir -p '$BASE/stress-src'"
-adb shell "for d in 0 1 2 3 4 5 6 7 8 9; do mkdir -p '$BASE/stress-src/d'; done"
+adb shell "for d in 0 1 2 3 4 5 6 7 8 9; do mkdir -p '$BASE/stress-src/d'\$d; done"
 for d in {0..9}; do
-  adb shell "for i in \$(seq 1 500); do printf '%08d-%08d-wave4-audit-data' '$d' \$i > '$BASE/stress-src/d/f'\$i'.txt'; done"
+  adb shell "for i in \$(seq 1 500); do printf '%08d-%08d-wave4-audit-data' '$d' \$i > '$BASE/stress-src/d$d/f'\$i'.txt'; done"
 done
 test "$(api_action copy "$BASE/stress-src" "$BASE/stress-d1" /tmp/s1.out)" = 302
 ID1=$(newest_transfer)
@@ -413,7 +431,7 @@ PRIORITY_TID="prio$(python3 -c 'import secrets;print(secrets.token_hex(8))')"
 PRIORITY_START=$(python3 -c 'import time;print(time.time_ns())')
 curl -fsS -b /tmp/rs-cookies -o /tmp/priority-download.bin \
   --get --data-urlencode "f=$BASE/upload/payload32.bin" --data-urlencode "tid=$PRIORITY_TID" \
-  http://127.0.0.1:18080/download
+  http://127.0.0.1:18080/admin/download
 PRIORITY_END=$(python3 -c 'import time;print(time.time_ns())')
 test "$(shasum -a 256 /tmp/priority-download.bin | awk '{print $1}')" = "$HOST_SHA"
 PRIORITY_SEC=$(python3 - <<PY
