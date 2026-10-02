@@ -230,3 +230,39 @@ A auditoria só pode ser declarada concluída quando houver, no mínimo:
 - relatório final com evidência e SHAs/runs.
 
 **Não emitir APPROVE antes disso.**
+
+
+## 2026-10-02 — active audit resumption (not final approval)
+
+Product HEAD after correction: `a7d1da00fbbeb807186ec4a30e9b9ef4fa6965b4`.
+Harness correction commits: `8ed1ef44` (KVM), `cff91670` (reporter output filtering), `9ce1a766` (Wave 4 contracts/stress), `8a617f29` (fresh parity/security regressions), `a28b4b30` (real APK security checks).
+
+Confirmed corrections and classifications:
+
+- `AUDIT_HARNESS_DEFECT`: KVM was tested before permissions were repaired in Waves 3/5, or before udev settled in Waves 1/4. New preflight repairs existing device permissions, settles udev and proves KVM API 12 plus VM creation. The software fallback is removed because the previous evidence showed 11–17 minute boot, broken Binder/package services and invalid visual evidence. All four new preflights passed.
+- `AUDIT_HARNESS_DEFECT`: release workflow YAML had an unindented AAB verification line; zero-step runs were not a product-build failure. Product commit `f7bbd7fa` restores indentation, and private release run `36984098134` now executes real steps.
+- `PRODUCT_DEFECT`: Android's `Files.getFileStore()` always throws `SecurityException`, while `RsAtomicUpload.stage()` called it before reading the body. This explains Wave 4 HTTP 403 after mkdir/auth worked. Source reference: https://android.googlesource.com/platform/prebuilts/fullsdk/sources/+/refs/heads/androidx-constraintlayout-release/android-35/sun/nio/fs/UnixFileSystemProvider.java . The corrected query is `File.getUsableSpace()`, preserving atomic staging/commit and cleanup. Commits `848442f4` and follow-up newline repair `a7d1da00` are both recorded; only the latter is the valid candidate.
+- `TEST_STALE_CONTRACT`: Range belongs to `/admin/raw`; tracked full download belongs to `/admin/download`. The harness used wrong endpoints, including nonexistent `/download` for priority. Corrected without changing server routes.
+- `AUDIT_HARNESS_DEFECT`: the stress fixture reused literal directory `d`, overwriting 500 files instead of creating 5000. Corrected to ten distinct directories.
+- `AUDIT_HARNESS_DEFECT`: reporters could extract PASS from printed shell commands. They now strip ANSI, isolate timestamped output and require a full marker match. Regression checks reject echoed PASS and accept actual runtime output.
+
+Fresh validation:
+
+| Gate | Run | State at this checkpoint |
+|---|---|---|
+| Wave 2 + atomic-upload/security behavior | `36984287064` | PASS; `SAFETY_BEHAVIOR_PASS=62` |
+| Agent Tool Parity | `36984287026` | PASS on corrected product HEAD |
+| Wave 1 | `36983719959` | Android runtime/build pending; Agent/Web/security slices PASS |
+| Wave 3 | `36983719994` | Android build/runtime pending |
+| Wave 4 | `36984436643` | Corrected source + expanded security/transfer gate pending |
+| Wave 5 | `36983720007` | Policy PASS; Android API 36 runtime pending |
+| Private release/signing | `36984098134` | Running real build steps; signature/update not yet approved |
+| Existing physical probe | `35481441071`, attempt 2 | QUEUED, job `110765511122`, no steps; physical BLOCKED |
+
+Visual evidence actually downloaded and reviewed: Wave 1 artifact `11216523294`, twelve screenshots of files, global menu, context menu and transfer modal at 360x800, 412x915 and 1366x768. No visible overlapping text or horizontal overflow was found in these examined fixture states. This is production-asset fixture evidence, not proof of Android-served Web. Android and APK-served screenshots from the current Waves still require manual review.
+
+`reports/RS_STORAGE_PHYSICAL_GATE_STEPS.md` gives the exact signer/update checks and client network matrix using existing infrastructure. An external workspace marker does not prove configuration preservation; the physical test must compare actual settings before/after.
+
+F-SEC-001 remains open for shared/untrusted LAN: HTTP exposes credentials/session traffic to a network observer. No artificial self-signed TLS change was made. Automated auth/role/CSRF/storage-boundary checks are added to the real-server Wave 4, but do not encrypt transport or replace the physical threat-model disposition.
+
+`FINAL_AUDIT_COMPLETE=NO`, release remains `BLOCKED` while runtime/visual/transfer/signing/physical evidence is pending. Do not read reporter success as audit success. Next action: inspect current run outcomes/logs, classify each failure, download new visual artifacts and review images, then update this checkpoint with final results.
