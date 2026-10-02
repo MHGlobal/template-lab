@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/rs-storage-wave4-transfer-performance.yml'
       - 'audit/rsstorage_wave4_transfer_runtime.sh'
+      - 'audit/rsstorage_server_security.py'
 
 concurrency:
   group: rs-storage-wave4-stable-${{ github.ref }}

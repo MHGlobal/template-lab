@@ -229,6 +229,7 @@ print(m.group(1))
 PY
 )
 echo "::add-mask::$CSRF"
+AUDIT_CSRF="$CSRF" python3 "$WS/audit/rsstorage_server_security.py"
 api_mkdir() {
   local parent="$1" name="$2" status
   status=$(curl -sS -b /tmp/rs-cookies -o /tmp/mkdir-response.html -w '%{http_code}' -X POST \
