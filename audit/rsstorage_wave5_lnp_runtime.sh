@@ -241,6 +241,20 @@ if grep -Eq '<string name="server_preferred">[^<]+' "$OUT/server-prefs-after-den
 fi
 grep -q 'Servidor ativo' "$OUT/02-after-nearby-denial.xml"
 grep -q 'Acesso LAN bloqueado' "$OUT/02-after-nearby-denial.xml"
+python3 - "$OUT/02-after-nearby-denial.xml" <<'PYTEST'
+import re,sys,xml.etree.ElementTree as ET
+nodes=list(ET.parse(sys.argv[1]).getroot().iter('node'))
+def bounds(n):
+    return tuple(map(int,re.findall(r'\d+',n.attrib.get('bounds',''))))
+width=max(bounds(n)[2] for n in nodes if len(bounds(n))==4)
+label=next(n for n in nodes if n.attrib.get('text')=='Acesso fácil')
+value=next(n for n in nodes if n.attrib.get('text','').startswith('Acesso LAN bloqueado'))
+lx,ly,lr,lb=bounds(label);vx,vy,vr,vb=bounds(value)
+assert lr-lx >= width*.20, ('compressed metric label',lr-lx,width)
+assert vx>=lr, ('metric columns overlap',lr,vx)
+assert vb>vy and vr<=width
+print('DENIED_NEARBY_METRIC_LAYOUT=PASS')
+PYTEST
 echo 'DENIED_NEARBY_UI_BLOCKED_STATE=true'
 echo 'DENIED_NEARBY_PREFERRED_URL_HIDDEN=true'
 adb forward tcp:18081 tcp:8080

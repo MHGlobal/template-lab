@@ -143,12 +143,17 @@ for n in root.iter('node'):
         m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
         if m:
             x1,y1,x2,y2=map(int,m.groups());print('RECOVER',(x1+x2)//2,(y1+y2)//2);raise SystemExit
-for n in root.iter('node'):
-    labels=[n.attrib.get('text','').casefold(),n.attrib.get('content-desc','').casefold()]
-    if any(wanted == label or wanted in label for label in labels):
-        m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
-        if m:
-            x1,y1,x2,y2=map(int,m.groups());print('TARGET',(x1+x2)//2,(y1+y2)//2);raise SystemExit
+# Prefer an exact label across the entire hierarchy. Short tab names such
+# as IA must never match unrelated words such as interface or guia.
+for exact in (True, False):
+    if not exact and len(wanted) < 4:
+        continue
+    for n in root.iter('node'):
+        labels=[n.attrib.get('text','').casefold(),n.attrib.get('content-desc','').casefold()]
+        if any(wanted == label if exact else wanted in label for label in labels):
+            m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+            if m:
+                x1,y1,x2,y2=map(int,m.groups());print('TARGET',(x1+x2)//2,(y1+y2)//2);raise SystemExit
 raise SystemExit(3)
 PY
     )"
