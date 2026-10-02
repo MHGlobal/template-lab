@@ -1,9 +1,9 @@
 # RS Storage Audit — Wave 2 latest public-runner evidence
 
-- Run ID: `35611426482`
-- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/35611426482
+- Run ID: `36984287064`
+- Run URL: https://github.com/MHGlobal/template-lab/actions/runs/36984287064
 - Workflow conclusion: **success**
-- Template Lab head SHA: `acb39a1708e46c301335176de5c0a4ffc79abbed`
+- Template Lab head SHA: `8a617f29e7a7a5bd2c1cb62ef6d1f8358fce5883`
 - Target: `MHGlobal/RS-Storage` · `release/v4.7.13-agent-harness`
 
 ## Job conclusions
@@ -27,10 +27,6 @@
 - `engineer_git_status_policy=ALLOW`
 - `engineer_git_diff_policy=ALLOW`
 - `blockers=0`
-- `git_commit=false`
-- `git_push=false`
-- `WAVE2_AUTOMATED_REAL_TASK_GATES=PASS'^[[0m`
-- `FINAL_AUDIT_COMPLETE=NO — Android-served UI, upgrade, performance and physical-network evidence remain mandatory.'^[[0m`
 - `WAVE2_AUTOMATED_REAL_TASK_GATES=PASS`
 - `FINAL_AUDIT_COMPLETE=NO — Android-served UI, upgrade, performance and physical-network evidence remain mandatory.`
 
