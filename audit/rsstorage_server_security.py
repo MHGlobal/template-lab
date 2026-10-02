@@ -44,8 +44,11 @@ check(request(admin, '/admin/client/save', account)[0] == 200, 'CLIENT_CREATE')
 try:
     user = client()
     check(request(user, '/login', {'u': account['username'], 'p': account['password']})[0] == 200, 'CLIENT_LOGIN')
-    for route in ('/admin/files', '/api/admin/transfers', '/api/ai/providers'):
+    for route in ('/admin/files', '/api/admin/transfers'):
         check(request(user, route)[0] == 403, 'CLIENT_DENIED_' + route.rsplit('/', 1)[-1].upper())
+    # Provider discovery is intentionally available to Cinema/AI clients.
+    # Provider mutation is administrative and must reject a client.
+    check(request(user, '/api/ai/providers', {})[0] == 403, 'CLIENT_DENIED_PROVIDER_MUTATION')
     check(request(user, '/cinema')[0] == 200, 'CLIENT_CINEMA_ALLOWED')
 finally:
     check(request(admin, '/admin/client/delete', {'slot': '0', 'csrf': csrf})[0] == 200, 'CLIENT_CLEANUP')
