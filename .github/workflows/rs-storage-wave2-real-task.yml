@@ -13,7 +13,7 @@ permissions:
 
 env:
   TARGET_REPOSITORY: MHGlobal/RS-Storage
-  TARGET_REF: b9fb1042aaa504f8660e5c7c4d20f1b4fa8bd51f
+  TARGET_REF: a7d1da00fbbeb807186ec4a30e9b9ef4fa6965b4
   ROOT: target/source/current-v4.3.0
 
 jobs:
@@ -79,6 +79,17 @@ jobs:
           JAVA
           javac -cp "$OUT" -d "$OUT" /tmp/AuditToolSurfaceMain.java
           java -cp "$OUT" com.rs.localstorage.AuditToolSurfaceMain "$WORK" | tee audit-out/agent-runtime-surface.txt
+      - name: Atomic upload and inherited security behavior regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/rs-upload-safety
+          mkdir -p "$OUT"
+          javac -d "$OUT" \
+            "$ROOT"/rsapp/src/main/java/com/rs/localstorage/{RsAtomicUpload,RsEndpointPolicy,RsHttpRange,RsPublicAddressPolicy,RsWebEscapes}.java \
+            "$ROOT"/audit/SafetyBehaviorTest.java
+          java -cp "$OUT" com.rs.localstorage.SafetyBehaviorTest > audit-out/upload-security-behavior.txt
+          tail -1 audit-out/upload-security-behavior.txt
       - name: Classify runtime surface
         id: surface
         shell: bash
