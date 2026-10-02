@@ -1,0 +1,121 @@
+name: Build RS Music UI V2 APK
+
+on:
+  pull_request:
+    branches: [ editor ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rs-music-ui-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Template Lab
+        uses: actions/checkout@v4
+
+      - name: Checkout RS Music source
+        uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Music-
+          ref: feat/rs-music-ui-v2
+          token: ${{ secrets.RS_MUSIC_READ_TOKEN }}
+          path: rs-music
+
+      - name: Verify canonical RS Music source
+        working-directory: rs-music
+        run: |
+          test -s app/src/main/kotlin/com/mhglobal/rsmusic/MotionExperience.kt
+          grep -q 'versionName = "0.1.1-qa.3"' app/build.gradle.kts
+          grep -q 'rsPanelTransition' app/src/main/kotlin/com/mhglobal/rsmusic/RsMusicFixedUi.kt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: rs-music/**/*.gradle*
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          fi
+          test -x "$SDKMANAGER"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Verify Web Preview
+        run: |
+          test -s rs-music/web-preview/index.html
+          test -s rs-music/netlify.toml
+          grep -q "Lyrics Canvas" rs-music/web-preview/index.html
+          grep -q "RS Music" rs-music/web-preview/index.html
+
+      - name: Unit tests
+        working-directory: rs-music
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:domain:test testDebugUnitTest --stacktrace
+
+      - name: Android lint
+        working-directory: rs-music
+        run: ./gradlew lintDebug --stacktrace
+
+      - name: Build QA APK
+        working-directory: rs-music
+        run: ./gradlew :app:assembleQa --stacktrace
+
+      - name: Inspect and version APK
+        shell: bash
+        run: |
+          APK="$(find rs-music/app/build/outputs/apk/qa -name '*.apk' -type f | head -n 1)"
+          test -s "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING" | head -n 12
+          VERSION_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
+          VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -n 1)"
+          test -n "$VERSION_NAME"
+          SAFE_VERSION="$(printf '%s' "$VERSION_NAME" | tr -cs 'A-Za-z0-9._-' '-')"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"
+          OUT="RS-Music-v${SAFE_VERSION}.apk"
+          SUMS="RS-Music-v${SAFE_VERSION}-SHA256SUMS.txt"
+          INFO="RS-Music-v${SAFE_VERSION}-BUILD.txt"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" > "$SUMS"
+          {
+            echo "RS Music QA build"
+            echo "versionName=$VERSION_NAME"
+            echo "versionCode=$VERSION_CODE"
+            echo "sourceBranch=feat/rs-music-ui-v2"
+            echo "workflowRun=${GITHUB_RUN_NUMBER}"
+            echo "workflowSha=${GITHUB_SHA}"
+          } > "$INFO"
+          cat "$SUMS"
+          cat "$INFO"
+          echo "RS_VERSION=$SAFE_VERSION" >> "$GITHUB_ENV"
+
+      - name: Upload versioned APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Music-v${{ env.RS_VERSION }}
+          path: |
+            RS-Music-v*.apk
+            RS-Music-v*-SHA256SUMS.txt
+            RS-Music-v*-BUILD.txt
+            rs-music/app/build/reports/lint-results-debug.html
+            rs-music/app/build/reports/tests/
+          if-no-files-found: error
+          retention-days: 14
