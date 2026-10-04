@@ -1,0 +1,22 @@
+lab:
+  id: 3ds-decomp
+  training_game: pushmo
+  platform: nintendo-3ds
+  max_parallel_workers: 40
+
+storage:
+  provider: mcpnet-vm
+  root: /srv/3ds-lab
+  raw_game_data_in_git: false
+  original_read_only: true
+
+execution:
+  public_ci_runner: ubuntu-latest
+  private_storage_probe: ssh
+  worker_fanout: matrix
+  fail_fast: false
+
+gates:
+  proprietary_content: mandatory
+  evidence_required: true
+  matching_target_percent: 100

@@ -1,0 +1,93 @@
+name: 3DS Decomp Lab Bootstrap
+
+on:
+  push:
+    branches:
+      - lab/3ds-decomp-bootstrap
+    paths:
+      - ".github/workflows/3ds-decomp-lab.yml"
+      - "labs/3ds-decomp/**"
+      - ".gitignore"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Execution mode"
+        required: true
+        default: parallel-smoke
+        type: choice
+        options:
+          - parallel-smoke
+          - policy-only
+          - mcpnet-probe
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 3ds-decomp-lab-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  policy:
+    name: Proprietary-content gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject proprietary game material from Git
+        run: python3 labs/3ds-decomp/scripts/check_proprietary.py
+
+  parallel-smoke:
+    name: "Lane ${{ matrix.lane }}"
+    needs: policy
+    if: github.event_name == 'push' || inputs.mode == 'parallel-smoke'
+    strategy:
+      fail-fast: false
+      max-parallel: 40
+      matrix:
+        lane: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate worker lane
+        run: python3 labs/3ds-decomp/scripts/lane_smoke.py --lane "${{ matrix.lane }}" --sha "${{ github.sha }}"
+
+  mcpnet-probe:
+    name: MCPNet storage probe
+    needs: policy
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'mcpnet-probe'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      MCPNET_HOST: ${{ secrets.MCPNET_HOST }}
+      MCPNET_USER: ${{ secrets.MCPNET_USER }}
+      MCPNET_SSH_KEY: ${{ secrets.MCPNET_SSH_KEY }}
+      MCPNET_KNOWN_HOSTS: ${{ secrets.MCPNET_KNOWN_HOSTS }}
+    steps:
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in MCPNET_HOST MCPNET_USER MCPNET_SSH_KEY MCPNET_KNOWN_HOSTS; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Configure restricted SSH client
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$MCPNET_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$MCPNET_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Verify MCPNet lab storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes             "$MCPNET_USER@$MCPNET_HOST"             'test -d /srv/3ds-lab && test -r /srv/3ds-lab && printf "MCPNet storage: READY\n" && df -h /srv/3ds-lab'
