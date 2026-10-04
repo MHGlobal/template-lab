@@ -1,0 +1,53 @@
+{
+  "analysis": {
+    "cia_outer_content_encryption": "none on both TMD content records",
+    "main_ncch_encryption": "present (NoCrypto flag is not set)",
+    "next_safe_step": "use only already-decrypted/authorized ExeFS/RomFS or GBC ROM; do not bypass NCCH crypto",
+    "vc_platform": "Game Boy Color"
+  },
+  "cia_header_size": 8224,
+  "content_count": 2,
+  "contents": [
+    {
+      "cia_offset": 14656,
+      "content_id": "00000000",
+      "exefs_offset": 11264,
+      "exefs_size": 733184,
+      "exheader_size": 1024,
+      "index": 0,
+      "ncch_flags": "0000000001030000",
+      "ncch_magic": "NCCH",
+      "ncch_no_crypto": false,
+      "outer_encrypted": false,
+      "product_code": "CTR-N-QA5P",
+      "program_id": "00040000000ffb00",
+      "romfs_offset": 745472,
+      "romfs_size": 3203072,
+      "size": 3948544,
+      "tmd_type": 0
+    },
+    {
+      "cia_offset": 3963200,
+      "content_id": "00000001",
+      "exefs_offset": 0,
+      "exefs_size": 0,
+      "exheader_size": 0,
+      "index": 1,
+      "ncch_flags": "0000000001090000",
+      "ncch_magic": "NCCH",
+      "ncch_no_crypto": false,
+      "outer_encrypted": false,
+      "product_code": "CTR-P-CTAP",
+      "program_id": "00040000000ffb00",
+      "romfs_offset": 4096,
+      "romfs_size": 1384448,
+      "size": 1388544,
+      "tmd_type": 0
+    }
+  ],
+  "file_size": 5351744,
+  "sha256": "e9e44127330b2ab5badfcee0c77fec721d3c8601cf170596a8eed0c5154f396c",
+  "target": "Super Mario Bros. Deluxe (Europe) - Nintendo 3DS Virtual Console",
+  "title_id": "00040000000ffb00",
+  "title_version": 0
+}
