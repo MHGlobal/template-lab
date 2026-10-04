@@ -1,0 +1,54 @@
+name: Export NDK Host Runtime
+
+on:
+  push:
+    branches:
+      - lab/export-android-toolchain
+    paths:
+      - ".github/workflows/export-ndk-host-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve sdkmanager
+        id: sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort | tail -n 1)"
+          test -x "$SDKMANAGER"
+          echo "sdkmanager=$SDKMANAGER" >> "$GITHUB_OUTPUT"
+      - name: Install pinned NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${{ steps.sdk.outputs.sdkmanager }}" "ndk;26.1.10909125" >/dev/null
+      - name: Pack host runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          PRE="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          ROOT="$RUNNER_TEMP/ndk-host-runtime"
+          mkdir -p "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64" "$ROOT/ndk/build"
+          cp -a "$PRE/lib64" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/"
+          cp -a "$NDK/build/cmake" "$ROOT/ndk/build/"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/ndk-host-runtime.tar.gz" ndk-host-runtime
+          du -sh "$ROOT"
+          ls -lh "$RUNNER_TEMP/ndk-host-runtime.tar.gz"
+          sha256sum "$RUNNER_TEMP/ndk-host-runtime.tar.gz" > "$RUNNER_TEMP/SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ndk-host-runtime
+          path: |
+            ${{ runner.temp }}/ndk-host-runtime.tar.gz
+            ${{ runner.temp }}/SHA256SUMS.txt
+          retention-days: 2
+          compression-level: 0
