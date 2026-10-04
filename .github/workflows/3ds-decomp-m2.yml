@@ -3,6 +3,7 @@ name: 3DS Decomp M2 — 40-Way Matching
 on:
   push:
     branches:
+      - editor
       - lab/3ds-decomp-m2
     paths:
       - ".github/workflows/3ds-decomp-m2.yml"
