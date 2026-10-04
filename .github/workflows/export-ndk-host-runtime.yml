@@ -37,9 +37,27 @@ jobs:
           NDK="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
           PRE="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
           ROOT="$RUNNER_TEMP/ndk-host-runtime"
-          mkdir -p "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64" "$ROOT/ndk/build"
-          cp -a "$PRE/lib64" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/"
+          DEST="$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64"
+          mkdir -p "$DEST" "$ROOT/ndk/build"
           cp -a "$NDK/build/cmake" "$ROOT/ndk/build/"
+
+          echo "clang dependencies:"
+          ldd "$PRE/bin/clang" | tee "$RUNNER_TEMP/clang-ldd.txt"
+          while IFS= read -r dep; do
+            case "$dep" in
+              "$PRE"/*)
+                rel="${dep#$PRE/}"
+                mkdir -p "$DEST/$(dirname "$rel")"
+                cp -L "$dep" "$DEST/$rel"
+                ;;
+            esac
+          done < <(ldd "$PRE/bin/clang" | awk '/=>/ && $3 ~ /^\// {print $3}')
+
+          find "$PRE" -maxdepth 2 \( -type f -o -type l \) -name 'libc++*.so*' -print | while read -r dep; do
+            rel="${dep#$PRE/}"
+            mkdir -p "$DEST/$(dirname "$rel")"
+            cp -L "$dep" "$DEST/$rel"
+          done
           tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/ndk-host-runtime.tar.gz" ndk-host-runtime
           du -sh "$ROOT"
           ls -lh "$RUNNER_TEMP/ndk-host-runtime.tar.gz"
@@ -50,5 +68,6 @@ jobs:
           path: |
             ${{ runner.temp }}/ndk-host-runtime.tar.gz
             ${{ runner.temp }}/SHA256SUMS.txt
+            ${{ runner.temp }}/clang-ldd.txt
           retention-days: 2
           compression-level: 0
