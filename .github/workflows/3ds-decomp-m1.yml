@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           mkdir -p build out
           COMMON_FLAGS=(
-            -mcpu=arm11mpcore
+            -mcpu=mpcore
             -marm
             -O2
             -ffreestanding
@@ -156,7 +156,7 @@ jobs:
         run: |
           set -euo pipefail
           COMMON_FLAGS=(
-            -mcpu=arm11mpcore
+            -mcpu=mpcore
             -marm
             -O2
             -ffreestanding
