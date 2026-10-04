@@ -150,7 +150,7 @@ jobs:
             done
             echo
             echo "## Included skills"
-            find "$SKILLS" -mindepth 1 -maxdepth 1 -type d -printf -- "- %f\n" | sort
+            find "$SKILLS" -mindepth 1 -maxdepth 1 -type d -printf "- %f\n" | sort
           } > "$OUT/MANIFEST.md"
 
           cat > "$OUT/README.md" <<'EOF'
