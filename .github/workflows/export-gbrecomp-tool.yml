@@ -1,0 +1,48 @@
+name: Export GB Recompiled Tool
+
+on:
+  push:
+    branches:
+      - lab/export-gbrecomp-tool
+    paths:
+      - ".github/workflows/export-gbrecomp-tool.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GBRECOMP_SHA: "9150f87d82fa98abcb6ea22329170463f9702eb8"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libsdl2-dev
+
+      - name: Build gbrecomp
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/arcanite24/gb-recompiled.git "$RUNNER_TEMP/gb-recompiled"
+          git -C "$RUNNER_TEMP/gb-recompiled" checkout --quiet "$GBRECOMP_SHA"
+          cmake -G Ninja -S "$RUNNER_TEMP/gb-recompiled" -B "$RUNNER_TEMP/gb-recompiled/build" -DCMAKE_BUILD_TYPE=Release
+          ninja -C "$RUNNER_TEMP/gb-recompiled/build" gbrecomp
+          mkdir -p out
+          cp "$RUNNER_TEMP/gb-recompiled/build/bin/gbrecomp" out/
+          sha256sum out/gbrecomp > out/SHA256SUMS.txt
+          chmod +x out/gbrecomp
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gbrecomp-linux-x64
+          path: |
+            out/gbrecomp
+            out/SHA256SUMS.txt
+          retention-days: 7
+          if-no-files-found: error
