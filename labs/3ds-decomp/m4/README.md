@@ -40,3 +40,20 @@ This is the most direct experimental path from a GBC ROM to native PC/Android wh
 10. Generate the Android project skeleton.
 
 No commercial ROM is committed or uploaded by this workflow.
+
+## Validated result
+
+Run `37235503314`: **PASS**
+
+- synthetic GBC header/checksum gate: PASS
+- 40 GitHub worker lanes: 40/40
+- 64 ROM banks covered: 64/64
+- unique synthetic bank hashes: 64/64
+- `mgbdis`: generated RGBDS-style disassembly successfully
+- `gb-recompiled`: built from pinned commit successfully
+- analyzer result: 14 functions, 15 basic blocks
+- generated C project: PASS
+- native desktop build: PASS
+- headless executable smoke: PASS
+- Android project generation: PASS
+

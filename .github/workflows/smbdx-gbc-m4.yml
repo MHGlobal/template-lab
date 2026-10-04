@@ -3,6 +3,7 @@ name: SMB Deluxe M4 — GBC Native Pipeline
 on:
   push:
     branches:
+      - editor
       - lab/smbdx-gbc-m4
     paths:
       - ".github/workflows/smbdx-gbc-m4.yml"
