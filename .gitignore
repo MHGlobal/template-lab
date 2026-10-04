@@ -42,3 +42,19 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 3DS Decomp Lab: proprietary/private material
+*.3ds
+*.cia
+*.cci
+*.cxi
+*.app
+**/code.bin
+**/exheader.bin
+**/romfs/
+**/exefs/
+**/cro/
+**/original/
+**/private/
+**/dump/
+**/keys/
