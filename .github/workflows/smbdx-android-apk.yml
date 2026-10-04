@@ -100,6 +100,36 @@ jobs:
           test -f "$RUNNER_TEMP/smbdx-lab/android/app/build.gradle"
           test -f "$RUNNER_TEMP/smbdx-lab/android/app/src/main/AndroidManifest.xml"
 
+      - name: Patch upstream Android runtime source list
+        shell: bash
+        run: |
+          set -euo pipefail
+          CMAKE_FILE="$RUNNER_TEMP/smbdx-lab/android/app/jni/src/CMakeLists.txt"
+          python3 - "$CMAKE_FILE" <<'PY'
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          text = path.read_text(encoding="utf-8")
+          marker = "    ${GBRT_DIR}/src/gbrt.c\n"
+          required = [
+              "    ${GBRT_DIR}/src/gbrt_data_mod.c\n",
+              "    ${GBRT_DIR}/src/gbrt_hash.c\n",
+              "    ${GBRT_DIR}/src/gbrt_host_configuration.c\n",
+              "    ${GBRT_DIR}/src/gbrt_port.c\n",
+              "    ${GBRT_DIR}/src/gbrt_presentation.c\n",
+              "    ${GBRT_DIR}/src/gbrt_semantic.c\n",
+          ]
+          if marker not in text:
+              raise SystemExit("gbrt source marker not found in generated Android CMake")
+          missing = [line for line in required if line not in text]
+          if missing:
+              text = text.replace(marker, marker + "".join(missing), 1)
+              path.write_text(text, encoding="utf-8")
+          print("Patched Android runtime sources:", len(missing))
+          print(path.read_text(encoding="utf-8"))
+          PY
+
       - name: Fetch pinned SDL2
         shell: bash
         run: |
