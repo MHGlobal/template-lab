@@ -1,0 +1,74 @@
+{
+  "schema": "nds-target-fingerprint/v1",
+  "target": "New Super Mario Bros. (USA, Australia)",
+  "release_code": "A2DE",
+  "rom_size": 33554432,
+  "hashes": {
+    "crc32": "0197576a",
+    "md5": "a2ddba012e5c3c2096d0be57cc273be5",
+    "sha1": "a22713711b5cd58dfbafc9688dadea66c59888ce",
+    "sha256": "9f67fef1b4c73e966767f6153431ada3751dc1b0da2c70f386c14a5e3017f354"
+  },
+  "header": {
+    "title": "NEW MARIO",
+    "game_code": "A2DE",
+    "maker_code": "01",
+    "unit_code": 0,
+    "rom_version": 0,
+    "arm9": {
+      "rom_offset": 16384,
+      "entry": "0x02000800",
+      "ram_address": "0x02000000",
+      "size": 389028
+    },
+    "arm7": {
+      "rom_offset": 2091008,
+      "entry": "0x02380000",
+      "ram_address": "0x02380000",
+      "size": 165536
+    },
+    "arm9_overlay_count": 131,
+    "arm7_overlay_count": 0,
+    "nitrofs_file_count": 1957,
+    "nitrofs_directory_count": 20,
+    "build_time": "UROM2006-03-29 09:48:19nitro-mj"
+  },
+  "nitrofs_top_level_directories": [
+    "ARCHIVE",
+    "BG_chk",
+    "BG_ncg",
+    "BG_ncl",
+    "BG_nsc",
+    "BG_pnl",
+    "BG_unt",
+    "course",
+    "demo",
+    "ending",
+    "enemy",
+    "ipl",
+    "map",
+    "obj",
+    "particle",
+    "player",
+    "polygon_unit",
+    "script",
+    "uiStudio"
+  ],
+  "reference_project": {
+    "repository": "NSMB-Decomp/nsmb",
+    "commit": "9c7c0b341ae87f860df090e1e35d720f06c70bfa",
+    "license": "CC0-1.0",
+    "status": "early-stage matching decompilation; cannot yet build a complete ROM",
+    "tooling": [
+      "dsd 0.12.0",
+      "zig 0.16.0",
+      "objdiff",
+      "mwccarm 1.2sp3"
+    ]
+  },
+  "policy": {
+    "rom_committed": false,
+    "assets_committed": false,
+    "metadata_only": true
+  }
+}
