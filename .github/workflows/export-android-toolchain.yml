@@ -1,0 +1,80 @@
+name: Export Android ARM64 Toolchain
+
+on:
+  push:
+    branches:
+      - lab/export-android-toolchain
+    paths:
+      - ".github/workflows/export-android-toolchain.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve sdkmanager
+        id: sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort | tail -n 1)"
+          test -x "$SDKMANAGER"
+          echo "sdkmanager=$SDKMANAGER" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | "${{ steps.sdk.outputs.sdkmanager }}" --licenses >/dev/null || true
+          "${{ steps.sdk.outputs.sdkmanager }}" "ndk;26.1.10909125" >/dev/null
+
+      - name: Fetch SDL2 headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch release-2.30.11 https://github.com/libsdl-org/SDL.git sdl2
+
+      - name: Pack minimal ARM64 NDK + SDL2 headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          PRE="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          ROOT="$RUNNER_TEMP/android-arm64-toolchain"
+          mkdir -p "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          mkdir -p "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/lib"
+          mkdir -p "$ROOT/ndk/build/cmake"
+          mkdir -p "$ROOT/sdl2"
+
+          cp "$NDK/source.properties" "$ROOT/ndk/"
+          cp "$NDK/build/cmake/android.toolchain.cmake" "$ROOT/ndk/build/cmake/"
+          cp -a "$PRE/sysroot" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/"
+          cp -a "$PRE/lib/clang" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/lib/"
+
+          for f in clang clang++ ld.lld lld llvm-ar llvm-ranlib llvm-strip llvm-nm llvm-objcopy; do
+            cp -L "$PRE/bin/$f" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/$f"
+          done
+
+          cp -L "$PRE/bin/aarch64-linux-android24-clang" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          cp -L "$PRE/bin/aarch64-linux-android24-clang++" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++"
+
+          cp -a sdl2/include "$ROOT/sdl2/include"
+
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/android-arm64-toolchain.tar.gz" android-arm64-toolchain
+          ls -lh "$RUNNER_TEMP/android-arm64-toolchain.tar.gz"
+          sha256sum "$RUNNER_TEMP/android-arm64-toolchain.tar.gz" | tee "$RUNNER_TEMP/SHA256SUMS.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64-toolchain
+          path: |
+            ${{ runner.temp }}/android-arm64-toolchain.tar.gz
+            ${{ runner.temp }}/SHA256SUMS.txt
+          retention-days: 2
+          compression-level: 0
