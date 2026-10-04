@@ -1,0 +1,161 @@
+name: 3DS Redux Diagnostics — No Decrypt
+
+on:
+  push:
+    branches:
+      - lab/3ds-redux-diagnostics
+    paths:
+      - ".github/workflows/3ds-redux-diagnostics.yml"
+      - "labs/3ds-decomp/tools/redux/**"
+      - "labs/3ds-decomp/tools/cia_probe.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REDUX_SHA: "2fb1ac549a4006dd5261b8545e943527960ceeff"
+
+jobs:
+  diagnostics:
+    name: Validate Redux tooling without decryption
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download only diagnostic components from pinned Redux commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force tools, out | Out-Null
+          $base = "https://raw.githubusercontent.com/xxmichibxx/Batch-CIA-3DS-Decryptor-Redux/$env:REDUX_SHA"
+          curl.exe -L --fail -o "tools\Redux.bat" "$base/Batch%20CIA%203DS%20Decryptor%20Redux.bat"
+          curl.exe -L --fail -o "tools\ctrtool.exe" "$base/bin/ctrtool.exe"
+
+          if (Test-Path "tools\decrypt.exe") { throw "decrypt.exe must not be present" }
+          if (Test-Path "tools\seeddb.bin") { throw "seeddb.bin must not be present" }
+          if (Test-Path "tools\makerom.exe") { throw "makerom.exe must not be present" }
+
+          Get-FileHash "tools\Redux.bat" -Algorithm SHA256 | Format-List | Out-File "out\hashes.txt"
+          Get-FileHash "tools\ctrtool.exe" -Algorithm SHA256 | Format-List | Out-File "out\hashes.txt" -Append
+
+      - name: Audit batch wiring without executing it
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $text = Get-Content "tools\Redux.bat" -Raw
+          $report = [ordered]@{
+            pinned_commit = $env:REDUX_SHA
+            batch_present = $true
+            references_ctrtool = $text.Contains("bin\ctrtool.exe")
+            references_decrypt = $text.Contains("bin\decrypt.exe")
+            references_seeddb = $text.Contains("bin\seeddb.bin")
+            batch_executed = $false
+            decrypt_binary_downloaded = $false
+            seeddb_downloaded = $false
+            makerom_downloaded = $false
+          }
+          $report | ConvertTo-Json | Out-File "out\redux-audit.json" -Encoding utf8
+
+          if (-not $report.references_ctrtool) { throw "Unexpected upstream batch layout" }
+
+      - name: Launch ctrtool on Windows runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stdout = "out\ctrtool-launch.txt"
+          $stderr = "out\ctrtool-launch-stderr.txt"
+          $proc = Start-Process -FilePath "tools\ctrtool.exe" -RedirectStandardOutput $stdout -RedirectStandardError $stderr -Wait -PassThru
+          "exit_code=$($proc.ExitCode)" | Out-File "out\ctrtool-launch-status.txt"
+          if (Test-Path $stderr) { Get-Content $stderr | Add-Content $stdout }
+          if (-not (Test-Path $stdout)) { throw "ctrtool did not launch" }
+          if ((Get-Item $stdout).Length -eq 0) { throw "ctrtool produced no diagnostic output" }
+          Get-Content $stdout | Select-Object -First 80
+
+      - name: Build a non-proprietary synthetic CIA fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          @'
+          import struct
+          from pathlib import Path
+
+          def a64(x):
+              return (x + 0x3f) & ~0x3f
+
+          header_size = 0x2020
+          cert_size = 0
+          ticket_size = 0
+          sig_size = 0x140
+          tmd_size = sig_size + 0x9c4 + 0x30
+          content_size = 0x400
+          content_off = a64(a64(a64(header_size + cert_size) + ticket_size) + tmd_size)
+          total = content_off + content_size
+          data = bytearray(total)
+
+          struct.pack_into("<IHHIIIIQ", data, 0,
+                           header_size, 0, 0, cert_size, ticket_size,
+                           tmd_size, 0, content_size)
+
+          tmd_off = a64(header_size)
+          struct.pack_into(">I", data, tmd_off, 0x00010004)
+          body = tmd_off + sig_size
+          struct.pack_into(">Q", data, body + 0x4c, 0x0004000000000000)
+          struct.pack_into(">H", data, body + 0x9c, 0)
+          struct.pack_into(">H", data, body + 0x9e, 1)
+          struct.pack_into(">H", data, body + 0xa0, 0)
+
+          rec = body + 0x9c4
+          struct.pack_into(">IHHQ", data, rec, 0, 0, 0, content_size)
+
+          data[content_off + 0x100:content_off + 0x104] = b"NCCH"
+          struct.pack_into("<Q", data, content_off + 0x118, 0x0004000000000000)
+          data[content_off + 0x150:content_off + 0x160] = b"CTR-N-TEST\0\0\0\0\0\0"
+          data[content_off + 0x188:content_off + 0x190] = bytes.fromhex("0000000001030004")
+          struct.pack_into("<I", data, content_off + 0x180, 0x400)
+
+          Path("out/synthetic.cia").write_bytes(data)
+          '@ | python -
+
+          python labs/3ds-decomp/tools/cia_probe.py out/synthetic.cia --output out/synthetic-probe.json
+
+      - name: Parse synthetic CIA with ctrtool
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stdout = "out\ctrtool-synthetic.txt"
+          $stderr = "out\ctrtool-synthetic-stderr.txt"
+          $proc = Start-Process -FilePath "tools\ctrtool.exe" -ArgumentList @("out\synthetic.cia") -RedirectStandardOutput $stdout -RedirectStandardError $stderr -Wait -PassThru
+          "exit_code=$($proc.ExitCode)" | Out-File "out\ctrtool-synthetic-status.txt"
+          if (Test-Path $stderr) { Get-Content $stderr | Add-Content $stdout }
+          if (-not (Test-Path $stdout)) { throw "ctrtool produced no synthetic CIA report" }
+          if ((Get-Item $stdout).Length -eq 0) { throw "ctrtool produced empty synthetic CIA report" }
+          Get-Content $stdout | Select-Object -First 120
+
+      - name: Safety gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (Test-Path "tools\decrypt.exe") { throw "decrypt.exe unexpectedly present" }
+          if (Test-Path "tools\seeddb.bin") { throw "seeddb.bin unexpectedly present" }
+          if (Test-Path "tools\makerom.exe") { throw "makerom.exe unexpectedly present" }
+          "PASS: Redux/ctrtool diagnostics executed without decryption components." | Out-File "out\RESULT.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 3ds-redux-diagnostics
+          path: |
+            out/hashes.txt
+            out/redux-audit.json
+            out/ctrtool-launch.txt
+            out/ctrtool-launch-status.txt
+            out/ctrtool-launch-stderr.txt
+            out/synthetic-probe.json
+            out/ctrtool-synthetic.txt
+            out/ctrtool-synthetic-status.txt
+            out/ctrtool-synthetic-stderr.txt
+            out/RESULT.txt
+          retention-days: 14
+          if-no-files-found: error
