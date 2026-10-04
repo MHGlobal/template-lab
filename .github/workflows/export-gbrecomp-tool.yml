@@ -35,6 +35,7 @@ jobs:
           ninja -C "$RUNNER_TEMP/gb-recompiled/build" gbrecomp
           mkdir -p out
           cp "$RUNNER_TEMP/gb-recompiled/build/bin/gbrecomp" out/
+          cp -R "$RUNNER_TEMP/gb-recompiled/runtime" out/runtime
           sha256sum out/gbrecomp > out/SHA256SUMS.txt
           chmod +x out/gbrecomp
 
@@ -44,5 +45,6 @@ jobs:
           path: |
             out/gbrecomp
             out/SHA256SUMS.txt
+            out/runtime/**
           retention-days: 7
           if-no-files-found: error
