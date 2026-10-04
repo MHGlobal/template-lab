@@ -1,0 +1,143 @@
+name: SMB Deluxe Lab — Build Android APK
+
+on:
+  push:
+    branches:
+      - lab/smbdx-android-apk
+    paths:
+      - ".github/workflows/smbdx-android-apk.yml"
+      - "labs/3ds-decomp/m4/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GBRECOMP_SHA: "9150f87d82fa98abcb6ea22329170463f9702eb8"
+  SDL2_SHA: "fa24d868ac2f8fd558e4e914c9863411245db8fd"
+  ANDROID_API: "34"
+  ANDROID_NDK_VERSION: "26.1.10909125"
+
+jobs:
+  apk:
+    name: Build synthetic ARM64 Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate legal synthetic GBC ROM
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 labs/3ds-decomp/m4/generate_fixture.py --out-dir "$RUNNER_TEMP/rom"
+          python3 labs/3ds-decomp/m4/gbc_probe.py \
+            "$RUNNER_TEMP/rom/synthetic-small.gbc" \
+            --output "$RUNNER_TEMP/rom/probe.json"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK/NDK components
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;${ANDROID_NDK_VERSION}" \
+            "cmake;3.22.1"
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Install desktop build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            libsdl2-dev
+
+      - name: Build pinned GB Recompiled
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/arcanite24/gb-recompiled.git "$RUNNER_TEMP/gb-recompiled"
+          git -C "$RUNNER_TEMP/gb-recompiled" checkout --quiet "$GBRECOMP_SHA"
+          cmake -G Ninja \
+            -S "$RUNNER_TEMP/gb-recompiled" \
+            -B "$RUNNER_TEMP/gb-recompiled/build" \
+            -DCMAKE_BUILD_TYPE=Release
+          ninja -C "$RUNNER_TEMP/gb-recompiled/build" gbrecomp
+
+      - name: Generate Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gb-recompiled/build/bin/gbrecomp" \
+            "$RUNNER_TEMP/rom/synthetic-small.gbc" \
+            --output "$RUNNER_TEMP/smbdx-lab" \
+            --android \
+            --android-package io.mhglobal.smbdxlab \
+            --android-app-name "SMB DX Lab"
+
+          test -f "$RUNNER_TEMP/smbdx-lab/android/app/build.gradle"
+          test -f "$RUNNER_TEMP/smbdx-lab/android/app/src/main/AndroidManifest.xml"
+
+      - name: Fetch pinned SDL2
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/libsdl-org/SDL.git "$RUNNER_TEMP/SDL2"
+          git -C "$RUNNER_TEMP/SDL2" checkout --quiet "$SDL2_SHA"
+          test -f "$RUNNER_TEMP/SDL2/CMakeLists.txt"
+
+      - name: Build debug APK
+        shell: bash
+        env:
+          SDL2_SOURCE_DIR: ${{ runner.temp }}/SDL2
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.ANDROID_NDK_VERSION }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.ANDROID_NDK_VERSION }}
+        run: |
+          set -euo pipefail
+          gradle \
+            --no-daemon \
+            -p "$RUNNER_TEMP/smbdx-lab/android" \
+            :app:assembleDebug
+
+          APK="$RUNNER_TEMP/smbdx-lab/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+
+          mkdir -p out
+          cp "$APK" out/SMB-DX-Lab-synthetic-arm64-debug.apk
+          sha256sum out/SMB-DX-Lab-synthetic-arm64-debug.apk | tee out/SHA256SUMS.txt
+
+      - name: Inspect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -lh out/SMB-DX-Lab-synthetic-arm64-debug.apk
+          unzip -l out/SMB-DX-Lab-synthetic-arm64-debug.apk | head -n 40
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SMB-DX-Lab-Android-APK
+          path: |
+            out/SMB-DX-Lab-synthetic-arm64-debug.apk
+            out/SHA256SUMS.txt
+          retention-days: 14
+          if-no-files-found: error
