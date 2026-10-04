@@ -1,0 +1,167 @@
+name: 3DS Decomp M2 — 40-Way Matching
+
+on:
+  push:
+    branches:
+      - editor
+      - lab/3ds-decomp-m2
+    paths:
+      - ".github/workflows/3ds-decomp-m2.yml"
+      - "labs/3ds-decomp/m2/**"
+      - "labs/3ds-decomp/scripts/check_proprietary.py"
+      - ".gitignore"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 3ds-decomp-m2-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  policy:
+    name: Proprietary-content gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 labs/3ds-decomp/scripts/check_proprietary.py
+
+  compiler-probe:
+    name: ARMv6K compiler probe
+    needs: policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify preinstalled Clang can emit ARM ELF
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang --version | head -n 1
+          mkdir -p probe
+          python3 labs/3ds-decomp/m2/generate_lane.py --lane 0 --out probe
+          clang \
+            --target=arm-none-eabi \
+            -march=armv6k \
+            -marm \
+            -O2 \
+            -ffreestanding \
+            -fno-builtin \
+            -fno-stack-protector \
+            -fno-unwind-tables \
+            -fno-asynchronous-unwind-tables \
+            -fno-common \
+            -ffunction-sections \
+            -fdata-sections \
+            -c probe/original.c \
+            -o probe/original.o
+          python3 labs/3ds-decomp/m2/extract_elf_section.py \
+            --elf probe/original.o \
+            --section .text.lab_fn \
+            --output probe/lab_fn.bin
+          test -s probe/lab_fn.bin
+
+  workers:
+    name: "M2 match lane ${{ matrix.lane }}"
+    needs: compiler-probe
+    strategy:
+      fail-fast: false
+      max-parallel: 40
+      matrix:
+        lane: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate lane source pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 labs/3ds-decomp/m2/generate_lane.py \
+            --lane "${{ matrix.lane }}" \
+            --out lane
+
+      - name: Compile original and reconstructed ARM functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLAGS=(
+            --target=arm-none-eabi
+            -march=armv6k
+            -marm
+            -O2
+            -ffreestanding
+            -fno-builtin
+            -fno-stack-protector
+            -fno-unwind-tables
+            -fno-asynchronous-unwind-tables
+            -fno-common
+            -ffunction-sections
+            -fdata-sections
+            -Wall
+            -Wextra
+            -Werror
+          )
+
+          clang "${FLAGS[@]}" -c lane/original.c -o lane/original.o
+          clang "${FLAGS[@]}" -c lane/reconstructed.c -o lane/reconstructed.o
+
+          python3 labs/3ds-decomp/m2/extract_elf_section.py \
+            --elf lane/original.o \
+            --section .text.lab_fn \
+            --output lane/original.bin
+
+          python3 labs/3ds-decomp/m2/extract_elf_section.py \
+            --elf lane/reconstructed.o \
+            --section .text.lab_fn \
+            --output lane/reconstructed.bin
+
+      - name: Exact match and receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMPILER="$(clang --version | head -n 1)"
+          python3 labs/3ds-decomp/m2/match_lane.py \
+            --lane "${{ matrix.lane }}" \
+            --original lane/original.bin \
+            --candidate lane/reconstructed.bin \
+            --metadata lane/metadata.json \
+            --compiler "$COMPILER" \
+            --output "lane/m2-lane-${{ matrix.lane }}.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "m2-lane-${{ matrix.lane }}"
+          path: "lane/m2-lane-${{ matrix.lane }}.json"
+          retention-days: 1
+          if-no-files-found: error
+
+  reducer:
+    name: M2 40/40 reducer
+    needs: workers
+    if: always() && needs.workers.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: m2-lane-*
+          path: receipts
+          merge-multiple: true
+
+      - name: Require 40 exact and unique matches
+        run: python3 labs/3ds-decomp/m2/reduce_m2.py receipts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 3ds-decomp-m2-summary
+          path: |
+            M2-SUMMARY.json
+            M2-SUMMARY.md
+          retention-days: 14
+          if-no-files-found: error
