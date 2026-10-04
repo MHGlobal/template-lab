@@ -1,0 +1,55 @@
+name: Export Android Build Tools
+
+on:
+  push:
+    branches:
+      - lab/export-android-toolchain
+    paths:
+      - ".github/workflows/export-android-build-tools.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve sdkmanager
+        id: sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort | tail -n 1)"
+          test -x "$SDKMANAGER"
+          echo "sdkmanager=$SDKMANAGER" >> "$GITHUB_OUTPUT"
+      - name: Install Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${{ steps.sdk.outputs.sdkmanager }}" "build-tools;34.0.0" >/dev/null
+      - name: Pack signing/alignment tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_SDK_ROOT/build-tools/34.0.0"
+          ROOT="$RUNNER_TEMP/android-build-tools"
+          mkdir -p "$ROOT"
+          cp -a "$BT/apksigner" "$BT/apksigner.jar" "$BT/zipalign" "$ROOT/" 2>/dev/null || true
+          if [ -d "$BT/lib" ]; then cp -a "$BT/lib" "$ROOT/"; fi
+          if [ -d "$BT/lib64" ]; then cp -a "$BT/lib64" "$ROOT/"; fi
+          test -x "$ROOT/zipalign"
+          test -x "$ROOT/apksigner"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/android-build-tools.tar.gz" android-build-tools
+          ls -lh "$RUNNER_TEMP/android-build-tools.tar.gz"
+          sha256sum "$RUNNER_TEMP/android-build-tools.tar.gz" > "$RUNNER_TEMP/SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-build-tools
+          path: |
+            ${{ runner.temp }}/android-build-tools.tar.gz
+            ${{ runner.temp }}/SHA256SUMS.txt
+          retention-days: 2
+          compression-level: 0
