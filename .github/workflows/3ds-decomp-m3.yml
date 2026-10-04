@@ -1,0 +1,265 @@
+name: 3DS Decomp M3 — Encrypted Raw Intake
+
+on:
+  push:
+    branches:
+      - lab/3ds-decomp-m3
+    paths:
+      - ".github/workflows/3ds-decomp-m3.yml"
+      - "labs/3ds-decomp/m3/**"
+      - "labs/3ds-decomp/m2/extract_elf_section.py"
+      - "labs/3ds-decomp/scripts/check_proprietary.py"
+      - ".gitignore"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Input mode"
+        required: true
+        default: synthetic
+        type: choice
+        options:
+          - synthetic
+          - real
+      encrypted_urls:
+        description: "REAL only: one encrypted GitHub attachment URL per line, in part order"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 3ds-decomp-m3-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+env:
+  GHIDRA_VERSION: "12.1.4"
+  GHIDRA_SHA256: "ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db"
+  GHIDRA_URL: "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.4_build/ghidra_12.1.4_PUBLIC_20260921.zip"
+
+jobs:
+  intake:
+    name: Raw ARM intake → Ghidra baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      M3_MODE: ${{ github.event_name == 'push' && 'synthetic' || inputs.mode }}
+      M3_ENCRYPTED_URLS: ${{ inputs.encrypted_urls }}
+      PUSHMO_INPUT_KEY_B64: ${{ secrets.PUSHMO_INPUT_KEY_B64 }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Public-repository safety gate
+        run: python3 labs/3ds-decomp/scripts/check_proprietary.py
+
+      - name: Install crypto + Java
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --user cryptography
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openjdk-21-jdk-headless unzip lld
+
+      - name: Restore Ghidra cache
+        id: ghidra-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/3ds-decomp/ghidra-${{ env.GHIDRA_VERSION }}
+          key: ghidra-${{ runner.os }}-${{ env.GHIDRA_VERSION }}-${{ env.GHIDRA_SHA256 }}
+
+      - name: Download and verify Ghidra
+        if: steps.ghidra-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.cache/3ds-decomp
+          curl --fail --location --retry 3 --output /tmp/ghidra.zip "$GHIDRA_URL"
+          echo "$GHIDRA_SHA256  /tmp/ghidra.zip" | sha256sum --check -
+          unzip -q /tmp/ghidra.zip -d /tmp/ghidra-unpack
+          extracted="$(find /tmp/ghidra-unpack -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          mv "$extracted" ~/.cache/3ds-decomp/ghidra-"$GHIDRA_VERSION"
+
+      - name: Build encrypted synthetic raw input
+        if: env.M3_MODE == 'synthetic'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/m3-synth" "$RUNNER_TEMP/m3-cipher"
+
+          clang \
+            --target=arm-none-eabi \
+            -march=armv6k \
+            -marm \
+            -O2 \
+            -ffreestanding \
+            -fno-builtin \
+            -fno-stack-protector \
+            -fno-unwind-tables \
+            -fno-asynchronous-unwind-tables \
+            -ffunction-sections \
+            -fdata-sections \
+            -c labs/3ds-decomp/m3/synthetic.c \
+            -o "$RUNNER_TEMP/m3-synth/synthetic.o"
+
+          ld.lld \
+            -T labs/3ds-decomp/m3/link.ld \
+            -o "$RUNNER_TEMP/m3-synth/synthetic.elf" \
+            "$RUNNER_TEMP/m3-synth/synthetic.o"
+
+          python3 labs/3ds-decomp/m2/extract_elf_section.py \
+            --elf "$RUNNER_TEMP/m3-synth/synthetic.elf" \
+            --section .text \
+            --output "$RUNNER_TEMP/m3-synth/code.bin"
+
+          python3 - "$RUNNER_TEMP/m3-synth/exheader.bin" <<'PY'
+          import sys
+          from pathlib import Path
+          data = bytearray(0x800)
+          data[:16] = b"M3_SYNTH_EXHDR\x00\x00"
+          Path(sys.argv[1]).write_bytes(data)
+          PY
+
+          python3 labs/3ds-decomp/m3/bundle.py pack \
+            --code "$RUNNER_TEMP/m3-synth/code.bin" \
+            --exheader "$RUNNER_TEMP/m3-synth/exheader.bin" \
+            --label synthetic-m3 \
+            --base-address 00100000 \
+            --output "$RUNNER_TEMP/m3-synth/input.tgz"
+
+          python3 labs/3ds-decomp/m3/crypto_bundle.py generate-key \
+            > "$RUNNER_TEMP/m3-synth/key.txt"
+          chmod 600 "$RUNNER_TEMP/m3-synth/key.txt"
+
+          python3 labs/3ds-decomp/m3/crypto_bundle.py encrypt \
+            --input "$RUNNER_TEMP/m3-synth/input.tgz" \
+            --output "$RUNNER_TEMP/m3-cipher/input.enc" \
+            --key-b64 "$(cat "$RUNNER_TEMP/m3-synth/key.txt")"
+
+          python3 labs/3ds-decomp/m3/split_file.py split \
+            --input "$RUNNER_TEMP/m3-cipher/input.enc" \
+            --output-prefix "$RUNNER_TEMP/m3-cipher/input.enc" \
+            --part-size-mib 1
+
+          rm -f "$RUNNER_TEMP/m3-cipher/input.enc"
+
+      - name: Download encrypted real input parts
+        if: env.M3_MODE == 'real'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${PUSHMO_INPUT_KEY_B64:-}" ]; then
+            echo "::error::Repository secret PUSHMO_INPUT_KEY_B64 is not configured."
+            exit 1
+          fi
+          if [ -z "${M3_ENCRYPTED_URLS:-}" ]; then
+            echo "::error::REAL mode requires encrypted_urls."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/m3-cipher"
+          python3 labs/3ds-decomp/m3/download_parts.py \
+            --output-dir "$RUNNER_TEMP/m3-cipher"
+
+      - name: Reassemble and decrypt private input
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t PARTS < <(find "$RUNNER_TEMP/m3-cipher" -maxdepth 1 -type f -name '*.gz' -print | sort)
+          test "${#PARTS[@]}" -gt 0
+
+          python3 labs/3ds-decomp/m3/split_file.py join \
+            --output "$RUNNER_TEMP/m3-input.enc" \
+            "${PARTS[@]}"
+
+          if [ "$M3_MODE" = "synthetic" ]; then
+            KEY="$(cat "$RUNNER_TEMP/m3-synth/key.txt")"
+          else
+            KEY="$PUSHMO_INPUT_KEY_B64"
+          fi
+
+          python3 labs/3ds-decomp/m3/crypto_bundle.py decrypt \
+            --input "$RUNNER_TEMP/m3-input.enc" \
+            --output "$RUNNER_TEMP/m3-input.tgz" \
+            --key-b64 "$KEY"
+          unset KEY
+
+      - name: Validate bundle and fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/m3-plain" out
+          python3 labs/3ds-decomp/m3/bundle.py unpack \
+            --input "$RUNNER_TEMP/m3-input.tgz" \
+            --output-dir "$RUNNER_TEMP/m3-plain" \
+            --sanitized-manifest out/m3-input-fingerprint.json
+          test -s "$RUNNER_TEMP/m3-plain/code.bin"
+          test -s "$RUNNER_TEMP/m3-plain/exheader.bin"
+
+      - name: Ghidra raw ARM baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          GHIDRA="$HOME/.cache/3ds-decomp/ghidra-$GHIDRA_VERSION"
+          BASE="$(python3 -c 'import json; print(json.load(open("out/m3-input-fingerprint.json"))["base_address"])')"
+
+          mkdir -p "$RUNNER_TEMP/ghidra-projects"
+          "$GHIDRA/support/analyzeHeadless" \
+            "$RUNNER_TEMP/ghidra-projects" \
+            m3-raw \
+            -import "$RUNNER_TEMP/m3-plain/code.bin" \
+            -overwrite \
+            -loader BinaryLoader \
+            -loader-baseAddr "$BASE" \
+            -loader-blockName ".text" \
+            -processor "ARM:LE:32:v6" \
+            -cspec default \
+            -analysisTimeoutPerFile 240 \
+            -scriptPath "$GITHUB_WORKSPACE/labs/3ds-decomp/m3/ghidra" \
+            -preScript SeedRawEntry.java "0x$BASE" \
+            -postScript ExportFunctionInventory.java "$GITHUB_WORKSPACE/out/code.bin.csv"
+
+          test -s out/code.bin.csv
+
+      - name: Build sanitized M3 report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 labs/3ds-decomp/m3/summarize_functions.py \
+            --manifest out/m3-input-fingerprint.json \
+            --functions out/code.bin.csv \
+            --json out/M3-SUMMARY.json \
+            --markdown out/M3-SUMMARY.md
+
+          if [ "$M3_MODE" = "synthetic" ]; then
+            python3 - <<'PY'
+          import json
+          data = json.load(open("out/M3-SUMMARY.json"))
+          assert data["function_count"] >= 3, data
+          assert data["arm_functions"] >= 3, data
+          assert data["base_address"] == "00100000", data
+          print("Synthetic M3 gate: PASS")
+          PY
+          fi
+
+      - name: Destroy plaintext before publishing evidence
+        if: always()
+        shell: bash
+        run: |
+          rm -rf \
+            "$RUNNER_TEMP/m3-plain" \
+            "$RUNNER_TEMP/m3-input.tgz" \
+            "$RUNNER_TEMP/m3-input.enc" \
+            "$RUNNER_TEMP/m3-synth" \
+            "$RUNNER_TEMP/m3-cipher"
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: 3ds-decomp-m3-sanitized-baseline
+          path: |
+            out/m3-input-fingerprint.json
+            out/code.bin.csv
+            out/M3-SUMMARY.json
+            out/M3-SUMMARY.md
+          retention-days: 14
+          if-no-files-found: error
