@@ -146,9 +146,11 @@ jobs:
             out/redux-audit.json
             out/ctrtool-launch.txt
             out/ctrtool-launch-status.txt
+            out/ctrtool-launch-stderr.txt
             out/synthetic-probe.json
             out/ctrtool-synthetic.txt
             out/ctrtool-synthetic-status.txt
+            out/ctrtool-synthetic-stderr.txt
             out/RESULT.txt
           retention-days: 14
           if-no-files-found: error
