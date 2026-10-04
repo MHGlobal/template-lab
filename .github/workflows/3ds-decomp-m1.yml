@@ -3,6 +3,7 @@ name: 3DS Decomp M1 — Synthetic ARM Matching
 on:
   push:
     branches:
+      - editor
       - lab/3ds-decomp-m1
     paths:
       - ".github/workflows/3ds-decomp-m1.yml"
