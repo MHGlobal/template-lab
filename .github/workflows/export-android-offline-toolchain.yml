@@ -1,0 +1,126 @@
+name: Export Android Offline Toolchain
+
+on:
+  push:
+    branches:
+      - lab/export-gbrecomp-tool
+    paths:
+      - ".github/workflows/export-android-offline-toolchain.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ANDROID_NDK_VERSION: "26.1.10909125"
+  SDL2_SHA: "fa24d868ac2f8fd558e4e914c9863411245db8fd"
+  GBRECOMP_SHA: "9150f87d82fa98abcb6ea22329170463f9702eb8"
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android components
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort | tail -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;${ANDROID_NDK_VERSION}" \
+            "cmake;3.22.1"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Build one synthetic Android project to warm Gradle/AGP cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libsdl2-dev
+
+          git clone --quiet https://github.com/arcanite24/gb-recompiled.git "$RUNNER_TEMP/gb-recompiled"
+          git -C "$RUNNER_TEMP/gb-recompiled" checkout --quiet "$GBRECOMP_SHA"
+          cmake -G Ninja -S "$RUNNER_TEMP/gb-recompiled" -B "$RUNNER_TEMP/gb-recompiled/build" -DCMAKE_BUILD_TYPE=Release
+          ninja -C "$RUNNER_TEMP/gb-recompiled/build" gbrecomp
+
+          python3 labs/3ds-decomp/m4/generate_fixture.py --out-dir "$RUNNER_TEMP/rom"
+          "$RUNNER_TEMP/gb-recompiled/build/bin/gbrecomp" \
+            "$RUNNER_TEMP/rom/synthetic-small.gbc" \
+            --output "$RUNNER_TEMP/synthetic" \
+            --android \
+            --android-package io.mhglobal.offlinewarmup \
+            --android-app-name "Offline Warmup"
+
+          CMAKE_FILE="$RUNNER_TEMP/synthetic/android/app/jni/src/CMakeLists.txt"
+          python3 - "$CMAKE_FILE" <<'PY'
+          import sys
+          from pathlib import Path
+          path=Path(sys.argv[1])
+          t=path.read_text()
+          marker="    ${GBRT_DIR}/src/gbrt.c\n"
+          req=[
+              "    ${GBRT_DIR}/src/gbrt_data_mod.c\n",
+              "    ${GBRT_DIR}/src/gbrt_hash.c\n",
+              "    ${GBRT_DIR}/src/gbrt_host_configuration.c\n",
+              "    ${GBRT_DIR}/src/gbrt_port.c\n",
+              "    ${GBRT_DIR}/src/gbrt_presentation.c\n",
+              "    ${GBRT_DIR}/src/gbrt_semantic.c\n",
+          ]
+          missing=[x for x in req if x not in t]
+          if missing:
+              t=t.replace(marker, marker+"".join(missing),1)
+              path.write_text(t)
+          PY
+
+          git clone --quiet https://github.com/libsdl-org/SDL.git "$RUNNER_TEMP/SDL2"
+          git -C "$RUNNER_TEMP/SDL2" checkout --quiet "$SDL2_SHA"
+
+          SDL2_SOURCE_DIR="$RUNNER_TEMP/SDL2" \
+          gradle --no-daemon -p "$RUNNER_TEMP/synthetic/android" :app:assembleDebug
+
+      - name: Bundle minimal offline build environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bundle/android-sdk bundle/gradle bundle/sdl2
+
+          cp -a "$ANDROID_SDK_ROOT/platforms/android-34" bundle/android-sdk/platforms-android-34
+          cp -a "$ANDROID_SDK_ROOT/build-tools/34.0.0" bundle/android-sdk/build-tools-34.0.0
+          cp -a "$ANDROID_SDK_ROOT/ndk/${ANDROID_NDK_VERSION}" bundle/android-sdk/ndk-26.1.10909125
+          cp -a "$ANDROID_SDK_ROOT/cmake/3.22.1" bundle/android-sdk/cmake-3.22.1
+
+          GRADLE_BIN="$(command -v gradle)"
+          GRADLE_REAL="$(readlink -f "$GRADLE_BIN")"
+          GRADLE_HOME="$(cd "$(dirname "$GRADLE_REAL")/.." && pwd)"
+          cp -a "$GRADLE_HOME" bundle/gradle/gradle-8.7
+          cp -a "$HOME/.gradle/caches" bundle/gradle/caches
+          cp -a "$RUNNER_TEMP/SDL2/." bundle/sdl2/
+
+          du -sh bundle/* bundle/android-sdk/* bundle/gradle/* || true
+          tar -C bundle -I 'zstd -10 -T0' -cf android-offline-toolchain.tar.zst .
+          sha256sum android-offline-toolchain.tar.zst > SHA256SUMS.txt
+          ls -lh android-offline-toolchain.tar.zst
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-offline-toolchain
+          path: |
+            android-offline-toolchain.tar.zst
+            SHA256SUMS.txt
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: error
