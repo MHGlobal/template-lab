@@ -62,3 +62,25 @@ The initial private package is not created automatically because it requires the
 - M6+ — subsystem mapping, PC runtime, then Android
 
 The first serious reverse-engineering milestone remains: **one real function reconstructed and verified at 100% match**.
+
+## Validated milestones
+
+### M0 — GitHub-only bootstrap: PASS
+
+Validated with 40 GitHub-hosted workers, a reducer gate, pinned Ghidra/3DS tooling, and the public-repository safety gate.
+
+### M1 — Synthetic ARM decompilation + exact matching: PASS
+
+Validated run: `37228416905`.
+
+Evidence:
+
+- stripped ARM ELF contained no `puzzle_score` symbol;
+- Ghidra recovered the target at `0x00100028` as `FUN_00100028`;
+- function size: `0x3c` (60 bytes);
+- original function SHA-256: `92b87660efb890c76887b72c63ddce5236a0cb5e6b3453420491be4cdacb0f28`;
+- reconstructed function SHA-256: `92b87660efb890c76887b72c63ddce5236a0cb5e6b3453420491be4cdacb0f28`;
+- exact machine-code match: **100.00%**.
+
+Next milestone: M2 will scale the verified matching pattern across many independent synthetic function shards before attaching private Pushmo input.
+

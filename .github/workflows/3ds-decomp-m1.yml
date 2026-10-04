@@ -1,0 +1,227 @@
+name: 3DS Decomp M1 — Synthetic ARM Matching
+
+on:
+  push:
+    branches:
+      - editor
+      - lab/3ds-decomp-m1
+    paths:
+      - ".github/workflows/3ds-decomp-m1.yml"
+      - "labs/3ds-decomp/m1/**"
+      - "labs/3ds-decomp/scripts/check_proprietary.py"
+      - ".gitignore"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 3ds-decomp-m1-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GHIDRA_VERSION: "12.1.4"
+  GHIDRA_SHA256: "ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db"
+  GHIDRA_URL: "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.4_build/ghidra_12.1.4_PUBLIC_20260921.zip"
+
+jobs:
+  m1:
+    name: Compile → strip → Ghidra → reconstruct → byte-match
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Public-repository safety gate
+        run: python3 labs/3ds-decomp/scripts/check_proprietary.py
+
+      - name: Install ARM and Java toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            openjdk-21-jdk-headless \
+            gcc-arm-none-eabi \
+            binutils-arm-none-eabi \
+            unzip
+
+      - name: Restore Ghidra cache
+        id: ghidra-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/3ds-decomp/ghidra-${{ env.GHIDRA_VERSION }}
+          key: ghidra-${{ runner.os }}-${{ env.GHIDRA_VERSION }}-${{ env.GHIDRA_SHA256 }}
+
+      - name: Download and verify Ghidra
+        if: steps.ghidra-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.cache/3ds-decomp
+          curl --fail --location --retry 3 --output /tmp/ghidra.zip "$GHIDRA_URL"
+          echo "$GHIDRA_SHA256  /tmp/ghidra.zip" | sha256sum --check -
+          unzip -q /tmp/ghidra.zip -d /tmp/ghidra-unpack
+          extracted="$(find /tmp/ghidra-unpack -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          mv "$extracted" ~/.cache/3ds-decomp/ghidra-"$GHIDRA_VERSION"
+
+      - name: Compile original ARM11-like object
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build out
+          COMMON_FLAGS=(
+            -mcpu=mpcore
+            -marm
+            -O2
+            -ffreestanding
+            -fno-builtin
+            -fno-stack-protector
+            -fno-unwind-tables
+            -fno-asynchronous-unwind-tables
+            -fno-common
+            -ffunction-sections
+            -fdata-sections
+            -Wall
+            -Wextra
+            -Werror
+          )
+
+          arm-none-eabi-gcc "${COMMON_FLAGS[@]}" \
+            -c labs/3ds-decomp/m1/original.c \
+            -o build/original.o
+
+          arm-none-eabi-ld \
+            -T labs/3ds-decomp/m1/link.ld \
+            -o build/original.elf \
+            build/original.o
+
+          arm-none-eabi-nm -S --defined-only build/original.elf > out/original-symbols.txt
+
+          TARGET_LINE="$(awk '$4 == "puzzle_score" { print $1 " " $2 }' out/original-symbols.txt)"
+          test -n "$TARGET_LINE"
+          TARGET_ADDRESS="$(printf '%s\n' "$TARGET_LINE" | awk '{print $1}')"
+          TARGET_SIZE="$(printf '%s\n' "$TARGET_LINE" | awk '{print $2}')"
+
+          printf '0x%s\n' "$TARGET_ADDRESS" > out/target-address.txt
+          printf '0x%s\n' "$TARGET_SIZE" > out/target-size.txt
+
+          arm-none-eabi-objcopy \
+            -O binary \
+            --only-section=.text.puzzle_score \
+            build/original.o \
+            build/original-puzzle_score.bin
+
+          arm-none-eabi-objcopy \
+            --strip-all \
+            build/original.elf \
+            build/original-stripped.elf
+
+          arm-none-eabi-objdump -d build/original-stripped.elf \
+            > out/original-stripped-disassembly.txt
+
+          if arm-none-eabi-nm build/original-stripped.elf 2>&1 | grep -q puzzle_score; then
+            echo "::error::puzzle_score leaked into the stripped ELF symbol table"
+            exit 1
+          fi
+
+          echo "Target address: 0x$TARGET_ADDRESS"
+          echo "Target size: 0x$TARGET_SIZE"
+
+      - name: Decompile target from stripped ELF with Ghidra
+        shell: bash
+        run: |
+          set -euo pipefail
+          GHIDRA="$HOME/.cache/3ds-decomp/ghidra-$GHIDRA_VERSION"
+          ADDRESS="$(cat out/target-address.txt)"
+
+          mkdir -p "$RUNNER_TEMP/ghidra-projects"
+          "$GHIDRA/support/analyzeHeadless" \
+            "$RUNNER_TEMP/ghidra-projects" \
+            m1-synthetic \
+            -import "$GITHUB_WORKSPACE/build/original-stripped.elf" \
+            -overwrite \
+            -analysisTimeoutPerFile 180 \
+            -scriptPath "$GITHUB_WORKSPACE/labs/3ds-decomp/m1/ghidra" \
+            -postScript DecompileAt.java \
+              "$ADDRESS" \
+              "$GITHUB_WORKSPACE/out/ghidra-pseudocode.c"
+
+          test -s out/ghidra-pseudocode.c
+          echo "---- Ghidra pseudocode ----"
+          cat out/ghidra-pseudocode.c
+
+      - name: Compile reconstructed candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMON_FLAGS=(
+            -mcpu=mpcore
+            -marm
+            -O2
+            -ffreestanding
+            -fno-builtin
+            -fno-stack-protector
+            -fno-unwind-tables
+            -fno-asynchronous-unwind-tables
+            -fno-common
+            -ffunction-sections
+            -fdata-sections
+            -Wall
+            -Wextra
+            -Werror
+          )
+
+          arm-none-eabi-gcc "${COMMON_FLAGS[@]}" \
+            -c labs/3ds-decomp/m1/reconstructed.c \
+            -o build/reconstructed.o
+
+          arm-none-eabi-objcopy \
+            -O binary \
+            --only-section=.text.puzzle_score \
+            build/reconstructed.o \
+            build/reconstructed-puzzle_score.bin
+
+      - name: Exact byte-match gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 labs/3ds-decomp/m1/verify_match.py \
+            --original build/original-puzzle_score.bin \
+            --candidate build/reconstructed-puzzle_score.bin \
+            --address "$(cat out/target-address.txt)" \
+            --json out/match-report.json \
+            --markdown out/match-report.md
+
+          cmp build/original-puzzle_score.bin build/reconstructed-puzzle_score.bin
+
+      - name: Generate evidence manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "# M1 evidence"
+            echo
+            echo "- Workflow SHA: \`$GITHUB_SHA\`"
+            echo "- Compiler: \`$(arm-none-eabi-gcc --version | head -n 1)\`"
+            echo "- Ghidra: \`$GHIDRA_VERSION\`"
+            echo "- Function address: \`$(cat out/target-address.txt)\`"
+            echo "- Function size: \`$(cat out/target-size.txt)\`"
+            echo
+            cat out/match-report.md
+          } > out/M1-EVIDENCE.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 3ds-decomp-m1-evidence
+          path: |
+            out/M1-EVIDENCE.md
+            out/match-report.json
+            out/match-report.md
+            out/ghidra-pseudocode.c
+            out/original-stripped-disassembly.txt
+            out/target-address.txt
+            out/target-size.txt
+          retention-days: 14
+          if-no-files-found: error
