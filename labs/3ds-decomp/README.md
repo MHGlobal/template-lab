@@ -84,3 +84,18 @@ Evidence:
 
 Next milestone: M2 will scale the verified matching pattern across many independent synthetic function shards before attaching private Pushmo input.
 
+### M2 — 40-way synthetic ARM matching: PASS
+
+Validated run: `37228774068`.
+
+Evidence:
+
+- ARMv6K compiler probe: **PASS**;
+- GitHub matrix: **40 workers**;
+- exact byte matches: **40/40**;
+- unique original machine-code hashes: **40/40**;
+- generated function size range: **80–84 bytes**;
+- reducer gate: **PASS**.
+
+This validates the fan-out/fan-in pattern that will be reused for real function shards.
+
