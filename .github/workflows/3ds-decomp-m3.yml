@@ -59,7 +59,7 @@ jobs:
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check --user cryptography
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openjdk-21-jdk-headless unzip
+          sudo apt-get install -y --no-install-recommends openjdk-21-jdk-headless unzip lld
 
       - name: Restore Ghidra cache
         id: ghidra-cache
