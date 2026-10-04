@@ -54,27 +54,35 @@ jobs:
 
           cp "$NDK/source.properties" "$ROOT/ndk/"
           cp "$NDK/build/cmake/android.toolchain.cmake" "$ROOT/ndk/build/cmake/"
-          cp -a "$PRE/sysroot" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/"
-          cp -a "$PRE/lib/clang" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/lib/"
+
+          mkdir -p "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr"
+          cp -a "$PRE/sysroot/usr/include" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/"
+          mkdir -p "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib"
+          cp -a "$PRE/sysroot/usr/lib/aarch64-linux-android" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/"
+
+          CLANG_VER="$(basename "$(find "$PRE/lib/clang" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)")"
+          mkdir -p "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/$CLANG_VER"
+          cp -a "$PRE/lib/clang/$CLANG_VER/include" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/$CLANG_VER/"
+          mkdir -p "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/$CLANG_VER/lib/linux"
+          cp "$PRE/lib/clang/$CLANG_VER/lib/linux/libclang_rt.builtins-aarch64-android.a" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/$CLANG_VER/lib/linux/"
 
           for f in clang clang++ ld.lld lld llvm-ar llvm-ranlib llvm-strip llvm-nm llvm-objcopy; do
             cp -L "$PRE/bin/$f" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/$f"
           done
 
-          cp -L "$PRE/bin/aarch64-linux-android24-clang" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
-          cp -L "$PRE/bin/aarch64-linux-android24-clang++" "$ROOT/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++"
-
           cp -a sdl2/include "$ROOT/sdl2/include"
 
-          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/android-arm64-toolchain.tar.gz" android-arm64-toolchain
-          ls -lh "$RUNNER_TEMP/android-arm64-toolchain.tar.gz"
-          sha256sum "$RUNNER_TEMP/android-arm64-toolchain.tar.gz" | tee "$RUNNER_TEMP/SHA256SUMS.txt"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/android-arm64-toolchain-mini.tar.gz" android-arm64-toolchain
+          ls -lh "$RUNNER_TEMP/android-arm64-toolchain-mini.tar.gz"
+          du -sh "$ROOT" | tee "$RUNNER_TEMP/DU.txt"
+          sha256sum "$RUNNER_TEMP/android-arm64-toolchain-mini.tar.gz" | tee "$RUNNER_TEMP/SHA256SUMS.txt"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: android-arm64-toolchain
+          name: android-arm64-toolchain-mini
           path: |
-            ${{ runner.temp }}/android-arm64-toolchain.tar.gz
+            ${{ runner.temp }}/android-arm64-toolchain-mini.tar.gz
             ${{ runner.temp }}/SHA256SUMS.txt
+            ${{ runner.temp }}/DU.txt
           retention-days: 2
           compression-level: 0
