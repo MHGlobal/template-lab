@@ -1,4 +1,4 @@
-name: 3DS Decomp Lab Bootstrap
+name: 3DS Decomp Lab — GitHub Only
 
 on:
   push:
@@ -13,19 +13,29 @@ on:
       mode:
         description: "Execution mode"
         required: true
-        default: parallel-smoke
+        default: full-smoke
         type: choice
         options:
-          - parallel-smoke
+          - full-smoke
           - policy-only
-          - mcpnet-probe
+          - toolchain-only
+          - workers-only
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: 3ds-decomp-lab-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: false
+
+env:
+  GHIDRA_VERSION: "12.1.4"
+  GHIDRA_ZIP: "ghidra_12.1.4_PUBLIC_20260921.zip"
+  GHIDRA_SHA256: "ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db"
+  GHIDRA_URL: "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.4_build/ghidra_12.1.4_PUBLIC_20260921.zip"
+  THREEDSD_SHA: "2af413d76e66e5743729d95e479c9d56d9aec235"
+  GHIDRA_SCRIPTS_SHA: "9a8f24fc4364a6f760aeb0b883fd32182d952787"
 
 jobs:
   policy:
@@ -37,10 +47,86 @@ jobs:
       - name: Reject proprietary game material from Git
         run: python3 labs/3ds-decomp/scripts/check_proprietary.py
 
-  parallel-smoke:
-    name: "Lane ${{ matrix.lane }}"
+  toolchain:
+    name: Toolchain validation
     needs: policy
-    if: github.event_name == 'push' || inputs.mode == 'parallel-smoke'
+    if: github.event_name == 'push' || inputs.mode == 'full-smoke' || inputs.mode == 'toolchain-only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Java, ARM binutils and Python dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openjdk-21-jdk-headless gcc-arm-none-eabi binutils-arm-none-eabi unzip
+          python3 -m pip install --disable-pip-version-check --user pyyaml ninja
+
+      - name: Restore Ghidra cache
+        id: ghidra-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/3ds-decomp/ghidra-${{ env.GHIDRA_VERSION }}
+          key: ghidra-${{ runner.os }}-${{ env.GHIDRA_VERSION }}-${{ env.GHIDRA_SHA256 }}
+
+      - name: Download and verify Ghidra
+        if: steps.ghidra-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.cache/3ds-decomp
+          curl --fail --location --retry 3 --output /tmp/ghidra.zip "$GHIDRA_URL"
+          echo "$GHIDRA_SHA256  /tmp/ghidra.zip" | sha256sum --check -
+          unzip -q /tmp/ghidra.zip -d /tmp/ghidra-unpack
+          extracted="$(find /tmp/ghidra-unpack -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          mv "$extracted" ~/.cache/3ds-decomp/ghidra-"$GHIDRA_VERSION"
+
+      - name: Clone pinned 3DS tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/3ds-tools
+          git clone --quiet https://github.com/AlgebraManiacABC/3dsd.git /tmp/3ds-tools/3dsd
+          git -C /tmp/3ds-tools/3dsd checkout --quiet "$THREEDSD_SHA"
+          git clone --quiet https://github.com/AlgebraManiacABC/3ds-Ghidra-Scripts-Java.git /tmp/3ds-tools/ghidra-scripts
+          git -C /tmp/3ds-tools/ghidra-scripts checkout --quiet "$GHIDRA_SCRIPTS_SHA"
+
+      - name: Validate executables
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          arm-none-eabi-gcc --version | head -n 1
+          arm-none-eabi-ld --version | head -n 1
+          arm-none-eabi-objcopy --version | head -n 1
+          python3 --version
+          ninja --version
+          test -x ~/.cache/3ds-decomp/ghidra-"$GHIDRA_VERSION"/support/analyzeHeadless
+          ~/.cache/3ds-decomp/ghidra-"$GHIDRA_VERSION"/support/analyzeHeadless 2>&1 | head -n 20 || true
+          test "$(git -C /tmp/3ds-tools/3dsd rev-parse HEAD)" = "$THREEDSD_SHA"
+          test "$(git -C /tmp/3ds-tools/ghidra-scripts rev-parse HEAD)" = "$GHIDRA_SCRIPTS_SHA"
+
+      - name: Write public-safe toolchain manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python3 labs/3ds-decomp/scripts/toolchain_manifest.py > out/toolchain-manifest.json
+          cat out/toolchain-manifest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 3ds-toolchain-manifest
+          path: out/toolchain-manifest.json
+          retention-days: 7
+          if-no-files-found: error
+
+  workers:
+    name: "Worker ${{ matrix.lane }}"
+    needs: policy
+    if: github.event_name == 'push' || inputs.mode == 'full-smoke' || inputs.mode == 'workers-only'
     strategy:
       fail-fast: false
       max-parallel: 40
@@ -50,44 +136,53 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Validate worker lane
-        run: python3 labs/3ds-decomp/scripts/lane_smoke.py --lane "${{ matrix.lane }}" --sha "${{ github.sha }}"
+      - name: Execute deterministic shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python3 labs/3ds-decomp/scripts/lane_smoke.py             --lane "${{ matrix.lane }}"             --sha "${{ github.sha }}"             --output "out/lane-${{ matrix.lane }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "3ds-lane-${{ matrix.lane }}"
+          path: "out/lane-${{ matrix.lane }}.json"
+          retention-days: 1
+          if-no-files-found: error
 
-  mcpnet-probe:
-    name: MCPNet storage probe
-    needs: policy
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'mcpnet-probe'
+  reducer:
+    name: 40-worker reducer gate
+    needs: [policy, workers]
+    if: always() && needs.policy.result == 'success' && needs.workers.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 3ds-lane-*
+          path: worker-results
+          merge-multiple: true
+      - name: Verify all 40 workers
+        run: python3 labs/3ds-decomp/scripts/reduce_workers.py worker-results
+
+  final-gate:
+    name: Bootstrap final gate
+    needs: [policy, toolchain, reducer]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      MCPNET_HOST: ${{ secrets.MCPNET_HOST }}
-      MCPNET_USER: ${{ secrets.MCPNET_USER }}
-      MCPNET_SSH_KEY: ${{ secrets.MCPNET_SSH_KEY }}
-      MCPNET_KNOWN_HOSTS: ${{ secrets.MCPNET_KNOWN_HOSTS }}
     steps:
-      - name: Validate required secrets
+      - name: Evaluate
+        env:
+          POLICY: ${{ needs.policy.result }}
+          TOOLCHAIN: ${{ needs.toolchain.result }}
+          REDUCER: ${{ needs.reducer.result }}
         shell: bash
         run: |
           set -euo pipefail
-          for name in MCPNET_HOST MCPNET_USER MCPNET_SSH_KEY MCPNET_KNOWN_HOSTS; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing repository secret: $name"
-              exit 1
-            fi
-          done
-
-      - name: Configure restricted SSH client
-        shell: bash
-        run: |
-          set -euo pipefail
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$MCPNET_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$MCPNET_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-
-      - name: Verify MCPNet lab storage
-        shell: bash
-        run: |
-          set -euo pipefail
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes             "$MCPNET_USER@$MCPNET_HOST"             'test -d /srv/3ds-lab && test -r /srv/3ds-lab && printf "MCPNet storage: READY\n" && df -h /srv/3ds-lab'
+          printf 'policy=%s\ntoolchain=%s\nreducer=%s\n' "$POLICY" "$TOOLCHAIN" "$REDUCER"
+          if [ "$POLICY" != "success" ]; then exit 1; fi
+          # On push/full-smoke both heavy gates must pass.
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.mode }}" = "full-smoke" ]; then
+            [ "$TOOLCHAIN" = "success" ] && [ "$REDUCER" = "success" ]
+          fi

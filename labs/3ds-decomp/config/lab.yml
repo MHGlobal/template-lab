@@ -4,19 +4,31 @@ lab:
   platform: nintendo-3ds
   max_parallel_workers: 40
 
-storage:
-  provider: mcpnet-vm
-  root: /srv/3ds-lab
-  raw_game_data_in_git: false
-  original_read_only: true
-
-execution:
-  public_ci_runner: ubuntu-latest
-  private_storage_probe: ssh
-  worker_fanout: matrix
+compute:
+  provider: github-actions
+  runner: ubuntu-latest
+  strategy: matrix
   fail_fast: false
+
+storage:
+  repository_public: true
+  public_safe_outputs: github-artifacts
+  private_game_source: ghcr-private-oci
+  raw_game_data_in_git: false
+  raw_game_data_in_cache: false
+  raw_game_data_in_public_artifacts: false
+
+toolchain:
+  ghidra:
+    version: 12.1.4
+    sha256: ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db
+  3dsd:
+    commit: 2af413d76e66e5743729d95e479c9d56d9aec235
+  ghidra_scripts:
+    commit: 9a8f24fc4364a6f760aeb0b883fd32182d952787
 
 gates:
   proprietary_content: mandatory
+  toolchain: mandatory
+  workers_0_to_39: mandatory
   evidence_required: true
-  matching_target_percent: 100
