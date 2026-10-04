@@ -65,12 +65,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          cmd /c "tools\ctrtool.exe > out\ctrtool-launch.txt 2>&1"
-          $code = $LASTEXITCODE
-          "exit_code=$code" | Out-File "out\ctrtool-launch-status.txt"
-          if (-not (Test-Path "out\ctrtool-launch.txt")) { throw "ctrtool did not launch" }
-          if ((Get-Item "out\ctrtool-launch.txt").Length -eq 0) { throw "ctrtool produced no diagnostic output" }
-          Get-Content "out\ctrtool-launch.txt" | Select-Object -First 80
+          $stdout = "out\ctrtool-launch.txt"
+          $stderr = "out\ctrtool-launch-stderr.txt"
+          $proc = Start-Process -FilePath "tools\ctrtool.exe" -RedirectStandardOutput $stdout -RedirectStandardError $stderr -Wait -PassThru
+          "exit_code=$($proc.ExitCode)" | Out-File "out\ctrtool-launch-status.txt"
+          if (Test-Path $stderr) { Get-Content $stderr | Add-Content $stdout }
+          if (-not (Test-Path $stdout)) { throw "ctrtool did not launch" }
+          if ((Get-Item $stdout).Length -eq 0) { throw "ctrtool produced no diagnostic output" }
+          Get-Content $stdout | Select-Object -First 80
 
       - name: Build a non-proprietary synthetic CIA fixture
         shell: pwsh
@@ -123,11 +125,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          cmd /c "tools\ctrtool.exe out\synthetic.cia > out\ctrtool-synthetic.txt 2>&1"
-          $code = $LASTEXITCODE
-          "exit_code=$code" | Out-File "out\ctrtool-synthetic-status.txt"
-          if (-not (Test-Path "out\ctrtool-synthetic.txt")) { throw "ctrtool produced no synthetic CIA report" }
-          Get-Content "out\ctrtool-synthetic.txt" | Select-Object -First 120
+          $stdout = "out\ctrtool-synthetic.txt"
+          $stderr = "out\ctrtool-synthetic-stderr.txt"
+          $proc = Start-Process -FilePath "tools\ctrtool.exe" -ArgumentList @("out\synthetic.cia") -RedirectStandardOutput $stdout -RedirectStandardError $stderr -Wait -PassThru
+          "exit_code=$($proc.ExitCode)" | Out-File "out\ctrtool-synthetic-status.txt"
+          if (Test-Path $stderr) { Get-Content $stderr | Add-Content $stdout }
+          if (-not (Test-Path $stdout)) { throw "ctrtool produced no synthetic CIA report" }
+          if ((Get-Item $stdout).Length -eq 0) { throw "ctrtool produced empty synthetic CIA report" }
+          Get-Content $stdout | Select-Object -First 120
 
       - name: Safety gate
         shell: pwsh
