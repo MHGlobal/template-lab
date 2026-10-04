@@ -1,0 +1,154 @@
+name: SMB Deluxe M4 — GBC Native Pipeline
+
+on:
+  push:
+    branches:
+      - lab/smbdx-gbc-m4
+    paths:
+      - ".github/workflows/smbdx-gbc-m4.yml"
+      - "labs/3ds-decomp/m4/**"
+      - "labs/3ds-decomp/targets/smbdx-eur-vc/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MGBDIS_SHA: "95d951a9881a0d7ff1a42a94d1be175da92b1777"
+  GBRECOMP_SHA: "9150f87d82fa98abcb6ea22329170463f9702eb8"
+
+jobs:
+  fixture:
+    name: Build synthetic GBC fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          python3 labs/3ds-decomp/m4/generate_fixture.py --out-dir out
+          python3 labs/3ds-decomp/m4/gbc_probe.py out/synthetic-small.gbc --output out/small-probe.json
+          python3 labs/3ds-decomp/m4/gbc_probe.py out/synthetic-64banks.gbc --output out/banked-probe.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m4-synthetic-roms
+          path: |
+            out/synthetic-small.gbc
+            out/synthetic-64banks.gbc
+            out/fixture.json
+            out/small-probe.json
+            out/banked-probe.json
+          retention-days: 1
+
+  banks:
+    name: "M4 bank lane ${{ matrix.lane }}"
+    needs: fixture
+    strategy:
+      fail-fast: false
+      max-parallel: 40
+      matrix:
+        lane: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: m4-synthetic-roms
+          path: input
+      - run: |
+          set -euo pipefail
+          mkdir -p out
+          python3 labs/3ds-decomp/m4/bank_receipt.py             --rom input/synthetic-64banks.gbc             --lane "${{ matrix.lane }}"             --output "out/lane-${{ matrix.lane }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "m4-bank-lane-${{ matrix.lane }}"
+          path: "out/lane-${{ matrix.lane }}.json"
+          retention-days: 1
+
+  bank-reducer:
+    name: M4 64-bank / 40-runner reducer
+    needs: banks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: m4-bank-lane-*
+          path: receipts
+          merge-multiple: true
+      - run: python3 labs/3ds-decomp/m4/reduce_banks.py receipts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m4-bank-summary
+          path: M4-BANK-SUMMARY.json
+          retention-days: 14
+
+  disassembly:
+    name: mgbdis LR35902 disassembly smoke
+    needs: fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: m4-synthetic-roms
+          path: input
+      - run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/mattcurrie/mgbdis.git "$RUNNER_TEMP/mgbdis"
+          git -C "$RUNNER_TEMP/mgbdis" checkout --quiet "$MGBDIS_SHA"
+          mkdir -p "$RUNNER_TEMP/disasm-work"
+          cp input/synthetic-small.gbc "$RUNNER_TEMP/disasm-work/game.gbc"
+          cd "$RUNNER_TEMP/disasm-work"
+          python3 "$RUNNER_TEMP/mgbdis/mgbdis.py" game.gbc
+          test -d disassembly
+          find disassembly -type f | sort | head -n 30
+          test "$(find disassembly -type f | wc -l)" -gt 0
+
+  native-pc:
+    name: GB Recompiled → native PC
+    needs: fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: m4-synthetic-roms
+          path: input
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libsdl2-dev
+      - name: Build pinned GB Recompiled
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/arcanite24/gb-recompiled.git "$RUNNER_TEMP/gb-recompiled"
+          git -C "$RUNNER_TEMP/gb-recompiled" checkout --quiet "$GBRECOMP_SHA"
+          cmake -G Ninja -S "$RUNNER_TEMP/gb-recompiled" -B "$RUNNER_TEMP/gb-recompiled/build" -DCMAKE_BUILD_TYPE=Release
+          ninja -C "$RUNNER_TEMP/gb-recompiled/build" gbrecomp
+      - name: Generate and build native project
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gb-recompiled/build/bin/gbrecomp" input/synthetic-small.gbc -o "$RUNNER_TEMP/generated"
+          test -f "$RUNNER_TEMP/generated/CMakeLists.txt"
+          cmake -G Ninja -S "$RUNNER_TEMP/generated" -B "$RUNNER_TEMP/generated/build" -DCMAKE_BUILD_TYPE=Release
+          ninja -C "$RUNNER_TEMP/generated/build"
+          EXE="$(find "$RUNNER_TEMP/generated/build" -maxdepth 2 -type f -perm -111 | head -n 1)"
+          test -n "$EXE"
+          echo "Generated executable: $EXE"
+          timeout 20 "$EXE" --headless --limit 100000 || code=$?
+          code="${code:-0}"
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
+            exit "$code"
+          fi
+      - name: Generate Android project
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gb-recompiled/build/bin/gbrecomp" input/synthetic-small.gbc             -o "$RUNNER_TEMP/generated-android"             --android             --android-package io.mhglobal.smbdxlab             --android-app-name "SMB DX Lab"
+          test -d "$RUNNER_TEMP/generated-android/android"
+          find "$RUNNER_TEMP/generated-android/android" -maxdepth 4 -type f | sort | head -n 40

@@ -1,0 +1,30 @@
+{
+  "schema": "smbdx-eur-vc-upload-verification/v1",
+  "file_name": "0022 - Super Mario Bros. Deluxe (Europe) (GBC) (Virtual Console).cia",
+  "file_size": 5351744,
+  "sha256": "e9e44127330b2ab5badfcee0c77fec721d3c8601cf170596a8eed0c5154f396c",
+  "title_id": "00040000000ffb00",
+  "title_version": 0,
+  "content_count": 2,
+  "contents": [
+    {
+      "index": 0,
+      "content_id": "00000000",
+      "size": 3948544,
+      "sha256": "cf233420f81c1ea08d26e9463e084b98033b595433fb7219c772a2d4d5a833be",
+      "product_code": "CTR-N-QA5P",
+      "program_id": "00040000000ffb00",
+      "ncch_no_crypto": false
+    },
+    {
+      "index": 1,
+      "content_id": "00000001",
+      "size": 1388544,
+      "sha256": "a54e4faa2dc3e7465a793ec799e7d0835f9bcfdf13f5ced42a768eff86a5d959",
+      "product_code": "CTR-P-CTAP",
+      "program_id": "00040000000ffb00",
+      "ncch_no_crypto": false
+    }
+  ],
+  "note": "Metadata-only verification from the user-supplied CIA. No proprietary payload is committed."
+}
