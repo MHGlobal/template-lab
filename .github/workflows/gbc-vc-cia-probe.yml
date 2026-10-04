@@ -1,0 +1,83 @@
+name: GBC VC Target — CIA Structural Probe
+
+on:
+  push:
+    branches:
+      - lab/smbdx-vc-target
+    paths:
+      - ".github/workflows/gbc-vc-cia-probe.yml"
+      - "labs/3ds-decomp/tools/cia_probe.py"
+      - "labs/3ds-decomp/targets/smbdx-eur-vc/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic:
+    name: Validate CIA parser without proprietary input
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build a tiny structural CIA fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fixture"
+          python3 - "$RUNNER_TEMP/fixture/test.cia" <<'PY'
+          import struct, sys
+          from pathlib import Path
+
+          def a64(x):
+              return (x + 0x3f) & ~0x3f
+
+          header_size = 0x2020
+          cert_size = 0
+          ticket_size = 0
+          sig_size = 0x140
+          tmd_size = sig_size + 0x9c4 + 0x30
+          content_size = 0x400
+          content_off = a64(a64(a64(header_size + cert_size) + ticket_size) + tmd_size)
+          total = content_off + content_size
+          data = bytearray(total)
+
+          struct.pack_into("<IHHIIIIQ", data, 0,
+                           header_size, 0, 0, cert_size, ticket_size,
+                           tmd_size, 0, content_size)
+
+          tmd_off = a64(header_size)
+          struct.pack_into(">I", data, tmd_off, 0x00010004)
+          body = tmd_off + sig_size
+          struct.pack_into(">Q", data, body + 0x4c, 0x0004000000000000)
+          struct.pack_into(">H", data, body + 0x9c, 0)
+          struct.pack_into(">H", data, body + 0x9e, 1)
+          struct.pack_into(">H", data, body + 0xa0, 0)
+
+          rec = body + 0x9c4
+          struct.pack_into(">IHHQ", data, rec, 0, 0, 0, content_size)
+
+          data[content_off + 0x100:content_off + 0x104] = b"NCCH"
+          struct.pack_into("<Q", data, content_off + 0x118, 0x0004000000000000)
+          data[content_off + 0x150:content_off + 0x160] = b"CTR-N-TEST\0\0\0\0\0\0"
+          data[content_off + 0x188:content_off + 0x190] = bytes.fromhex("0000000001030004")
+          struct.pack_into("<I", data, content_off + 0x180, 0x400)
+
+          Path(sys.argv[1]).write_bytes(data)
+          PY
+
+      - name: Probe fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 labs/3ds-decomp/tools/cia_probe.py             "$RUNNER_TEMP/fixture/test.cia"             --output "$RUNNER_TEMP/fixture/probe.json"
+
+          python3 - "$RUNNER_TEMP/fixture/probe.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          assert data["title"]["content_count"] == 1
+          assert data["contents"][0]["ncch_magic"] == "NCCH"
+          assert data["contents"][0]["ncch"]["no_crypto"] is True
+          print("CIA structural probe synthetic gate: PASS")
+          PY
