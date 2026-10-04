@@ -113,14 +113,40 @@ jobs:
           du -sh bundle/* bundle/android-sdk/* bundle/gradle/* || true
           tar -C bundle -I 'zstd -10 -T0' -cf android-offline-toolchain.tar.zst .
           sha256sum android-offline-toolchain.tar.zst > SHA256SUMS.txt
-          ls -lh android-offline-toolchain.tar.zst
+          mkdir -p parts
+          split -b 450M -d -a 2 android-offline-toolchain.tar.zst parts/android-offline-toolchain.part.
+          sha256sum parts/* > PARTS-SHA256SUMS.txt
+          ls -lh android-offline-toolchain.tar.zst parts/*
 
       - uses: actions/upload-artifact@v4
         with:
-          name: android-offline-toolchain
-          path: |
-            android-offline-toolchain.tar.zst
-            SHA256SUMS.txt
+          name: android-offline-toolchain-part-00
+          path: parts/android-offline-toolchain.part.00
           retention-days: 3
           compression-level: 0
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-offline-toolchain-part-01
+          path: parts/android-offline-toolchain.part.01
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-offline-toolchain-part-02
+          path: parts/android-offline-toolchain.part.02
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-offline-toolchain-manifest
+          path: |
+            SHA256SUMS.txt
+            PARTS-SHA256SUMS.txt
+          retention-days: 3
           if-no-files-found: error
