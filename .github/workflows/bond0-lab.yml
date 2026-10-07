@@ -1,0 +1,130 @@
+name: Bond0 Lab — Windows, Server, Web
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - lab/bond0-control-center
+    paths:
+      - "bond0/**"
+      - ".github/workflows/bond0-lab.yml"
+  pull_request:
+    branches:
+      - editor
+    paths:
+      - "bond0/**"
+      - ".github/workflows/bond0-lab.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bond0-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-check:
+    name: Server API / Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Syntax and read-only API unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile bond0/server/manager.py
+          python -m unittest discover -s bond0/server -p "test_*.py" -v
+
+  web-check:
+    name: Netlify static web / tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Frontend validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check bond0/web/app.js
+          node --test bond0/web/ui.test.mjs
+          grep -q 'name="viewport"' bond0/web/index.html
+      - name: Stage Netlify preview package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/bond0-web
+          cp bond0/web/index.html bond0/web/app.js bond0/web/style.css dist/bond0-web/
+          tar -czf dist/Bond0-Web-Netlify-Preview.tar.gz -C dist/bond0-web .
+          (cd dist && sha256sum Bond0-Web-Netlify-Preview.tar.gz > Bond0-Web-Netlify-Preview.tar.gz.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bond0-Netlify-Preview
+          path: |
+            dist/Bond0-Web-Netlify-Preview.tar.gz
+            dist/Bond0-Web-Netlify-Preview.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  desktop-build:
+    name: Windows desktop / .NET 8 win-x64
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore bond0/desktop/Bond0.Desktop.csproj -r win-x64
+      - name: Compile with warnings
+        shell: pwsh
+        run: |
+          dotnet build bond0/desktop/Bond0.Desktop.csproj -c Release -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { throw "Desktop compilation failed" }
+      - name: Publish standalone Windows executable
+        shell: pwsh
+        run: |
+          dotnet publish bond0/desktop/Bond0.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o dist/desktop
+          if ($LASTEXITCODE -ne 0) { throw "Publish failed" }
+          if (-not (Test-Path dist/desktop/Bond0-ControlCenter.exe)) { throw "Missing executable" }
+          Get-FileHash dist/desktop/Bond0-ControlCenter.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower()) *Bond0-ControlCenter.exe" } | Set-Content -Encoding ascii dist/desktop/Bond0-ControlCenter.exe.sha256
+      - name: Include deployment guidance
+        shell: pwsh
+        run: |
+          Copy-Item bond0/desktop/README.md dist/desktop/README.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bond0-ControlCenter-Windows-x64-PREVIEW
+          path: dist/desktop/*
+          if-no-files-found: error
+          retention-days: 30
+
+  gate:
+    name: Bond0 lab quality gate
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [server-check, web-check, desktop-build]
+    timeout-minutes: 5
+    steps:
+      - name: Enforce all required gates
+        shell: bash
+        env:
+          SERVER: ${{ needs.server-check.result }}
+          WEB: ${{ needs.web-check.result }}
+          DESKTOP: ${{ needs.desktop-build.result }}
+        run: |
+          set -euo pipefail
+          echo "Server: $SERVER"
+          echo "Web: $WEB"
+          echo "Desktop: $DESKTOP"
+          test "$SERVER" = success
+          test "$WEB" = success
+          test "$DESKTOP" = success
