@@ -21,7 +21,7 @@ concurrency:
 
 env:
   # Audit the current RS Music default branch unless a specific ref is supplied.
-  TARGET_REF: ${{ inputs.target_ref || 'main' }}
+  TARGET_REF: ${{ inputs.target_ref || '293a6625dfd05c749f1d23fa166149ec7584a33e' }}
 
 jobs:
   audit:
