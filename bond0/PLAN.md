@@ -57,6 +57,52 @@ Partilhar WANs individuais é diferente de partilhar a interface Bond0. Suportar
 - **Protecção anti-loop**: rotas explícitas por WAN para o endereço público da VPS devem atravessar exclusivamente essas WANs; nunca encaminhar túneis através do próprio Bond0. Se o túnel cair, desactivar a partilha sem danificar as placas.
 Critério de aceite: pelo menos um dispositivo recebe DHCP, DNS, navega através da saída pública VPS, sobrevive à perda de um WAN e regressa ao estado anterior após desligar a partilha. Só automatizar o hotspot depois destes gates.
 
+### 6.1 Requisitos obrigatórios do aplicativo DESKTOP (não opcionais)
+
+O desktop Windows é o **centro operacional completo** do Bond0. Todas as funções abaixo devem ter interface própria e estado/resultado verificável. A interface web é complementar; o desktop tem de funcionar sem Netlify e com a API remota indisponível.
+
+| Módulo desktop | Funções obrigatórias | Critério de aceite |
+|---|---|---|
+| Painel | Estado global, WANs disponíveis/ligadas, IP Bond0, estado da VPS, RX/TX em tempo real, velocidade útil, uptime, consumo e alertas | Dados reais, sem métricas simuladas; modo offline visível |
+| Redes | Descobrir/adicionar/remover Wi-Fi internos/USB, Ethernet, tethering (N adaptadores); ligar/desligar **logicamente** caminhos, nomes/GUID, prioridade, pesos, limites de dados e estado individual | 1, 2 e 3+ WANs simultâneas sem incluir Wintun/ICS como uplink |
+| Modos de ligação | STRIPE para agregação, PREFERRED/failover, REDUNDANT sob escolha explícita; reconexão automática, perfis guardados | Mudanças seguras, sem desligar placas físicas |
+| **Teste de velocidade completo** | Download/upload, latência, jitter, perda, ping, medição por WAN A/B/C/N e simultânea A+B/A+B+C; gráfico temporal, histórico, exportação, tamanho/duração/consumo configurável, limite padrão pequeno | Comparar amostras repetidas e correlacionar contadores/pcap da VPS; reportar ganho **medido**, sem confundir distribuição 50/50 com ganho |
+| **Hotspot virtual da Internet COMBINADA** | Criar/configurar hotspot com nome (SSID), palavra-passe WPA2/WPA3 quando suportado, banda se disponível, ligar/desligar, mostrar clientes e consumo; origem de saída deve ser o Bond0 agregado e não qualquer WAN isolada | Telefone ligado ao hotspot acede à Internet, mostra IP público da VPS, DNS funciona, não há fuga pela WAN direta e velocidade/consumo são monitorizados |
+| Partilha por cabo | Partilhar o Bond0 para Ethernet/LAN separada; escolher porta/segmento, DHCP/DNS/NAT ou ICS/WinNAT adequados | Segundo dispositivo navega com IP público de saída do túnel, mantendo acesso a redes locais |
+| Proteção de rotas | Fixar túneis UDP da VPS às interfaces físicas antes de redirecionar clientes; prevenção de loops, métricas, fail-safe, backups e restauração do estado Windows | Perda de uma WAN não provoca loop; perda total encerra/recupera partilha de forma previsível; restaura rotas, ICS/NAT/DNS |
+| Gestão da VPS | Pareamento seguro, ping/health, estado remoto, capacidade do servidor, logs redigidos, atualizar perfil autorizado, versão e histórico | Modo só leitura seguro até existir HTTPS+OIDC/RBAC/auditoria; nunca expor comandos shell arbitrários |
+| Experiência do utilizador | Botões claros Ligar/Desligar, arranque automático opcional, tray, notificações, idioma português, assistente inicial, atualização/rollback e exportar diagnósticos | Uso diário sem copiar/colar comandos, sem Rust/Visual Studio no PC |
+| Segurança e privacidade | Secrets com DPAPI/ACL, credenciais separadas da web, nenhuma IA, logs sem chaves, permissões mínimas | Nenhum TOML com chave duplicada em perfis temporários na release; build/artefacts não incluem segredos |
+
+**A partilha é de A+B (ou A+B+C+N) já agregadas, através do adaptador Bond0**. Partilhar só o acesso da Internet A ou só da B NÃO satisfaz o requisito. Na POC, o botão abre as definições do Windows; isso **não é uma implementação do hotspot virtual combinado** e deve continuar marcado *pendente* até cumprir os testes.
+
+### 6.2 Engenharia específica do hotspot virtual
+1. Detectar suporte real de hotspot no equipamento (incluindo limitações de Wi-Fi Direct/Hosted Network, banda e nº de rádios). Se o mesmo rádio não puder ser WAN e AP ao mesmo tempo, exigir rádio USB/segunda interface ou oferecer partilha Ethernet; nunca prometer suporte universal.
+2. Preferir interfaces Windows suportadas (Mobile Hotspot/ICS e APIs oficiais); avaliar WinNAT/WFP ou serviço gateway próprio só quando ICS não conseguir selecionar Bond0 como origem. Não criar bridge de nível 2 como substituto silencioso de NAT de nível 3.
+3. Antes de ativar: capturar snapshot de interfaces/rotas/ICS/firewall/NAT, aplicar pinning de cada túnel ao uplink físico e guardar rollback. Configurar a rota de saída pelo túnel **somente para o tráfego partilhado**, sem romper o acesso normal do PC.
+4. Configurar o segmento AP com subnet não conflituante; DHCP, DNS, NAT, firewall e isolamento de clientes conforme preferência. Clientes devem aceder à Internet só via TUN agregado.
+5. Verificar automaticamente a partir de cliente real: DHCP, DNS, HTTP(S), endereço público VPS, failover WAN, recuperação pós perda total, taxa de transferência por cliente, limites de consumo e desconexão limpa.
+6. Em falha de gateway, terminar partilha ou reverter sem modificar adaptadores físicos e com restauração imediata. Fornecer botão **Restaurar rede** com trilho de auditoria local.
+7. A dashboard Netlify apresenta o estado do hotspot apenas após autenticação; operações remotas de ativação/desativação requerem autorização forte, confirmação e execução no serviço Windows local (não na VPS).
+
+### 6.3 Painéis e fluxo de utilizador desktop
+- **Início:** Ligar Bond0, modo, velocidade total real, saúde de cada WAN e VPS.
+- **Minhas redes:** adicionar/adaptar/remover redes físicas ilimitadas, pesos, prioridades, custo e status.
+- **Velocidade:** selector A/B/A+B/N, ping/jitter/loss, upload/download, gráfico, histórico e relatórios.
+- **Hotspot virtual:** activar partilha **da ligação combinada**, SSID/senha/banda, clientes, consumo e restauração.
+- **Partilha LAN:** escolher adaptador Ethernet de saída e ver estado de DHCP/NAT.
+- **Servidor VPS:** emparelhar e diagnosticar segurança, versão, carga e estado.
+- **Definições:** auto-start, actualizações, DNS, métricas, políticas e backups.
+- **Diagnóstico:** logs, rotas TUN, sockets por WAN, testes dos caminhos, reparar/reverter, exportar ZIP depurado.
+
+### 6.4 Gates de aceite inegociáveis
+- **GATE-DESKTOP:** nenhum passo de uso diário exige executar PowerShell, Rust, compilar ou editar TOML; a GUI controla o serviço Windows com permissões correctas.
+- **GATE-SPEED:** medir com três repetições em A, B, A+B, e N se aplicável; velocidade útil, overhead UDP e uso efectivo de ambas as WANs.
+- **GATE-HOTSPOT:** pelo menos 1 telemóvel/laptop recebe IP e DNS, abre HTTPS, identifica o IP externo Oracle, mede tráfego via duas WANs e mantém/recupera ligação se uma cair.
+- **GATE-ROUTE:** endpoint público Oracle continua acessível pelas WANs físicas mesmo com o hotspot e tráfego default partilhado; sem routing loop.
+- **GATE-RECOVERY:** desativação e falha repetidas deixam o Windows com o mesmo estado anterior de rotas, adapters, ICS/NAT/DNS/firewall.
+- **GATE-PRODUCTION:** chaves não aparecem em configs temporárias, CI, logs, browser, URL ou artefactos. Teste Windows real é obrigatório; compilação CI isolada não basta.
+
 ## 7. Control-plane VPS / web
 MVP REST somente leitura:
 - `GET /api/v1/health`: estado do manager e versão.
