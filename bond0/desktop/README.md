@@ -8,13 +8,26 @@ C#/.NET 8 Windows Forms, compilado no GitHub Actions em `windows-latest`, modo `
 - Direitos de administrador ao executar a aplicação.
 - Os caminhos existentes para o motor Rust e a configuração não são incluídos no artifact. **Nenhuma chave de túnel deve ser enviada ao GitHub.**
 
-## Funções já presentes na POC
-- Iniciar/parar somente o motor lançado pela interface (não desativa adaptadores físicos).
-- Modos A, B, A+B e perfil Personalizado com múltiplas interfaces reais enumeradas.
-- Detectar endereço virtual `Bond0` e atribuir `198.18.0.2/24` se não estiver correto.
-- Ping privado, health HTTP do túnel, download de 4 MiB, sockets do processo e logs.
-- Separador Partilhar Internet: assistente para abrir definições do Mobile Hotspot; **não ativa ICS/NAT automaticamente**.
-- Sem IA.
+## Funções implementadas na POC atual (necessitam teste em Windows real)
+
+- Arrancar/parar o motor Bond0 existente, sem desligar os adaptadores físicos.
+- Seleção de perfis A, B, A+B e Personalizado com 1..N interfaces físicas; o motor recebe a lista de interfaces ao iniciar.
+- Configuração do IP virtual Bond0 `198.18.0.2/24` após deteção do adaptador.
+- **Laboratório de velocidade:** download/upload HTTP com 1, 4 ou 8 MiB por direção; 6 pings; latência, jitter (variação média absoluta de RTT), perda percentual, histórico CSV validado e comparação preliminar A/B/A+B.
+- **Assistente de hotspot virtual:** pré-verificação do adaptador Bond0, rádios Wi-Fi, rotas IPv4, compatibilidade reportada pelo `netsh`, exportação de diagnóstico e atalho para configurações de Mobile Hotspot. **Não ativa o hotspot combinado automaticamente**, ainda em desenvolvimento.
+- Separador de diagnóstico: sockets UDP e registos depurados.
+- Configuração temporária de perfil apagada após arranque bem-sucedido/erro de inicialização. Persiste risco residual se aplicação falhar abruptamente; solução de produção exige ACL/DPAPI e canal seguro.
+- Executável Windows `win-x64` self-contained por GitHub Actions; nenhuma instalação de Rust necessária para o utilizador.
+
+### Como testar
+
+1. **Antes da POC:** fazer cópia de `C:\Bond0\bonding-client.exe` e `bonding-client.toml`.
+2. Garantir que o motor Rust corrigido já está presente e funcionando (`allowed_interfaces` e TUN configurado).
+3. Fechar a instância CLI existente antes de abrir a interface gráfica.
+4. Abrir o executável do artefacto de CI da branch em Windows 11, confirmar permissões de administrador.
+5. Selecionar A no painel, ligar o Bond0, abrir laboratório e medir; repetir B e A+B após desligar/ligar pelo próprio desktop. **A mudança automática e sequencial de perfis continua pendente.**
+6. Abrir pré-verificação hotspot; conferir relatório. Não ativar ICS/NAT por script nesta revisão.
+7. Enviar apenas números e logs depurados; não enviar TOML, chaves, backups nem credenciais.
 
 ## Funcionalidades OBRIGATÓRIAS para release (a POC ainda não as concluiu)
 
