@@ -9,5 +9,6 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="../desktop/BenchmarkCore.cs" Link="BenchmarkCore.cs" />
+    <Compile Include="../desktop/NetworkRules.cs" Link="NetworkRules.cs" />
   </ItemGroup>
 </Project>
