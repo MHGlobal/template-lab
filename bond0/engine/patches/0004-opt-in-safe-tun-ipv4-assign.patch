@@ -1,0 +1,117 @@
+diff --git a/bonding-core/src/control.rs b/bonding-core/src/control.rs
+--- a/bonding-core/src/control.rs
++++ b/bonding-core/src/control.rs
+@@ -41,9 +41,14 @@
+     /// Safe default: false. When enabled, platform-specific commands may be
+     /// executed (Windows: netsh/route; Linux: ip).
+     #[serde(default)]
+-    pub auto_config_tun: bool,
+-
+-    /// IPv4 address to assign to the local TUN adapter.
++    pub auto_config_tun: bool,
++
++    /// Opt-in: apply ONLY the server ASSIGN IPv4/prefix to the virtual adapter.
++    /// Independent of auto_config_tun; never changes default routes or WANs.
++    #[serde(default)]
++    pub auto_assign_tun_ipv4: bool,
++
++    /// IPv4 address to assign to the local TUN adapter.
+     ///
+     /// Only used when `enable_tun` and `auto_config_tun` are true.
+     #[serde(default)]
+@@ -80,12 +85,13 @@
+             bonding_mode: "stripe".to_string(),
+             adapter_name: "Bonding".to_string(),
+             mtu: 1420,
+-            enable_tun: false,
+-            auto_config_tun: false,
+-            tun_ipv4_addr: None,
+-            tun_ipv4_prefix: default_tun_ipv4_prefix(),
+-            tun_routes: Vec::new(),
+-            enable_encryption: true,
++            enable_tun: false,
++            auto_config_tun: false,
++            auto_assign_tun_ipv4: false,
++            tun_ipv4_addr: None,
++            tun_ipv4_prefix: default_tun_ipv4_prefix(),
++            tun_routes: Vec::new(),
++            enable_encryption: true,
+             encryption_key_b64: None,
+             health_check_interval: Duration::from_secs(5),
+         }
+@@ -483,7 +489,8 @@
+         let config = BondingConfig::default();
+         assert_eq!(config.server_port, 5000);
+         assert_eq!(config.bonding_mode, "stripe");
+-        assert!(config.enable_encryption);
++        assert!(config.enable_encryption);
++        assert!(!config.auto_assign_tun_ipv4);
+     }
+ 
+     #[test]
+diff --git a/bonding-client/src/runtime.rs b/bonding-client/src/runtime.rs
+--- a/bonding-client/src/runtime.rs
++++ b/bonding-client/src/runtime.rs
+@@ -614,8 +614,23 @@
+                                 "Server assigned tunnel IPv4: {ipv4}/{prefix}"
+                             ));
+ 
+-                            if cfg.auto_config_tun
+-                                && (!tun_configured
++                            // Safe opt-in: configure only the local TUN IPv4,
++                            // leaving all physical interfaces and routes intact.
++                            if cfg.auto_assign_tun_ipv4
++                                && !cfg.auto_config_tun
++                                && !tun_configured
++                            {
++                                crate::windows_tun_config::assign_windows_tun_ipv4_only(
++                                    &tun_name, ipv4, prefix
++                                )?;
++                                tun_configured = true;
++                                (log.as_ref())(format!(
++                                    "Bond0 IPv4 configured: {ipv4}/{prefix} (no routes changed)"
++                                ));
++                            }
++
++                            if cfg.auto_config_tun
++                                && (!tun_configured
+                                     || cfg.tun_ipv4_addr != Some(ipv4)
+                                     || cfg.tun_ipv4_prefix != prefix)
+                             {
+diff --git a/bonding-client/src/windows_tun_config.rs b/bonding-client/src/windows_tun_config.rs
+--- a/bonding-client/src/windows_tun_config.rs
++++ b/bonding-client/src/windows_tun_config.rs
+@@ -99,7 +99,32 @@
+     bail!("could not find interface index for '{interface_name}' in netsh output")
+ }
+ 
+-pub fn configure_windows_tun(
++/// Set only the IPv4 address and prefix on a specifically selected virtual
++/// adapter. No route, gateway, DNS, firewall, MTU or WAN changes.
++pub fn assign_windows_tun_ipv4_only(
++    interface_name: &str,
++    ipv4: Ipv4Addr,
++    prefix: u8,
++) -> Result<()> {
++    let mask = prefix_to_mask(prefix)?;
++    if ipv4.is_unspecified() || ipv4.is_multicast() || ipv4.is_loopback() || prefix == 0 {
++        bail!("invalid tunnel ASSIGN address/prefix: {ipv4}/{prefix}");
++    }
++    netsh(&[
++        "interface",
++        "ipv4",
++        "set",
++        "address",
++        &format!("name={interface_name}"),
++        "static",
++        &ipv4.to_string(),
++        &mask.to_string(),
++    ])
++    .with_context(|| format!("could not assign {ipv4}/{prefix} on virtual adapter '{interface_name}'"))?;
++    Ok(())
++}
++
++pub fn configure_windows_tun(
+     interface_name: &str,
+     mtu: usize,
+     ipv4: Ipv4Addr,
