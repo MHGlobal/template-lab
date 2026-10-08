@@ -25,6 +25,7 @@ concurrency:
 env:
   BOND0_UPSTREAM_SHA: d2587a46e097c4408144d6dc48d7cd096f83d00a
   PATCH_FILE: bond0/engine/patches/0001-windows-client-reorder-timer.patch
+  TUI_PATCH_FILE: bond0/engine/patches/0002-windows-tui-lifecycle-fix.patch
 
 jobs:
   core-tests:
@@ -48,6 +49,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$BOND0_UPSTREAM_SHA"
           git apply --check "../$PATCH_FILE"
           git apply "../$PATCH_FILE"
+          git apply --check "../$TUI_PATCH_FILE"
+          git apply "../$TUI_PATCH_FILE"
           git diff --check
       - name: Rust toolchain
         shell: bash
@@ -92,11 +95,14 @@ jobs:
             # upstream Rust sources explicitly use LF. Normalize BOTH before git apply.
             $patchPath = (Resolve-Path "../$env:PATCH_FILE").Path
             $files = @(
+              "bonding-client/src/main.rs",
+              "bonding-client/src/ui.rs",
               "bonding-client/src/runtime.rs",
               "bonding-client/src/windows_tun_config.rs",
               "bonding-core/src/control.rs",
               "bonding-core/src/reorder.rs",
-              $patchPath
+              $patchPath,
+              (Resolve-Path "../$env:TUI_PATCH_FILE").Path
             )
             foreach ($path in $files) {
               $raw = [System.IO.File]::ReadAllText((Resolve-Path $path).Path)
@@ -107,6 +113,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Patch check failed" }
             git apply "../$env:PATCH_FILE"
             if ($LASTEXITCODE -ne 0) { throw "Patch apply failed" }
+            git apply --check "../$env:TUI_PATCH_FILE"
+            if ($LASTEXITCODE -ne 0) { throw "TUI patch check failed" }
+            git apply "../$env:TUI_PATCH_FILE"
+            if ($LASTEXITCODE -ne 0) { throw "TUI patch apply failed" }
             git diff --check
             if ($LASTEXITCODE -ne 0) { throw "Patch whitespace failure" }
           } finally { Pop-Location }
@@ -133,7 +143,7 @@ jobs:
           Write-Output "Bond0 Rust Windows binary SHA256=$sha"
       - uses: actions/upload-artifact@v4
         with:
-          name: Bond0-Rust-Client-ReorderFix-Windows-x64-QA
+          name: Bond0-Rust-Client-ReorderFix-TuiFix-Windows-x64-QA
           path: dist/*
           retention-days: 30
           if-no-files-found: error
