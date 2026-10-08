@@ -187,7 +187,7 @@ namespace Bond0Control
       btnStop = Button("Desligar", Color.FromArgb(142, 70, 84), (s,e)=>StopClient(), 140);
       btnPing = Button("Testar ping", panel2, (s,e)=>PingTest(), 140);
       btnCheck = Button("Verificar VPS", panel2, (s,e)=>HealthTest(), 153);
-      btnSpeed = Button("Medir velocidade (4 MiB)", accent, (s,e)=>SpeedTest(), 230);
+      btnSpeed = Button("Laboratório de velocidade", accent, (s,e)=>OpenSpeedLab(), 230);
       buttons.Controls.Add(btnStart); buttons.Controls.Add(btnStop); buttons.Controls.Add(btnPing);
       buttons.Controls.Add(btnCheck); buttons.Controls.Add(btnSpeed);
       content.Controls.Add(buttons);
@@ -239,7 +239,7 @@ namespace Bond0Control
       actions.Controls.Add(LabelAt("1. Confirma a ligação Bond0.\n2. Abre o hotspot do Windows para selecionar a origem de Internet.\n3. Não ativa partilha automática sem garantir a prevenção de ciclos de routing.", 9, muted, false, 0, 34, 790));
       Button open = Button("Abrir Hotspot Windows", accent, (s,e)=>OpenHotspot(), 220);
       open.Location = new Point(0, 120); actions.Controls.Add(open);
-      Button verify = Button("Diagnóstico Bond0", panel2, (s,e)=>HealthTest(), 190);
+      Button verify = Button("Pré-verificar hotspot", panel2, (s,e)=>OpenHotspotPreflight(), 190);
       verify.Location = new Point(238, 120); actions.Controls.Add(verify);
       f.Controls.Add(actions);
 
@@ -595,6 +595,23 @@ namespace Bond0Control
       }
       catch (Exception ex) { Log("Falha no teste de velocidade: " + ex.Message); }
       finally { SetBusy(false); RefreshLocalStatus(); }
+    }
+
+    void OpenSpeedLab()
+    {
+      using (var form = new SpeedLabForm(
+        () => mode,
+        () => client != null && !client.HasExited,
+        message => Log(message)))
+        form.ShowDialog(this);
+    }
+
+    void OpenHotspotPreflight()
+    {
+      using (var form = new HotspotPreflightForm(
+        () => client != null && !client.HasExited,
+        message => Log(message)))
+        form.ShowDialog(this);
     }
 
     void OpenHotspot()
