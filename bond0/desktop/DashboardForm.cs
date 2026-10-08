@@ -49,6 +49,7 @@ namespace Bond0Control
         private Process engine;
         private string currentPage = "Início";
         private string lastFailure = "Motor parado. Seleciona as redes e clica em Ligar.";
+        private bool lastStatusSuccess;
         private bool isBusy, allowExit, trayHintShown;
         private string activeConfigPath;
         private bool hasTunnelStatus;
@@ -457,9 +458,12 @@ namespace Bond0Control
                 i=>i.Name.Equals(alias, StringComparison.OrdinalIgnoreCase));
             if (item == null) return "Não encontrado.\nReconfirma o nome em Minhas redes.";
             var ip = InterfaceIPv4(alias);
+            if (alias.Equals("Bond0", StringComparison.OrdinalIgnoreCase))
+                return "IP do túnel: " + ip + "\nEstado: " + item.OperationalStatus +
+                       "\nFunção: interface virtual de agregação\nNão é uma WAN física.";
             return "Endereço: " + ip + "\nEstado: " + item.OperationalStatus + "\n" +
                 (NetworkRules.EligibleWan(item.Name,item.Description,item.NetworkInterfaceType,ip) ?
-                    "IP válido para WAN" : "Não é uma WAN utilizável");
+                    "WAN disponível para o túnel" : "WAN sem conectividade IPv4 válida");
         }
 
         private bool Running()
@@ -478,11 +482,14 @@ namespace Bond0Control
         {
             if (IsDisposed) return;
             var running = Running();
-            topStatus.Text = running ? (hasTunnelStatus ? "● LIGADO" : "● A INICIAR") : "● DESLIGADO";
+            topStatus.Text = running ? (hasTunnelStatus ? "● TÚNEL ATIVO" : "● MOTOR ATIVO") : "● DESLIGADO";
             topStatus.ForeColor = running ? Teal : Amber;
             tray.Text = running ? "Bond0 — motor em execução" : "Bond0 — desligado";
             if (information != null && !information.IsDisposed)
+            {
                 information.Text = lastFailure;
+                information.ForeColor = lastStatusSuccess ? Teal : Amber;
+            }
         }
 
         private static string Redact(string message)
@@ -515,11 +522,20 @@ namespace Bond0Control
                 diagnostics.Text = String.Join(Environment.NewLine, logs.TakeLast(120));
         }
 
-        private void SetFailure(string reason)
+        private void SetFailure(string reason) => SetNotice(reason, false);
+
+        private void SetSuccess(string message) => SetNotice(message, true);
+
+        private void SetNotice(string message, bool success)
         {
-            if (InvokeRequired) { BeginInvoke(new Action<string>(SetFailure), reason); return; }
-            lastFailure = reason;
-            Log(reason);
+            if (IsDisposed) return;
+            if (InvokeRequired) {
+                try { BeginInvoke(new Action<string,bool>(SetNotice), message, success); } catch { }
+                return;
+            }
+            lastFailure = message;
+            lastStatusSuccess = success;
+            Log(message);
             RefreshBanner();
         }
 
@@ -626,8 +642,8 @@ namespace Bond0Control
                         if(code!=0) throw new InvalidOperationException("Não consegui atribuir 198.18.0.2/24 ao Bond0 (netsh: "+code+"). Executa a aplicação como administrador.");
                     }
                     hasTunnelStatus=true;
-                    SetFailure("Motor iniciado. Bond0: " + InterfaceIPv4("Bond0") +
-                        ". Usa Verificar túnel para validar a ligação até à VPS.");
+                    SetSuccess("Motor iniciado. Bond0: " + InterfaceIPv4("Bond0") +
+                        ". O IP está configurado; confirma a conectividade com a VPS em Servidor VPS.");
                     break;
                 }
                 if (!Running()) SetFailure("O motor parou durante o arranque. Abre Diagnóstico para ver o erro do Wintun ou das interfaces.");
@@ -696,7 +712,7 @@ namespace Bond0Control
                 using var client=new HttpClient(handler){Timeout=TimeSpan.FromSeconds(7)};
                 var status=await client.GetAsync("http://198.18.0.1:8765/health");
                 status.EnsureSuccessStatusCode();
-                SetFailure("Túnel HTTP até à VPS: ONLINE. API administrativa remota ainda NÃO estabelecida.");
+                SetSuccess("Túnel HTTP até à VPS: ONLINE. A API administrativa remota ainda não está estabelecida.");
                 hasTunnelStatus=true;
             }
             catch(Exception ex) { SetFailure("Não obtive resposta do servidor de teste: "+ex.Message); }
