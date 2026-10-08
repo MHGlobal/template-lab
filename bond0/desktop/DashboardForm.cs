@@ -603,7 +603,10 @@ namespace Bond0Control
                 engine.Exited+=(s,e)=>{
                     try {
                         int code=engine.ExitCode;
-                        SetFailure("O motor Bond0 terminou (código " + code + "). Abre Diagnóstico para ver a causa.");
+                        if (lastFailure.StartsWith("Erro do motor:", StringComparison.OrdinalIgnoreCase))
+                            SetFailure(lastFailure + " [motor terminou: código " + code + "]");
+                        else
+                            SetFailure("O motor Bond0 terminou (código " + code + "). Abre Diagnóstico para ver a causa.");
                     } catch { }
                     hasTunnelStatus=false;
                 };
