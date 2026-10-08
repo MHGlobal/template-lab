@@ -1,0 +1,14 @@
+diff --git a/bonding-client/src/runtime.rs b/bonding-client/src/runtime.rs
+--- a/bonding-client/src/runtime.rs
++++ b/bonding-client/src/runtime.rs
+@@ -544,8 +544,9 @@
+                         }
+                     }
+ 
+-                    if last_logged_primary_path != Some(decision.primary_path) {
++                    // STRIPE rotates for each data packet; that is not a failover.
++                    if mode != BondingMode::Stripe && last_logged_primary_path != Some(decision.primary_path) {
+                         let diag = scheduler.diagnostics();
+                         let reason = diag
+                             .last_switch_reason
+                             .unwrap_or_else(|| "n/a".to_string());
