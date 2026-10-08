@@ -26,6 +26,7 @@ env:
   BOND0_UPSTREAM_SHA: d2587a46e097c4408144d6dc48d7cd096f83d00a
   PATCH_FILE: bond0/engine/patches/0001-windows-client-reorder-timer.patch
   TUI_PATCH_FILE: bond0/engine/patches/0002-windows-tui-lifecycle-fix.patch
+  STRIPE_PATCH_FILE: bond0/engine/patches/0003-stripe-diagnostic-rate-limit.patch
 
 jobs:
   core-tests:
@@ -51,6 +52,8 @@ jobs:
           git apply "../$PATCH_FILE"
           git apply --check "../$TUI_PATCH_FILE"
           git apply "../$TUI_PATCH_FILE"
+          git apply --check "../$STRIPE_PATCH_FILE"
+          git apply "../$STRIPE_PATCH_FILE"
           git diff --check
       - name: Rust toolchain
         shell: bash
@@ -102,7 +105,8 @@ jobs:
               "bonding-core/src/control.rs",
               "bonding-core/src/reorder.rs",
               $patchPath,
-              (Resolve-Path "../$env:TUI_PATCH_FILE").Path
+              (Resolve-Path "../$env:TUI_PATCH_FILE").Path,
+              (Resolve-Path "../$env:STRIPE_PATCH_FILE").Path
             )
             foreach ($path in $files) {
               $raw = [System.IO.File]::ReadAllText((Resolve-Path $path).Path)
@@ -117,6 +121,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "TUI patch check failed" }
             git apply "../$env:TUI_PATCH_FILE"
             if ($LASTEXITCODE -ne 0) { throw "TUI patch apply failed" }
+            git apply --check "../$env:STRIPE_PATCH_FILE"
+            if ($LASTEXITCODE -ne 0) { throw "STRIPE patch check failed" }
+            git apply "../$env:STRIPE_PATCH_FILE"
+            if ($LASTEXITCODE -ne 0) { throw "STRIPE patch apply failed" }
             git diff --check
             if ($LASTEXITCODE -ne 0) { throw "Patch whitespace failure" }
           } finally { Pop-Location }
@@ -143,7 +151,7 @@ jobs:
           Write-Output "Bond0 Rust Windows binary SHA256=$sha"
       - uses: actions/upload-artifact@v4
         with:
-          name: Bond0-Rust-Client-ReorderFix-TuiFix-Windows-x64-QA
+          name: Bond0-Rust-Client-ReorderFix-TuiFix-StripeLogs-Windows-x64-QA
           path: dist/*
           retention-days: 30
           if-no-files-found: error
