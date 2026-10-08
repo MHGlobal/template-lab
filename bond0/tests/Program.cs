@@ -40,6 +40,24 @@ static class Tests
             Math.Abs(parsed.DownloadMbps - 12.125) < 0.00001, "CSV roundtrip");
         Assert(!BenchmarkCore.TryParseCsvRow("\"bad,rows", out _), "reject unclosed quote");
         Assert(!BenchmarkCore.TryParseCsvRow("garbage", out _), "reject invalid CSV");
+        Assert(NetworkRules.EligibleWan("Ethernet 3", "Realtek Ethernet",
+                System.Net.NetworkInformation.NetworkInterfaceType.Ethernet, "192.168.8.100"),
+                "Ethernet WAN eligible");
+        Assert(NetworkRules.EligibleWan("Wi-Fi 2", "Realtek USB Wireless",
+                System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211, "10.248.175.104"),
+                "USB Wi-Fi eligible");
+        Assert(NetworkRules.EligibleWan("USB tether", "RNDIS",
+                System.Net.NetworkInformation.NetworkInterfaceType.Ethernet, "192.168.42.10"),
+                "RNDIS eligible");
+        Assert(!NetworkRules.EligibleWan("Bond0", "Wintun",
+                System.Net.NetworkInformation.NetworkInterfaceType.Ethernet, "198.18.0.2"),
+                "Tunnel must not be selected as WAN");
+        Assert(!NetworkRules.EligibleWan("Ligação de Área Local* 13", "Microsoft Wi-Fi Direct Virtual Adapter",
+                System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211, "192.168.137.1"),
+                "Wi-Fi Direct ICS excluded");
+        Assert(!NetworkRules.EligibleWan("Wi-Fi 3", "Wireless Adapter",
+                System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211, "169.254.1.2"),
+                "APIPA excluded");
         BenchmarkCore.ValidatePayload(1048576);
         checks++;
         bool rejected = false;
