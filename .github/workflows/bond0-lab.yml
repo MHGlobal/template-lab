@@ -94,12 +94,22 @@ jobs:
         run: |
           dotnet build bond0/desktop/Bond0.Desktop.csproj -c Release -r win-x64 --no-restore
           if ($LASTEXITCODE -ne 0) { throw "Desktop compilation failed" }
-      - name: Publish standalone Windows executable
+      - name: Validate runtime bootstrapper syntax
         shell: pwsh
         run: |
-          dotnet publish bond0/desktop/Bond0.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o dist/desktop
+          $tokens = $null
+          $errs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path bond0/desktop/Bond0-Start.ps1).Path, [ref]$tokens, [ref]$errs) | Out-Null
+          if ($errs.Count -gt 0) { throw "Bootstrapper PowerShell syntax errors: $errs" }
+      - name: Publish lightweight framework-dependent Windows executable
+        shell: pwsh
+        run: |
+          dotnet publish bond0/desktop/Bond0.Desktop.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o dist/desktop
           if ($LASTEXITCODE -ne 0) { throw "Publish failed" }
           if (-not (Test-Path dist/desktop/Bond0-ControlCenter.exe)) { throw "Missing executable" }
+          Copy-Item bond0/desktop/Bond0-Start.ps1 dist/desktop/Bond0-Start.ps1
+          Copy-Item bond0/desktop/Bond0-Start.cmd dist/desktop/Bond0-Start.cmd
           Get-FileHash dist/desktop/Bond0-ControlCenter.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower()) *Bond0-ControlCenter.exe" } | Set-Content -Encoding ascii dist/desktop/Bond0-ControlCenter.exe.sha256
       - name: Include deployment guidance
         shell: pwsh
@@ -107,7 +117,7 @@ jobs:
           Copy-Item bond0/desktop/README.md dist/desktop/README.md
       - uses: actions/upload-artifact@v4
         with:
-          name: Bond0-ControlCenter-Windows-x64-PREVIEW
+          name: Bond0-ControlCenter-Windows-x64-LIGHT-PREVIEW
           path: dist/desktop/*
           if-no-files-found: error
           retention-days: 30
