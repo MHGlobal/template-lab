@@ -119,7 +119,7 @@ namespace Bond0Control
             refresh.Tick += (s,e) => RefreshBanner();
             refresh.Start();
             Resize += (s,e) => { if(WindowState == FormWindowState.Minimized) MinimizeToTray(); };
-            FormClosing += Closing;
+            FormClosing += OnWindowClosing;
             ReadSelectedNetworks();
             RenderPage("Início");
             RefreshBanner();
@@ -198,8 +198,10 @@ namespace Bond0Control
                 WrapContents = false, AutoScroll = true,
                 BackColor = Bg, Padding = new Padding(22, 14, 18, 30)
             };
-            var heading = TextLabel(title, 21, White, true) { Width = 780, Height = 48 };
-            var subtitle = TextLabel(description, 10, Muted) { Width = 780, Height = 47 };
+            var heading = TextLabel(title, 21, White, true);
+            heading.Width=780; heading.Height=48;
+            var subtitle = TextLabel(description, 10, Muted);
+            subtitle.Width=780; subtitle.Height=47;
             list.Controls.Add(heading);
             list.Controls.Add(subtitle);
             return list;
@@ -720,7 +722,7 @@ namespace Bond0Control
             }
             allowExit=true;Close();
         }
-        private void Closing(object sender, FormClosingEventArgs e)
+        private void OnWindowClosing(object sender, FormClosingEventArgs e)
         {
             if(!allowExit && e.CloseReason==CloseReason.UserClosing) {
                 e.Cancel=true;MinimizeToTray();return;
