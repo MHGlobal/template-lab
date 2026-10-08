@@ -1,33 +1,37 @@
-# Bond0 Desktop v0.1 preview
+# Bond0 Desktop v0.2 preview
 
-C#/.NET 8 Windows Forms, compilado no GitHub Actions em `windows-latest`, modo `win-x64` self-contained.
+**Estado:** primeira implementação Windows que ainda requer testes reais no computador do utilizador.
 
-## Pré-requisitos
-- Windows 11 (prévia não testada em máquina real).
-- Motor `bonding-client.exe` e `bonding-client.toml` já existentes em `C:\Bond0`.
-- Direitos de administrador ao executar a aplicação.
-- Os caminhos existentes para o motor Rust e a configuração não são incluídos no artifact. **Nenhuma chave de túnel deve ser enviada ao GitHub.**
+## Executar a versão leve
 
-## Funções implementadas na POC atual (necessitam teste em Windows real)
+1. Em GitHub Actions, descarregar o artefacto **Bond0-ControlCenter-Windows-x64-LIGHT-PREVIEW**.
+2. Extrair o ficheiro ZIP numa pasta própria. Não colocar sobre o motor Rust existente em `C:\Bond0`.
+3. Abrir **Bond0-Start.cmd** (não executar diretamente o `.exe` na primeira abertura).
+4. O iniciador verifica a presença do **.NET Desktop Runtime 8 x64**. Se estiver ausente, pede autorização, descarrega-o a partir dos metadados oficiais Microsoft, compara o SHA-512 e verifica a assinatura Authenticode antes da instalação. O Windows pedirá UAC; nenhum instalador é executado sem autorização.
+5. A interface abre, solicita privilégios para operar o túnel e deteta automaticamente as interfaces físicas. A janela mostra os motivos de falha: interface inexistente, sem DHCP/IPv4, outro processo cliente ativo, Wintun ou erro Rust.
+6. Em **Minhas redes**, seleciona as interfaces atualmente válidas. Se aparecer um IP `169.254.x.x`, a WAN não está operacional; não force o início. Em **Diagnóstico**, vê mensagens do motor e registos depurados.
+7. **Velocidade** abre o laboratório de download/upload/latência/perda/jitter, usando o endpoint privado na VPS.
+8. Ao minimizar ou clicar X, a aplicação vai para a bandeja do Windows; o motor iniciado pela aplicação pode permanecer ativo. Para parar e sair, usa **Sair** no ícone da bandeja.
 
-- Arrancar/parar o motor Bond0 existente, sem desligar os adaptadores físicos.
-- Seleção de perfis A, B, A+B e Personalizado com 1..N interfaces físicas; o motor recebe a lista de interfaces ao iniciar.
-- Configuração do IP virtual Bond0 `198.18.0.2/24` após deteção do adaptador.
-- **Laboratório de velocidade:** download/upload HTTP com 1, 4 ou 8 MiB por direção; 6 pings; latência, jitter (variação média absoluta de RTT), perda percentual, histórico CSV validado e comparação preliminar A/B/A+B.
-- **Assistente de hotspot virtual:** pré-verificação do adaptador Bond0, rádios Wi-Fi, rotas IPv4, compatibilidade reportada pelo `netsh`, exportação de diagnóstico e atalho para configurações de Mobile Hotspot. **Não ativa o hotspot combinado automaticamente**, ainda em desenvolvimento.
-- Separador de diagnóstico: sockets UDP e registos depurados.
-- Configuração temporária de perfil apagada após arranque bem-sucedido/erro de inicialização. Persiste risco residual se aplicação falhar abruptamente; solução de produção exige ACL/DPAPI e canal seguro.
-- Executável Windows `win-x64` self-contained por GitHub Actions; nenhuma instalação de Rust necessária para o utilizador.
+O runtime não é incluído no ZIP. O arranque por `.exe` diretamente ignora a verificação feita pelo lançador; recomenda-se usar `Bond0-Start.cmd`.
 
-### Como testar
+## Comunicação com a VPS e Netlify
 
-1. **Antes da POC:** fazer cópia de `C:\Bond0\bonding-client.exe` e `bonding-client.toml`.
-2. Garantir que o motor Rust corrigido já está presente e funcionando (`allowed_interfaces` e TUN configurado).
-3. Fechar a instância CLI existente antes de abrir a interface gráfica.
-4. Abrir o executável do artefacto de CI da branch em Windows 11, confirmar permissões de administrador.
-5. Selecionar A no painel, ligar o Bond0, abrir laboratório e medir; repetir B e A+B após desligar/ligar pelo próprio desktop. **A mudança automática e sequencial de perfis continua pendente.**
-6. Abrir pré-verificação hotspot; conferir relatório. Não ativar ICS/NAT por script nesta revisão.
-7. Enviar apenas números e logs depurados; não enviar TOML, chaves, backups nem credenciais.
+- O servidor UDP do túnel é independente da interface.
+- O `bond0-manager` já foi instalado na VPS e escuta apenas em `127.0.0.1:8870`; por enquanto está em modo somente leitura.
+- A ligação administrativa desktop ↔ Manager **não está ativa**: ainda faltam HTTPS, autorização/autenticação e emparelhamento.
+- O site Netlify foi criado, mas ainda não tem deploy confirmado nem acesso autenticado à VPS.
+- Nenhum token, chave de túnel ou segredo de administrador pode ser enviado aos artefactos ou incluído no código da web.
+
+## Segurança e limites
+
+- Não desativa placas físicas, não cria NAT/ICS e não altera as rotas por defeito do Windows.
+- A aplicação cria temporariamente um perfil TOML com a chave já existente para iniciar o motor, procurando eliminá-lo imediatamente após o início. É um **risco residual da POC**; a produção exige named pipe com ACL/DPAPI.
+- Se o nome `Ethernet 3` não existir ou `Wi-Fi 2` tiver `169.254.x.x`, o início será bloqueado e será apresentada uma mensagem explicativa.
+- Hotspot combinado A+B: apenas pré-verificação; ativação automática ainda depende de hardware real e do teste seguro de ICS/NAT, DHCP, DNS e reversão.
+- Sem IA em runtime.
+
+---
 
 ## Funcionalidades OBRIGATÓRIAS para release (a POC ainda não as concluiu)
 
