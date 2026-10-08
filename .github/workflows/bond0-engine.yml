@@ -83,6 +83,11 @@ jobs:
           try {
             $sha = (git rev-parse HEAD).Trim()
             if ($sha -ne $env:BOND0_UPSTREAM_SHA) { throw "Unexpected upstream revision: $sha" }
+            # Checkout on Windows may convert LF source to CRLF; the Rust patch
+            # was generated from pinned Unix sources and requires LF.
+            git config core.autocrlf false
+            git -c core.autocrlf=false checkout-index --all --force
+            if ($LASTEXITCODE -ne 0) { throw "Failed to restore upstream LF source" }
             git apply --check "../$env:PATCH_FILE"
             if ($LASTEXITCODE -ne 0) { throw "Patch check failed" }
             git apply "../$env:PATCH_FILE"
