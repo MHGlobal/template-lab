@@ -412,8 +412,9 @@ namespace Bond0Control
         private void OpenSpeed()
         {
             using var dialog = new SpeedLabForm(
-                () => selected.Count == 1 ? selected.First() :
-                    (selected.SetEquals(new [] {"Ethernet 3", "Wi-Fi 2"}) ? "A+B" :
+                () => selected.SetEquals(new [] {"Ethernet 3", "Wi-Fi 2"}) ? "A+B" :
+                    (selected.Count==1 && selected.Contains("Ethernet 3") ? "A" :
+                     selected.Count==1 && selected.Contains("Wi-Fi 2") ? "B" :
                         String.Join(" + ", selected.OrderBy(s=>s))),
                 Running, Log);
             dialog.ShowDialog(this);
@@ -501,6 +502,15 @@ namespace Bond0Control
             var value = "[" + DateTime.Now.ToString("HH:mm:ss") + "] " + Redact(message);
             logs.Add(value);
             if (logs.Count > 300) logs.RemoveRange(0, logs.Count - 300);
+            try
+            {
+                Directory.CreateDirectory(TempRoot);
+                var logfile = Path.Combine(TempRoot, "bond0-diagnostics.log");
+                if (File.Exists(logfile) && new FileInfo(logfile).Length > 512 * 1024)
+                    File.Move(logfile, logfile + ".previous", true);
+                File.AppendAllText(logfile, value + Environment.NewLine, new UTF8Encoding(false));
+            }
+            catch { /* diagnostics still visible in app if disk unavailable */ }
             if (diagnostics != null && !diagnostics.IsDisposed)
                 diagnostics.Text = String.Join(Environment.NewLine, logs.TakeLast(120));
         }
