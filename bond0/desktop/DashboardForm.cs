@@ -53,6 +53,7 @@ namespace Bond0Control
         private bool isBusy, allowExit, trayHintShown;
         private string activeConfigPath;
         private bool hasTunnelStatus;
+        private DateTime lastVpsProbeUtc = DateTime.MinValue;
 
         public DashboardForm()
         {
@@ -482,7 +483,10 @@ namespace Bond0Control
         {
             if (IsDisposed) return;
             var running = Running();
-            topStatus.Text = running ? (hasTunnelStatus ? "● TÚNEL ATIVO" : "● MOTOR ATIVO") : "● DESLIGADO";
+            bool recentlyVerified = lastVpsProbeUtc != DateTime.MinValue &&
+                DateTime.UtcNow - lastVpsProbeUtc < TimeSpan.FromSeconds(30);
+            topStatus.Text = running ? (recentlyVerified ? "● VPS VERIFICADA" :
+                hasTunnelStatus ? "● IP CONFIGURADO" : "● MOTOR ATIVO") : "● DESLIGADO";
             topStatus.ForeColor = running ? Teal : Amber;
             tray.Text = running ? "Bond0 — motor em execução" : "Bond0 — desligado";
             if (information != null && !information.IsDisposed)
@@ -599,6 +603,7 @@ namespace Bond0Control
             if(!VerifyReady(out var error)) { SetFailure(error); return; }
             isBusy = true;
             hasTunnelStatus=false;
+            lastVpsProbeUtc = DateTime.MinValue;
             SetFailure("A iniciar o motor Rust... verifica o estado abaixo.");
             string profile = null;
             try
@@ -712,10 +717,14 @@ namespace Bond0Control
                 using var client=new HttpClient(handler){Timeout=TimeSpan.FromSeconds(7)};
                 var status=await client.GetAsync("http://198.18.0.1:8765/health");
                 status.EnsureSuccessStatusCode();
-                SetSuccess("Túnel HTTP até à VPS: ONLINE. A API administrativa remota ainda não está estabelecida.");
+                lastVpsProbeUtc = DateTime.UtcNow;
+                SetSuccess("Túnel HTTP até à VPS: ONLINE (último teste). A API administrativa remota ainda não está estabelecida.");
                 hasTunnelStatus=true;
             }
-            catch(Exception ex) { SetFailure("Não obtive resposta do servidor de teste: "+ex.Message); }
+            catch(Exception ex) {
+                lastVpsProbeUtc = DateTime.MinValue;
+                SetFailure("Não obtive resposta do servidor de teste: "+ex.Message);
+            }
         }
 
         private string SettingsPath => Path.Combine(TempRoot,"wan-list.txt");
