@@ -431,9 +431,10 @@ namespace Bond0Control
         return;
       }
       SetBusy(true);
+      string profile = null;
       try
       {
-        string profile = ProfileConfig();
+        profile = ProfileConfig();
         ProcessStartInfo info = new ProcessStartInfo(enginePath);
         info.Arguments = "--config \"" + profile + "\" run";
         info.WorkingDirectory = Path.GetDirectoryName(enginePath);
@@ -480,7 +481,18 @@ namespace Bond0Control
         Log("Erro ao ligar: " + ex.Message);
         MessageBox.Show(ex.Message, "Bond0 - Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
       }
-      finally { SetBusy(false); RefreshLocalStatus(); }
+      finally
+      {
+        // The engine loads its TOML at startup. Erase the temporary key-bearing
+        // profile as soon as startup completes; never keep it for the session.
+        if (!String.IsNullOrEmpty(profile))
+        {
+          try { File.Delete(profile); }
+          catch (Exception ex) { Log("Não foi possível apagar o perfil temporário: " + ex.Message); }
+        }
+        SetBusy(false);
+        RefreshLocalStatus();
+      }
     }
 
     int NetshSetBond0()
