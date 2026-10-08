@@ -168,9 +168,21 @@ namespace Bond0Control
         private void LoadHistory()
         {
             if (!File.Exists(historyPath)) return;
-            // History display is intentionally only for the current session;
-            // existing CSV is preserved for external auditing.
-            status.Text = "Histórico anterior disponível em " + historyPath;
+            try
+            {
+                int restored = 0;
+                foreach (var line in File.ReadLines(historyPath).Skip(1).TakeLast(200))
+                {
+                    if (!BenchmarkCore.TryParseCsvRow(line, out var old)) continue;
+                    AppendRow(old);
+                    restored++;
+                }
+                status.Text = restored + " medições anteriores carregadas. Histórico guardado localmente.";
+            }
+            catch (IOException ex)
+            {
+                status.Text = "Não foi possível ler histórico: " + ex.Message;
+            }
         }
 
         private void ShowComparison()
