@@ -81,6 +81,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+      - name: Unit tests for benchmark calculations and export safety
+        shell: pwsh
+        run: |
+          dotnet run --project bond0/tests/Bond0.CoreTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Benchmark core tests failed" }
       - name: Restore
         shell: pwsh
         run: dotnet restore bond0/desktop/Bond0.Desktop.csproj -r win-x64
