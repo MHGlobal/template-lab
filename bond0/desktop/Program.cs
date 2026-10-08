@@ -374,14 +374,8 @@ namespace Bond0Control
       foreach (NetworkInterface n in NetworkInterface.GetAllNetworkInterfaces()
                  .OrderBy(n=>n.Name))
       {
-        if (n.Name.Equals("Bond0", StringComparison.OrdinalIgnoreCase)) continue;
-        if (n.Name.IndexOf("Wi-Fi Direct", StringComparison.OrdinalIgnoreCase) >= 0) continue;
-        if (n.Name.IndexOf("Virtual", StringComparison.OrdinalIgnoreCase) >= 0) continue;
-        if (n.NetworkInterfaceType != NetworkInterfaceType.Ethernet &&
-            n.NetworkInterfaceType != NetworkInterfaceType.Wireless80211) continue;
         string ip = InterfaceIPv4(n.Name);
-        if (ip == "sem endereço IPv4" || ip == "não encontrado" || ip.StartsWith("169.254.")) continue;
-        if (ip == "192.168.137.1") continue; // Microsoft ICS / hotspot gateway
+        if (!NetworkRules.EligibleWan(n.Name, n.Description, n.NetworkInterfaceType, ip)) continue;
         clNetworks.Items.Add(n.Name, selected.Contains(n.Name) ||
             (selected.Count == 0 && (n.Name == "Ethernet 3" || n.Name == "Wi-Fi 2")));
       }
