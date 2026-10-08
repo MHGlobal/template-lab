@@ -175,6 +175,7 @@ namespace Bond0Control
                 {
                     if (!BenchmarkCore.TryParseCsvRow(line, out var old)) continue;
                     AppendRow(old);
+                    results.Add(old);
                     restored++;
                 }
                 status.Text = restored + " medições anteriores carregadas. Histórico guardado localmente.";
@@ -187,7 +188,15 @@ namespace Bond0Control
 
         private void ShowComparison()
         {
-            var grouped = results
+            if (results.Count == 0) return;
+            // Cross-session comparison is allowed only for same payload and recent
+            // measurements. Historical results are shown, not silently compared.
+            var latest = results[results.Count - 1];
+            var recent = results.Where(r =>
+                r.PayloadBytes == latest.PayloadBytes &&
+                r.TimestampUtc >= DateTime.UtcNow.AddMinutes(-30) &&
+                r.TimestampUtc <= DateTime.UtcNow.AddMinutes(1));
+            var grouped = recent
                 .GroupBy(r => r.Profile)
                 .ToDictionary(g => g.Key, g => g.Last(), StringComparer.OrdinalIgnoreCase);
             if (grouped.TryGetValue("A", out var a) &&
