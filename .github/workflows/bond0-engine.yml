@@ -88,6 +88,21 @@ jobs:
             git config core.autocrlf false
             git -c core.autocrlf=false checkout-index --all --force
             if ($LASTEXITCODE -ne 0) { throw "Failed to restore upstream LF source" }
+            # The lab checkout can convert *.patch to CRLF on Windows, while
+            # upstream Rust sources explicitly use LF. Normalize BOTH before git apply.
+            $patchPath = (Resolve-Path "../$env:PATCH_FILE").Path
+            $files = @(
+              "bonding-client/src/runtime.rs",
+              "bonding-client/src/windows_tun_config.rs",
+              "bonding-core/src/control.rs",
+              "bonding-core/src/reorder.rs",
+              $patchPath
+            )
+            foreach ($path in $files) {
+              $raw = [System.IO.File]::ReadAllText((Resolve-Path $path).Path)
+              $lf = $raw.Replace("`r`n", "`n")
+              [System.IO.File]::WriteAllText((Resolve-Path $path).Path, $lf, [Text.UTF8Encoding]::new($false))
+            }
             git apply --check "../$env:PATCH_FILE"
             if ($LASTEXITCODE -ne 0) { throw "Patch check failed" }
             git apply "../$env:PATCH_FILE"
