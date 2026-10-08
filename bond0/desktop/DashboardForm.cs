@@ -595,7 +595,7 @@ namespace Bond0Control
             // The Rust engine never adds routes, changes gateways or touches WANs
             // in this mode. This is a temporary profile; original TOML is unchanged.
             string ipOnlyLine = "auto_assign_tun_ipv4 = true";
-            updated = Regex.Replace(updated, @"(?m)^\\s*auto_assign_tun_ipv4\\s*=.*\\r?\\n?", "");
+            updated = Regex.Replace(updated, @"(?m)^\s*auto_assign_tun_ipv4\s*=.*\r?\n?", "");
             updated = ipOnlyLine + Environment.NewLine + updated;
             Directory.CreateDirectory(TempRoot);
             var path=Path.Combine(TempRoot,"running-" + Process.GetCurrentProcess().Id + ".toml");
