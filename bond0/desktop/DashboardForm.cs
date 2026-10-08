@@ -96,21 +96,25 @@ namespace Bond0Control
             main.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             shell.Controls.Add(main, 1, 0);
-            var topbar = new Panel { Dock = DockStyle.Fill, Padding = new Padding(28, 12, 25, 7), BackColor = Sidebar };
-            var title = TextLabel("BOND0  /  CONTROL CENTER", 17, White, true);
-            title.Dock = DockStyle.Top;
-            title.Height = 38;
-            topbar.Controls.Add(title);
-            title.BringToFront();
+            var topbar = new TableLayoutPanel {
+                Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, BackColor = Sidebar,
+                Padding = new Padding(25, 10, 24, 7), Margin = Padding.Empty
+            };
+            topbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            topbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 195));
+            topbar.RowStyles.Add(new RowStyle(SizeType.Percent, 57));
+            topbar.RowStyles.Add(new RowStyle(SizeType.Percent, 43));
+            var title = TextLabel("BOND0  /  CONTROL CENTER", 16, White, true);
+            title.Dock = DockStyle.Fill;
+            topbar.Controls.Add(title, 0, 0);
             topSubtitle = TextLabel("Centro de redes • sem IA • servidor Oracle", 9, Muted);
-            topSubtitle.Dock = DockStyle.Bottom; topSubtitle.Height = 27;
-            topbar.Controls.Add(topSubtitle);
+            topSubtitle.Dock = DockStyle.Fill;
+            topbar.Controls.Add(topSubtitle, 0, 1);
             topStatus = TextLabel("● DESLIGADO", 11, Amber, true);
-            topStatus.AutoSize = false; topStatus.Width = 210; topStatus.Height = 33;
-            topStatus.Dock = DockStyle.Right;
+            topStatus.Dock = DockStyle.Fill;
             topStatus.TextAlign = ContentAlignment.MiddleRight;
-            topbar.Controls.Add(topStatus);
-            topStatus.BringToFront();
+            topbar.Controls.Add(topStatus, 1, 0);
+            topbar.SetRowSpan(topStatus, 2);
             main.Controls.Add(topbar, 0, 0);
             pageContainer = new Panel { Dock = DockStyle.Fill, BackColor = Bg, Padding = Padding.Empty };
             main.Controls.Add(pageContainer, 0, 1);
@@ -129,30 +133,36 @@ namespace Bond0Control
 
         private Panel BuildSidebar()
         {
-            var side = new Panel { Dock = DockStyle.Fill, BackColor = Sidebar, Padding = new Padding(12, 18, 12, 14) };
+            var side = new Panel { Dock = DockStyle.Fill, BackColor = Sidebar, Padding = new Padding(12, 18, 12, 13) };
+            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, BackColor = Sidebar };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 75));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 67));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            side.Controls.Add(layout);
             var brand = TextLabel("◉  Bond0", 21, White, true);
-            brand.Dock = DockStyle.Top; brand.Height = 62; brand.Padding = new Padding(13, 7, 0, 0);
-            side.Controls.Add(brand);
-            var foot = TextLabel("v0.2  •  LAB PREVIEW\nSem IA nem alteração automática de rotas", 8, Muted);
-            foot.Dock = DockStyle.Bottom; foot.Height = 66; foot.Padding = new Padding(8, 7, 0, 0);
-            side.Controls.Add(foot);
+            brand.Dock = DockStyle.Fill; brand.Padding = new Padding(10, 0, 0, 0);
+            layout.Controls.Add(brand, 0, 0);
 
             var menu = new FlowLayoutPanel {
                 Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
-                WrapContents = false, AutoScroll = true, Padding = new Padding(0, 12, 0, 0)
+                WrapContents = false, AutoScroll = true, Padding = new Padding(0, 7, 0, 0),
+                Margin = Padding.Empty
             };
             foreach (var page in new [] { "Início", "Minhas redes", "Velocidade", "Hotspot", "Servidor VPS", "Diagnóstico" })
             {
-                var button = Button(page, Surface, 178);
-                button.Height = 46; button.TextAlign = ContentAlignment.MiddleLeft;
+                var button = Button(page, Surface, 175);
+                button.Height = 44; button.TextAlign = ContentAlignment.MiddleLeft;
                 button.Padding = new Padding(12, 0, 0, 0);
                 button.Margin = new Padding(2, 2, 2, 5);
                 button.Click += (s,e) => RenderPage(page);
                 navigation[page] = button;
                 menu.Controls.Add(button);
             }
-            side.Controls.Add(menu);
-            menu.BringToFront();
+            layout.Controls.Add(menu, 0, 1);
+            var foot = TextLabel("v0.2  •  LAB PREVIEW\nSem IA • Sem alterações automáticas de rotas", 8, Muted);
+            foot.Dock = DockStyle.Fill; foot.Padding = new Padding(8, 4, 0, 0);
+            layout.Controls.Add(foot, 0, 2);
             return side;
         }
 
