@@ -36,7 +36,7 @@ namespace Bond0Control
       }
       Application.EnableVisualStyles();
       Application.SetCompatibleTextRenderingDefault(false);
-      Application.Run(new MainForm());
+      Application.Run(new DashboardForm());
     }
     static bool IsAdministrator()
     {
