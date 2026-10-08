@@ -29,6 +29,17 @@ static class Tests
             UploadMbps = 3, LatencyMs = 83, JitterMs = 7, LossPercent = 5,
             ReceivedPings = 19, SentPings = 20
         }).Contains("\"A+B\",1048576,12.000"), "result CSV format");
+        var original = new SpeedResult {
+            TimestampUtc = DateTime.UtcNow, Profile = "Ethernet, USB",
+            PayloadBytes = 1048576, DownloadMbps = 12.125, UploadMbps = 6.375,
+            LatencyMs = 83, JitterMs = 7.5, LossPercent = 5, ReceivedPings = 19, SentPings = 20
+        };
+        var row = BenchmarkCore.CsvRow(original);
+        Assert(BenchmarkCore.TryParseCsvRow(row, out var parsed) &&
+            parsed.Profile == "Ethernet, USB" &&
+            Math.Abs(parsed.DownloadMbps - 12.125) < 0.00001, "CSV roundtrip");
+        Assert(!BenchmarkCore.TryParseCsvRow("\"bad,rows", out _), "reject unclosed quote");
+        Assert(!BenchmarkCore.TryParseCsvRow("garbage", out _), "reject invalid CSV");
         BenchmarkCore.ValidatePayload(1048576);
         checks++;
         bool rejected = false;
