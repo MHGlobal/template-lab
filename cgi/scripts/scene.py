@@ -12,7 +12,7 @@ def main():
     bpy.ops.object.select_all(action="SELECT");bpy.ops.object.delete(use_global=False)
     s=bpy.context.scene
     s.render.engine="CYCLES";s.cycles.device="CPU";s.cycles.samples=int(os.environ["SAMPLES"])
-    if hasattr(bpy.context.view_layer,"cycles"):bpy.context.view_layer.cycles.use_denoising=True
+    if hasattr(bpy.context.view_layer,"cycles"):bpy.context.view_layer.cycles.use_denoising=False
     s.render.resolution_x=int(os.environ["WIDTH"]);s.render.resolution_y=int(os.environ["HEIGHT"])
     s.render.resolution_percentage=100;s.render.fps=int(os.environ["FPS"])
     count=int(os.environ["FRAMES"]);s.frame_start=1;s.frame_end=count
