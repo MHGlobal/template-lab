@@ -1,0 +1,71 @@
+name: ArtCraft Portable Linux Bundles
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - ".github/workflows/artcraft-portable-linux.yml"
+      - "artcraft/bootstrap-requests/**"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: photocraft
+            version: "0.5.0"
+            hash: "f54d863807053bbdfcffa0d624ef7e49d3fd41310c7bb1ede48536f69929d22f"
+          - app: vectorcraft
+            version: "0.7.0"
+            hash: "f6928f9adf423ad0a145ebfe3b142a95d3d26f550b05249c2012145701f98b60"
+          - app: filmcraft
+            version: "0.4.0"
+            hash: "d8410dea7b2b064ede1ead87dd894bca3537a4dfda1a44297158849f56ba2d4c"
+          - app: effectcraft
+            version: "0.6.0"
+            hash: "8f352e4efe01b8e576e4808b9631f68a08effdf05d9229c26c6a0561c1fbe0b8"
+    env:
+      APP: ${{ matrix.app }}
+      VERSION: ${{ matrix.version }}
+      EXPECTED_SHA: ${{ matrix.hash }}
+    steps:
+      - name: Download and SHA256-verify upstream AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p package
+          asset="${APP}-${VERSION}-linux-x86_64.AppImage"
+          base="https://github.com/storytold/${APP}/releases/download/v${VERSION}"
+          curl --fail --location --retry 3 --output "package/$asset" "$base/$asset"
+          curl --fail --location --retry 3 --output package/SHA256SUMS.txt "$base/SHA256SUMS.txt"
+          cd package
+          echo "${EXPECTED_SHA}  $asset" | sha256sum --check -
+          sha256sum --ignore-missing --check SHA256SUMS.txt
+          chmod +x "$asset"
+
+      - name: Validate portable extraction and CLI existence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd package
+          file="${APP}-${VERSION}-linux-x86_64.AppImage"
+          "./$file" --appimage-extract > /dev/null
+          test -x "squashfs-root/usr/bin/${APP}-cli"
+          rm -rf squashfs-root
+          printf '%s\n' "app=$APP" "version=$VERSION" "arch=linux/amd64" "sha256=$EXPECTED_SHA" "source=https://github.com/storytold/$APP" > MANIFEST.txt
+          echo "Validated: $APP $VERSION"
+
+      - name: Publish portable bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: artcraft-portable-${{ matrix.app }}-v${{ matrix.version }}-linux-amd64
+          path: package/
+          compression-level: 0
+          retention-days: 90
+          if-no-files-found: error
