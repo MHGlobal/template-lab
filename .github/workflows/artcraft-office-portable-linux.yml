@@ -61,7 +61,11 @@ jobs:
           cli="squashfs-root/usr/bin/${APP}-cli"
           test -x "${cli}"
           export LD_LIBRARY_PATH="$PWD/squashfs-root/usr/lib:${LD_LIBRARY_PATH:-}"
-          timeout 30 "${cli}" --help > cli-help.txt
+          case "$APP" in
+            deckcraft|designcraft) timeout 30 "${cli}" commands > cli-help.txt ;;
+            pdfcraft) timeout 30 "${cli}" tools > cli-help.txt ;;
+            *) timeout 30 "${cli}" --help > cli-help.txt ;;
+          esac
           test -s cli-help.txt
           rm -rf squashfs-root
           printf 'app=%s\nversion=%s\narch=linux/amd64\nsha256=%s\nsource=storytold/%s\n' "$APP" "$VERSION" "$EXPECTED_SHA" "$APP" > MANIFEST.txt
