@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 45
     env:
       IMAGE: ghcr.io/mhglobal/artcraft-studio
-      VERSION: v0.1.0
+      VERSION: v0.2.0
     steps:
       - name: Checkout template-lab
         uses: actions/checkout@v4
@@ -42,6 +42,9 @@ jobs:
           set -euo pipefail
           docker run --rm "$IMAGE:$VERSION" vectorcraft-cli --help | grep 'VectorCraft automation'
           docker run --rm "$IMAGE:$VERSION" photocraft-cli --help | grep 'headless Photocraft'
+          docker run --rm "$IMAGE:$VERSION" filmcraft-cli --help > /dev/null
+          docker run --rm "$IMAGE:$VERSION" effectcraft-cli --help > /dev/null
+          echo 'All four CLI tools responded successfully.'
           mkdir -p artcraft-test
           cat > artcraft-test/smoke.svg <<'SVG'
           <svg xmlns="http://www.w3.org/2000/svg" width="420" height="297" viewBox="0 0 420 297">
@@ -54,7 +57,7 @@ jobs:
             "$IMAGE:$VERSION" vectorcraft-cli convert /workspace/smoke.svg /workspace/smoke.pdf
           test -s artcraft-test/smoke.pdf
           head -c 5 artcraft-test/smoke.pdf | grep -q '%PDF-'
-          echo 'Smoke tests passed for PhotoCraft CLI and VectorCraft SVG->PDF.'
+          echo 'Smoke tests passed for all four CLIs and VectorCraft SVG->PDF.'
 
       - name: Authenticate to GHCR
         uses: docker/login-action@v3
