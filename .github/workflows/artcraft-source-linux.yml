@@ -1,0 +1,108 @@
+name: Prepare ArtCraft PhotoCraft and VectorCraft Linux
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - ".github/workflows/artcraft-source-linux.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {app: photocraft, repo: storytold/photocraft, version: "0.5.0"}
+          - {app: vectorcraft, repo: storytold/vectorcraft, version: "0.7.0"}
+    env:
+      APP: ${{ matrix.app }}
+      REPO: ${{ matrix.repo }}
+      VERSION: ${{ matrix.version }}
+    steps:
+      - name: Clone upstream, freeze tag and package Git bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/artcraft" "$GITHUB_WORKSPACE/dist"
+          git clone "https://github.com/${REPO}.git" "$RUNNER_TEMP/artcraft/source"
+          git -C "$RUNNER_TEMP/artcraft/source" checkout --detach "v${VERSION}"
+          git -C "$RUNNER_TEMP/artcraft/source" rev-parse HEAD > "$GITHUB_WORKSPACE/dist/${APP}-commit.txt"
+          git -C "$RUNNER_TEMP/artcraft/source" bundle create "$GITHUB_WORKSPACE/dist/${APP}-upstream.git.bundle" --all
+          git clone "$GITHUB_WORKSPACE/dist/${APP}-upstream.git.bundle" "$RUNNER_TEMP/artcraft/test-clone"
+          test "$(git -C "$RUNNER_TEMP/artcraft/test-clone" rev-parse "v${VERSION}^{commit}")" = "$(cat "$GITHUB_WORKSPACE/dist/${APP}-commit.txt")"
+          echo "Verified offline Git clone and release commit."
+
+      - name: Download upstream AppImage and verify published SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/dist"
+          file="${APP}-${VERSION}-linux-x86_64.AppImage"
+          base="https://github.com/${REPO}/releases/download/v${VERSION}"
+          curl -fL --retry 3 --output "$file" "$base/$file"
+          curl -fL --retry 3 --output "${APP}-SHA256SUMS.txt" "$base/SHA256SUMS.txt"
+          cp "${APP}-SHA256SUMS.txt" SHA256SUMS.txt
+          sha256sum --ignore-missing --check SHA256SUMS.txt
+          rm SHA256SUMS.txt
+          test "$(stat -c %s "$file")" -gt 10000000
+          chmod 755 "$file"
+
+      - name: Install on Actions runner and validate AppImage packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin" "$HOME/.local/opt/artcraft"
+          install -m 755 "$GITHUB_WORKSPACE/dist/${APP}-${VERSION}-linux-x86_64.AppImage" "$HOME/.local/opt/artcraft/${APP}.AppImage"
+          ln -sfn "$HOME/.local/opt/artcraft/${APP}.AppImage" "$HOME/.local/bin/$APP"
+          test -x "$HOME/.local/bin/$APP"
+          cd "$RUNNER_TEMP/artcraft"
+          "$HOME/.local/bin/$APP" --appimage-extract > /dev/null
+          test -f squashfs-root/AppRun
+          echo "AppImage installed and extracted (graphical UI not launched)."
+
+      - name: Include offline installation instructions and licenses
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/dist"
+          cp "$RUNNER_TEMP/artcraft/source/LICENSE-MIT" "${APP}-LICENSE-MIT"
+          cp "$RUNNER_TEMP/artcraft/source/LICENSE-APACHE" "${APP}-LICENSE-APACHE"
+          cat > install-artcraft.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          image="${1:?Usage: bash install-artcraft.sh APP.AppImage}"
+          name="$(basename "$image")"
+          name="${name%%-*}"
+          case "$name" in photocraft|vectorcraft) ;; *) echo "Unknown application" >&2; exit 2;; esac
+          mkdir -p "$HOME/.local/opt/artcraft" "$HOME/.local/bin"
+          install -m 755 "$image" "$HOME/.local/opt/artcraft/${name}.AppImage"
+          ln -sfn "$HOME/.local/opt/artcraft/${name}.AppImage" "$HOME/.local/bin/$name"
+          echo "Installed $name at $HOME/.local/bin/$name"
+          SH
+          chmod +x install-artcraft.sh
+          cat > README-INSTALL.txt <<EOF
+          Application: $APP v$VERSION from $REPO
+          Git revision: $(cat "${APP}-commit.txt")
+          Platform: Linux x86_64
+          The Git source bundle restores using: git clone ${APP}-upstream.git.bundle ${APP}-source
+          Install on Linux: bash install-artcraft.sh ${APP}-${VERSION}-linux-x86_64.AppImage
+          Run: ~/.local/bin/$APP
+          The Actions runner verified SHA256, Git bundle clone, local installation
+          and AppImage extraction. It did not test graphical operation.
+          EOF
+          sha256sum "${APP}-${VERSION}-linux-x86_64.AppImage" "${APP}-upstream.git.bundle" > "${APP}-artifacts.sha256"
+          ls -lh
+
+      - name: Upload Git sources and installable Linux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: artcraft-${{ matrix.app }}-linux-x86_64-v${{ matrix.version }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
