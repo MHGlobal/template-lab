@@ -1,0 +1,82 @@
+name: Publish ArtCraft Studio Docker (GHCR)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - "docker/artcraft/**"
+      - ".github/workflows/artcraft-docker-ghcr.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: artcraft-docker-publish
+  cancel-in-progress: false
+
+jobs:
+  build-test-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      IMAGE: ghcr.io/mhglobal/artcraft-studio
+      VERSION: v0.1.0
+    steps:
+      - name: Checkout template-lab
+        uses: actions/checkout@v4
+
+      - name: Build Linux x86_64 image using pinned, verified release checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --platform linux/amd64 \
+            --file docker/artcraft/Dockerfile \
+            --tag "$IMAGE:$VERSION" \
+            --tag "$IMAGE:latest" .
+
+      - name: Test bundled automation CLIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm "$IMAGE:$VERSION" vectorcraft-cli --help | grep 'VectorCraft automation'
+          docker run --rm "$IMAGE:$VERSION" photocraft-cli --help | grep 'headless Photocraft'
+          mkdir -p artcraft-test
+          cat > artcraft-test/smoke.svg <<'SVG'
+          <svg xmlns="http://www.w3.org/2000/svg" width="420" height="297" viewBox="0 0 420 297">
+            <rect x="0" y="0" width="420" height="297" fill="white"/>
+            <circle cx="200" cy="140" r="90" fill="#2369bd"/>
+          </svg>
+          SVG
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$PWD/artcraft-test,target=/workspace" \
+            "$IMAGE:$VERSION" vectorcraft-cli convert /workspace/smoke.svg /workspace/smoke.pdf
+          test -s artcraft-test/smoke.pdf
+          head -c 5 artcraft-test/smoke.pdf | grep -q '%PDF-'
+          echo 'Smoke tests passed for PhotoCraft CLI and VectorCraft SVG->PDF.'
+
+      - name: Authenticate to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish verified tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE:$VERSION"
+          docker push "$IMAGE:latest"
+          docker image inspect "$IMAGE:$VERSION" --format 'Image ID: {{.Id}}'
+          echo 'Published versioned and latest images to GHCR.'
+
+      - name: Pull back and smoke test published image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image rm "$IMAGE:$VERSION" "$IMAGE:latest" || true
+          docker pull "$IMAGE:$VERSION"
+          docker run --rm "$IMAGE:$VERSION" vectorcraft-cli --help | grep -q 'VectorCraft automation'
+          echo "Image verified by registry pull."
