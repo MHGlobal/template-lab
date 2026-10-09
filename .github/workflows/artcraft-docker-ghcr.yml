@@ -42,7 +42,7 @@ jobs:
           set -euo pipefail
           docker run --rm "$IMAGE:$VERSION" vectorcraft-cli --help | grep 'VectorCraft automation'
           docker run --rm "$IMAGE:$VERSION" photocraft-cli --help | grep 'headless Photocraft'
-          docker run --rm "$IMAGE:$VERSION" filmcraft-cli --help > /dev/null
+          docker run --rm "$IMAGE:$VERSION" filmcraft-cli help > /dev/null
           docker run --rm "$IMAGE:$VERSION" effectcraft-cli --help > /dev/null
           docker run --rm "$IMAGE:$VERSION" wordcraft-cli --help > /dev/null
           docker run --rm "$IMAGE:$VERSION" gridcraft-cli --help > /dev/null
