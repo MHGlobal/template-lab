@@ -1,0 +1,76 @@
+name: ArtCraft Office Portable Linux Bundles
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - ".github/workflows/artcraft-office-portable-linux.yml"
+      - "artcraft/office-bootstrap-requests/**"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: wordcraft
+            version: "0.3.0"
+            sha256: "f25698266107f3d93800069990b6951096c7463690260dc01a87f09839d710ed"
+          - app: gridcraft
+            version: "0.3.0"
+            sha256: "ae1c38dd468d464f749e1514ee86afb087c9ff77bd50c47e647cdb18f1532db1"
+          - app: deckcraft
+            version: "0.3.0"
+            sha256: "d42f5e4d320b7e58d6b860f33327b94b7762df801ab0edd7c8773594ac6146a8"
+          - app: pdfcraft
+            version: "0.4.0"
+            sha256: "e21ce7de49910acc8f032a4b906141da42b39002383fb9ef33a9d86dbbec05d6"
+          - app: designcraft
+            version: "0.4.0"
+            sha256: "bfd27f59e0a7e9b8d40fc64aa60b6fdd91269987623226f759afd4d7cbc64fbe"
+    env:
+      APP: ${{ matrix.app }}
+      VERSION: ${{ matrix.version }}
+      EXPECTED_SHA: ${{ matrix.sha256 }}
+    steps:
+      - name: Download and verify official pinned AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p package
+          asset="${APP}-${VERSION}-linux-x86_64.AppImage"
+          base="https://github.com/storytold/${APP}/releases/download/v${VERSION}"
+          curl --fail --location --retry 3 -o "package/${asset}" "${base}/${asset}"
+          curl --fail --location --retry 3 -o package/SHA256SUMS.txt "${base}/SHA256SUMS.txt"
+          cd package
+          echo "${EXPECTED_SHA}  ${asset}" | sha256sum -c -
+          sha256sum --ignore-missing --check SHA256SUMS.txt
+          chmod +x "${asset}"
+
+      - name: Extract and smoke-test headless CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd package
+          "./${APP}-${VERSION}-linux-x86_64.AppImage" --appimage-extract >/dev/null
+          cli="squashfs-root/usr/bin/${APP}-cli"
+          test -x "${cli}"
+          export LD_LIBRARY_PATH="$PWD/squashfs-root/usr/lib:${LD_LIBRARY_PATH:-}"
+          timeout 30 "${cli}" --help > cli-help.txt
+          test -s cli-help.txt
+          rm -rf squashfs-root
+          printf 'app=%s\nversion=%s\narch=linux/amd64\nsha256=%s\nsource=storytold/%s\n' "$APP" "$VERSION" "$EXPECTED_SHA" "$APP" > MANIFEST.txt
+
+      - name: Publish verified office binary bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: artcraft-office-${{ matrix.app }}-v${{ matrix.version }}-linux-amd64
+          path: package/
+          retention-days: 90
+          compression-level: 0
+          if-no-files-found: error
