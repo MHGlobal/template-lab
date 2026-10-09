@@ -1,0 +1,181 @@
+name: 13GS CGI Render Studio
+on:
+  workflow_dispatch:
+    inputs:
+      quality:
+        type: choice
+        description: Blender Cycles quality
+        default: preview
+        options: [preview, final]
+      seconds:
+        type: number
+        description: Duration (1-20 seconds)
+        default: 5
+      fps:
+        type: choice
+        description: Frame rate
+        default: '24'
+        options: ['24', '30']
+  push:
+    branches: [editor]
+    paths: ['.github/workflows/13gs-cgi-render.yml', 'cgi/scripts/**', 'cgi/requests/**']
+permissions:
+  contents: read
+concurrency:
+  group: 13gs-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Python source and deterministic frame partitioning
+        run: |
+          python3 -m py_compile cgi/scripts/scene.py cgi/scripts/verify.py
+          python3 cgi/scripts/verify.py --selftest
+      - name: Guard against committing private artwork to public repository
+        shell: bash
+        run: |
+          if find cgi/assets -type f 2>/dev/null | grep -q .; then
+            echo "Private brand assets cannot be included in public repository" >&2
+            exit 1
+          fi
+
+  prepare:
+    needs: policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    outputs:
+      frames: ${{ steps.config.outputs.frames }}
+      width: ${{ steps.config.outputs.width }}
+      height: ${{ steps.config.outputs.height }}
+      fps: ${{ steps.config.outputs.fps }}
+    env:
+      QUALITY: ${{ github.event_name == 'workflow_dispatch' && inputs.quality || 'smoke' }}
+      SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.seconds || '1' }}
+      FPS: ${{ github.event_name == 'workflow_dispatch' && inputs.fps || '24' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate bounded settings
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$QUALITY" in
+            smoke) WIDTH=360; HEIGHT=640; SAMPLES=8;;
+            preview) WIDTH=540; HEIGHT=960; SAMPLES=16;;
+            final) WIDTH=1080; HEIGHT=1920; SAMPLES=48;;
+            *) exit 2;;
+          esac
+          [[ "$SECONDS" =~ ^[0-9]+$ ]] && (( SECONDS >= 1 && SECONDS <= 20 ))
+          [[ "$FPS" == 24 || "$FPS" == 30 ]]
+          FRAMES=$(( SECONDS*FPS ))
+          echo "WIDTH=$WIDTH" >> "$GITHUB_ENV"
+          echo "HEIGHT=$HEIGHT" >> "$GITHUB_ENV"
+          echo "SAMPLES=$SAMPLES" >> "$GITHUB_ENV"
+          echo "FRAMES=$FRAMES" >> "$GITHUB_ENV"
+          echo "FPS=$FPS" >> "$GITHUB_ENV"
+          printf 'frames=%s\nwidth=%s\nheight=%s\nfps=%s\n' "$FRAMES" "$WIDTH" "$HEIGHT" "$FPS" >> "$GITHUB_OUTPUT"
+          mkdir -p cgi/work
+          printf '{"quality":"%s","engine":"Cycles CPU","generation_ai":false,"seconds":%d,"fps":%d,"frames":%d,"width":%d,"height":%d,"samples":%d}\n' "$QUALITY" "$SECONDS" "$FPS" "$FRAMES" "$WIDTH" "$HEIGHT" "$SAMPLES" > cgi/work/manifest.json
+      - name: Install Blender from Ubuntu
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender
+          blender -b --factory-startup --python-expr "import bpy; print('Blender:', bpy.app.version_string)"
+      - name: Construct and pack original 3D scene
+        run: blender -b --factory-startup --python cgi/scripts/scene.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 13gs-scene
+          path: cgi/work/
+          retention-days: 7
+          if-no-files-found: error
+
+  render:
+    name: Cycles CPU frames, shard ${{ matrix.shard }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: [0, 1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends blender
+      - uses: actions/download-artifact@v4
+        with:
+          name: 13gs-scene
+          path: cgi/work/
+      - name: Render disjoint frames
+        env:
+          TOTAL: ${{ needs.prepare.outputs.frames }}
+          SHARD: ${{ matrix.shard }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          START=$(( TOTAL*SHARD/3+1 ))
+          END=$(( TOTAL*(SHARD+1)/3 ))
+          mkdir -p frames
+          blender -b cgi/work/scene.blend -t 4 -s "$START" -e "$END" -o "$(pwd)/frames/frame_#####" -F PNG -a
+          test "$(find frames -type f -name 'frame_*.png' | wc -l)" -eq "$(( END-START+1 ))"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 13gs-frames-${{ matrix.shard }}
+          path: frames/*.png
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
+
+  compose:
+    needs: [prepare, render]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 13gs-frames-*
+          path: frames
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: 13gs-scene
+          path: cgi/work/
+      - name: Install FFmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Validate PNGs
+        env:
+          TOTAL: ${{ needs.prepare.outputs.frames }}
+          WIDTH: ${{ needs.prepare.outputs.width }}
+          HEIGHT: ${{ needs.prepare.outputs.height }}
+          FPS: ${{ needs.prepare.outputs.fps }}
+        run: python3 cgi/scripts/verify.py --frames frames --count "$TOTAL" --width "$WIDTH" --height "$HEIGHT" --fps "$FPS"
+      - name: Assemble H.264 MP4
+        env:
+          FPS: ${{ needs.prepare.outputs.fps }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          ffmpeg -hide_banner -loglevel error -y -framerate "$FPS" -start_number 1 -i frames/frame_%05d.png -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags +faststart output/13gs-cgi.mp4
+          cp frames/frame_00001.png output/poster.png
+          cp cgi/work/manifest.json output/render-manifest.json
+      - name: Validate final MP4
+        env:
+          TOTAL: ${{ needs.prepare.outputs.frames }}
+          WIDTH: ${{ needs.prepare.outputs.width }}
+          HEIGHT: ${{ needs.prepare.outputs.height }}
+          FPS: ${{ needs.prepare.outputs.fps }}
+        run: python3 cgi/scripts/verify.py --frames frames --video output/13gs-cgi.mp4 --count "$TOTAL" --width "$WIDTH" --height "$HEIGHT" --fps "$FPS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 13gs-cgi-final-${{ github.run_number }}
+          path: output/
+          retention-days: 14
+          if-no-files-found: error
