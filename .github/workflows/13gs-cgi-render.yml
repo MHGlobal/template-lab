@@ -23,7 +23,7 @@ permissions:
   contents: read
 concurrency:
   group: 13gs-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   policy:
