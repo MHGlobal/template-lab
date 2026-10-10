@@ -15,6 +15,7 @@ bond0/engine/patches/0004-opt-in-safe-tun-ipv4-assign.patch
 bond0/engine/patches/0005-verified-tun-ipv4-lifecycle.patch
 bond0/engine/patches/0006-tun-pump-batch-and-path-stats.patch
 bond0/engine/patches/0007-control-sequence-hygiene-and-gap-age.patch
+bond0/engine/patches/0008-socket-buffers-session-nonce-and-log-rate-limit.patch
 
 0005 adiciona: verificacao read-back do IPv4 atribuido ao adaptador virtual,
 watchdog com re-atribuicao limitada (3 tentativas rapidas + recuperacao lenta
@@ -43,6 +44,13 @@ sequencias de dados; reorder_max_age_ms configuravel (default 150ms, clamp
 no wire: compativel com o servidor upstream; a direcao cliente->servidor so
 beneficia quando o patch simetrico do servidor for implantado (pendencia de
 autorizacao explicita de deployment).
+
+0008 adiciona: buffers UDP SO_RCVBUF/SO_SNDBUF de 4 MiB por caminho
+(best-effort; o SO pode limitar), inicio de tx_seq unico por sessao que
+elimina a reutilizacao de (chave, nonce) entre reinicializacoes com a mesma
+PSK na direccao cliente->servidor, e rate-limit de 5s nos logs de erros de
+decodificacao/descriptografia por pacote (protege a UI e o data-plane de
+tempestades de pacotes malformados).
 
 MELHORIAS
 - Timer de 25 ms no cliente para verificar o buffer mesmo sem novos datagramas.
