@@ -1,0 +1,157 @@
+name: Bond0 Rust Engine — Reorder Fix QA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - lab/bond0-control-center
+    paths:
+      - "bond0/engine/**"
+      - ".github/workflows/bond0-engine.yml"
+  pull_request:
+    branches:
+      - editor
+    paths:
+      - "bond0/engine/**"
+      - ".github/workflows/bond0-engine.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bond0-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BOND0_UPSTREAM_SHA: d2587a46e097c4408144d6dc48d7cd096f83d00a
+  PATCH_DIR: bond0/engine/patches
+
+jobs:
+  core-tests:
+    name: Rust core + client tests (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned upstream Bonding source
+        uses: actions/checkout@v4
+        with:
+          repository: Donovoi/Bonding
+          ref: d2587a46e097c4408144d6dc48d7cd096f83d00a
+          path: upstream
+          persist-credentials: false
+      - name: Verify base revision and apply patch series in order
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          test "$(git rev-parse HEAD)" = "$BOND0_UPSTREAM_SHA"
+          for patch in $(ls "../$PATCH_DIR"/*.patch | sort); do
+            echo "Applying $patch"
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+      - name: Rust toolchain
+        shell: bash
+        run: |
+          rustup default stable
+          rustc --version
+      - name: Reorder buffer tests and client compile
+        shell: bash
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          cargo test --locked -p bonding-core
+          cargo test --locked -p bonding-client
+          cargo check --locked -p bonding-client
+
+  windows-engine:
+    name: Compile actual patched Windows Rust client x64
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned upstream Bonding source
+        uses: actions/checkout@v4
+        with:
+          repository: Donovoi/Bonding
+          ref: d2587a46e097c4408144d6dc48d7cd096f83d00a
+          path: upstream
+          persist-credentials: false
+      - name: Apply patch, never import TOML or secret keys
+        shell: pwsh
+        run: |
+          Push-Location upstream
+          try {
+            $sha = (git rev-parse HEAD).Trim()
+            if ($sha -ne $env:BOND0_UPSTREAM_SHA) { throw "Unexpected upstream revision: $sha" }
+            # Checkout on Windows may convert LF source to CRLF; the Rust patch
+            # was generated from pinned Unix sources and requires LF.
+            git config core.autocrlf false
+            git -c core.autocrlf=false checkout-index --all --force
+            if ($LASTEXITCODE -ne 0) { throw "Failed to restore upstream LF source" }
+            # The lab checkout can convert *.patch to CRLF on Windows, while
+            # upstream Rust sources explicitly use LF. Normalize BOTH before git apply.
+            $files = @(Get-ChildItem "../$env:PATCH_DIR" -Filter *.patch | Sort-Object Name | ForEach-Object { $_.FullName })
+            $files += @(Get-ChildItem "bonding-client/src", "bonding-core/src" -Recurse -Filter *.rs | ForEach-Object { $_.FullName })
+            foreach ($path in $files) {
+              $raw = [System.IO.File]::ReadAllText($path)
+              $lf = $raw.Replace("`r`n", "`n")
+              [System.IO.File]::WriteAllText($path, $lf, [Text.UTF8Encoding]::new($false))
+            }
+            foreach ($patch in @(Get-ChildItem "../$env:PATCH_DIR" -Filter *.patch | Sort-Object Name)) {
+              Write-Output "Applying $($patch.Name)"
+              git apply --check $patch.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Patch check failed: $($patch.Name)" }
+              git apply $patch.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Patch apply failed: $($patch.Name)" }
+            }
+            git diff --check
+            if ($LASTEXITCODE -ne 0) { throw "Patch whitespace failure" }
+          } finally { Pop-Location }
+      - name: Compile and test on Windows
+        shell: pwsh
+        working-directory: upstream
+        run: |
+          rustup default stable
+          rustc --version
+          cargo test --locked -p bonding-core
+          if ($LASTEXITCODE -ne 0) { throw "Core tests failed" }
+          cargo test --locked -p bonding-client
+          if ($LASTEXITCODE -ne 0) { throw "Client tests failed" }
+          cargo build --locked --release -p bonding-client
+          if ($LASTEXITCODE -ne 0) { throw "Windows Rust build failed" }
+      - name: Generate artifact and checksum (no config)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item upstream/target/release/bonding-client.exe dist/bonding-client.exe
+          Copy-Item bond0/engine/README.md dist/LEIA-ME.txt
+          $sha=(Get-FileHash -Algorithm SHA256 dist/bonding-client.exe).Hash.ToLowerInvariant()
+          "$sha *bonding-client.exe" | Set-Content -Encoding ascii dist/bonding-client.exe.sha256
+          Write-Output "Bond0 Rust Windows binary SHA256=$sha"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bond0-Rust-Client-Windows-x64-QA
+          path: dist/*
+          retention-days: 30
+          if-no-files-found: error
+
+  gate:
+    name: Rust QA gate
+    if: always()
+    needs: [core-tests, windows-engine]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required jobs
+        env:
+          LINUX: ${{ needs.core-tests.result }}
+          WINDOWS: ${{ needs.windows-engine.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Linux Rust: $LINUX"
+          echo "Windows Rust: $WINDOWS"
+          test "$LINUX" = success
+          test "$WINDOWS" = success

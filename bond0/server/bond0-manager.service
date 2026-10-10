@@ -1,0 +1,21 @@
+[Unit]
+Description=Bond0 Manager API (loopback-only read-only prototype)
+After=network-online.target bond0-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/bond0
+ExecStart=/usr/bin/python3 /opt/bond0/manager.py --host 127.0.0.1 --port 8870
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target
