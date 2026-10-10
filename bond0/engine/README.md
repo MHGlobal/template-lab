@@ -14,6 +14,7 @@ bond0/engine/patches/0003-stripe-diagnostic-rate-limit.patch
 bond0/engine/patches/0004-opt-in-safe-tun-ipv4-assign.patch
 bond0/engine/patches/0005-verified-tun-ipv4-lifecycle.patch
 bond0/engine/patches/0006-tun-pump-batch-and-path-stats.patch
+bond0/engine/patches/0007-control-sequence-hygiene-and-gap-age.patch
 
 0005 adiciona: verificacao read-back do IPv4 atribuido ao adaptador virtual,
 watchdog com re-atribuicao limitada (3 tentativas rapidas + recuperacao lenta
@@ -32,6 +33,16 @@ o timer do Windows arredonda para 15,6ms); contador tun_reads; log de erros de
 escrita no TUN com rate-limit de 5s; contadores por caminho
 (sent_pkts/sent_bytes/recv_pkts/recv_bytes) e linhas "Bond0 path stats" /
 "Bond0 tun stats" a cada 10s para diagnostico por interface e benchmarks.
+
+0007 adiciona: sequencias de controlo/ACK avancam o fluxo de reorder sem
+esperar pelo gap-timeout (mark_consumed no bonding-core, integrado na rececao
+cliente), removendo os stalls estruturais de 500ms a cada 2s na direcao
+servidor->cliente causados por keepalives que partilham o contador de
+sequencias de dados; reorder_max_age_ms configuravel (default 150ms, clamp
+50-5000) reduz o stall por perda real de 500ms para 150ms. Nenhuma alteracao
+no wire: compativel com o servidor upstream; a direcao cliente->servidor so
+beneficia quando o patch simetrico do servidor for implantado (pendencia de
+autorizacao explicita de deployment).
 
 MELHORIAS
 - Timer de 25 ms no cliente para verificar o buffer mesmo sem novos datagramas.
