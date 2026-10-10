@@ -13,6 +13,7 @@ bond0/engine/patches/0002-windows-tui-lifecycle-fix.patch
 bond0/engine/patches/0003-stripe-diagnostic-rate-limit.patch
 bond0/engine/patches/0004-opt-in-safe-tun-ipv4-assign.patch
 bond0/engine/patches/0005-verified-tun-ipv4-lifecycle.patch
+bond0/engine/patches/0006-tun-pump-batch-and-path-stats.patch
 
 0005 adiciona: verificacao read-back do IPv4 atribuido ao adaptador virtual,
 watchdog com re-atribuicao limitada (3 tentativas rapidas + recuperacao lenta
@@ -23,6 +24,14 @@ tunnel_reachable, data_uplink_first, ipv4_lost, ipv4_assign_retry,
 ipv4_assign_retry_slow, ipv4_assign_failed. A atribuicao falhada NUNCA aborte
 o data-plane; nenhuma interface fisica, rota predefinida, DNS ou firewall e
 tocada por esta serie.
+
+0006 adiciona: leitura em batch da bomba TUN (drena o ring por iteracao, teto
+de 256 pacotes por ronda, sleep de 1ms apenas quando ocioso) removendo o teto
+historico de ~1 pacote por milissegundo (~11 Mbps em 1420B, e ~0,7 Mbps quando
+o timer do Windows arredonda para 15,6ms); contador tun_reads; log de erros de
+escrita no TUN com rate-limit de 5s; contadores por caminho
+(sent_pkts/sent_bytes/recv_pkts/recv_bytes) e linhas "Bond0 path stats" /
+"Bond0 tun stats" a cada 10s para diagnostico por interface e benchmarks.
 
 MELHORIAS
 - Timer de 25 ms no cliente para verificar o buffer mesmo sem novos datagramas.
