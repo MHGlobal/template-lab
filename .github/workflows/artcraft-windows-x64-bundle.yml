@@ -1,0 +1,81 @@
+name: ArtCraft Windows x64 Complete Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - ".github/workflows/artcraft-windows-x64-bundle.yml"
+      - "artcraft/windows_bundle/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: artcraft-windows-x64-bundle
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Download, verify and publish 12 apps + Launcher
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout bundle builder
+        uses: actions/checkout@v4
+
+      - name: Build offline bundle from verified upstream releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 artcraft/windows_bundle/build_windows_x64.py
+
+      - name: Verify archive integrity, complete inventory and SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -c ArtCraft-Windows-x64-Complete-2026-10-10.sha256
+          python3 - <<'PY'
+          import json,zipfile
+          z='ArtCraft-Windows-x64-Complete-2026-10-10.zip'
+          with zipfile.ZipFile(z) as f:
+              assert f.testzip() is None
+              names=f.namelist()
+              assert len([n for n in names if n.endswith('.msi')]) == 13
+              manifest=json.loads(f.read('ArtCraft-Windows-x64-Complete-2026-10-10/MANIFEST.json'))
+              assert len(manifest['apps']) == 13
+              assert all(x['sha256'] and len(x['sha256']) == 64 for x in manifest['apps'])
+          print('Verified: 13 Windows x64 MSIs and checksum manifest.')
+          PY
+
+      - name: Preserve GitHub Actions ZIP artifact (90 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArtCraft-Windows-x64-Complete-2026-10-10
+          path: |
+            dist/ArtCraft-Windows-x64-Complete-2026-10-10.zip
+            dist/ArtCraft-Windows-x64-Complete-2026-10-10.sha256
+          compression-level: 0
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Publish permanent public direct-download GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="artcraft-windows-x64-2026-10-10"
+          ZIP="dist/ArtCraft-Windows-x64-Complete-2026-10-10.zip"
+          SHA="dist/ArtCraft-Windows-x64-Complete-2026-10-10.sha256"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" "$SHA" --clobber
+          else
+            gh release create "$TAG" "$ZIP" "$SHA" \
+              --target "$GITHUB_SHA" \
+              --title "ArtCraft Windows x64 Complete — 12 apps + Launcher" \
+              --notes "Offline bundle of 13 official, version-pinned Windows x64 MSI packages from storytold. Every package SHA256 was checked against upstream SHA256SUMS.txt. Includes licenses, checksums, manifest and an optional Install-All.ps1. This bundle is not endorsed by upstream; it is a third-party compilation of their original installers. The ArtCraft AI studio is excluded because its standalone download is unavailable."
+          fi
+          gh release view "$TAG" --json url,assets --jq '{url: .url, assets: [.assets[] | {name: .name, size: .size, url: .url}]}'
