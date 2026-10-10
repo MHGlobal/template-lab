@@ -24,10 +24,7 @@ concurrency:
 
 env:
   BOND0_UPSTREAM_SHA: d2587a46e097c4408144d6dc48d7cd096f83d00a
-  PATCH_FILE: bond0/engine/patches/0001-windows-client-reorder-timer.patch
-  TUI_PATCH_FILE: bond0/engine/patches/0002-windows-tui-lifecycle-fix.patch
-  STRIPE_PATCH_FILE: bond0/engine/patches/0003-stripe-diagnostic-rate-limit.patch
-  TUN_IPV4_PATCH_FILE: bond0/engine/patches/0004-opt-in-safe-tun-ipv4-assign.patch
+  PATCH_DIR: bond0/engine/patches
 
 jobs:
   core-tests:
@@ -43,20 +40,17 @@ jobs:
           ref: d2587a46e097c4408144d6dc48d7cd096f83d00a
           path: upstream
           persist-credentials: false
-      - name: Verify base revision and patch
+      - name: Verify base revision and apply patch series in order
         shell: bash
         run: |
           set -euo pipefail
           cd upstream
           test "$(git rev-parse HEAD)" = "$BOND0_UPSTREAM_SHA"
-          git apply --check "../$PATCH_FILE"
-          git apply "../$PATCH_FILE"
-          git apply --check "../$TUI_PATCH_FILE"
-          git apply "../$TUI_PATCH_FILE"
-          git apply --check "../$STRIPE_PATCH_FILE"
-          git apply "../$STRIPE_PATCH_FILE"
-          git apply --check "../$TUN_IPV4_PATCH_FILE"
-          git apply "../$TUN_IPV4_PATCH_FILE"
+          for patch in $(ls "../$PATCH_DIR"/*.patch | sort); do
+            echo "Applying $patch"
+            git apply --check "$patch"
+            git apply "$patch"
+          done
           git diff --check
       - name: Rust toolchain
         shell: bash
@@ -99,40 +93,20 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Failed to restore upstream LF source" }
             # The lab checkout can convert *.patch to CRLF on Windows, while
             # upstream Rust sources explicitly use LF. Normalize BOTH before git apply.
-            $patchPath = (Resolve-Path "../$env:PATCH_FILE").Path
-            $files = @(
-              "bonding-client/src/main.rs",
-              "bonding-client/src/ui.rs",
-              "bonding-client/src/runtime.rs",
-              "bonding-client/src/windows_tun_config.rs",
-              "bonding-core/src/control.rs",
-              "bonding-core/src/reorder.rs",
-              $patchPath,
-              (Resolve-Path "../$env:TUI_PATCH_FILE").Path,
-              (Resolve-Path "../$env:STRIPE_PATCH_FILE").Path,
-              (Resolve-Path "../$env:TUN_IPV4_PATCH_FILE").Path
-            )
+            $files = @(Get-ChildItem "../$env:PATCH_DIR" -Filter *.patch | Sort-Object Name | ForEach-Object { $_.FullName })
+            $files += @(Get-ChildItem "bonding-client/src", "bonding-core/src" -Recurse -Filter *.rs | ForEach-Object { $_.FullName })
             foreach ($path in $files) {
-              $raw = [System.IO.File]::ReadAllText((Resolve-Path $path).Path)
+              $raw = [System.IO.File]::ReadAllText($path)
               $lf = $raw.Replace("`r`n", "`n")
-              [System.IO.File]::WriteAllText((Resolve-Path $path).Path, $lf, [Text.UTF8Encoding]::new($false))
+              [System.IO.File]::WriteAllText($path, $lf, [Text.UTF8Encoding]::new($false))
             }
-            git apply --check "../$env:PATCH_FILE"
-            if ($LASTEXITCODE -ne 0) { throw "Patch check failed" }
-            git apply "../$env:PATCH_FILE"
-            if ($LASTEXITCODE -ne 0) { throw "Patch apply failed" }
-            git apply --check "../$env:TUI_PATCH_FILE"
-            if ($LASTEXITCODE -ne 0) { throw "TUI patch check failed" }
-            git apply "../$env:TUI_PATCH_FILE"
-            if ($LASTEXITCODE -ne 0) { throw "TUI patch apply failed" }
-            git apply --check "../$env:STRIPE_PATCH_FILE"
-            if ($LASTEXITCODE -ne 0) { throw "STRIPE patch check failed" }
-            git apply "../$env:STRIPE_PATCH_FILE"
-            if ($LASTEXITCODE -ne 0) { throw "STRIPE patch apply failed" }
-            git apply --check "../$env:TUN_IPV4_PATCH_FILE"
-            if ($LASTEXITCODE -ne 0) { throw "IPv4 patch check failed" }
-            git apply "../$env:TUN_IPV4_PATCH_FILE"
-            if ($LASTEXITCODE -ne 0) { throw "IPv4 patch apply failed" }
+            foreach ($patch in @(Get-ChildItem "../$env:PATCH_DIR" -Filter *.patch | Sort-Object Name)) {
+              Write-Output "Applying $($patch.Name)"
+              git apply --check $patch.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Patch check failed: $($patch.Name)" }
+              git apply $patch.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Patch apply failed: $($patch.Name)" }
+            }
             git diff --check
             if ($LASTEXITCODE -ne 0) { throw "Patch whitespace failure" }
           } finally { Pop-Location }
@@ -144,8 +118,8 @@ jobs:
           rustc --version
           cargo test --locked -p bonding-core
           if ($LASTEXITCODE -ne 0) { throw "Core tests failed" }
-          cargo test --locked --no-run -p bonding-client
-          if ($LASTEXITCODE -ne 0) { throw "Client tests did not compile" }
+          cargo test --locked -p bonding-client
+          if ($LASTEXITCODE -ne 0) { throw "Client tests failed" }
           cargo build --locked --release -p bonding-client
           if ($LASTEXITCODE -ne 0) { throw "Windows Rust build failed" }
       - name: Generate artifact and checksum (no config)
@@ -159,7 +133,7 @@ jobs:
           Write-Output "Bond0 Rust Windows binary SHA256=$sha"
       - uses: actions/upload-artifact@v4
         with:
-          name: Bond0-Rust-Client-SafeIPv4-Windows-x64-QA
+          name: Bond0-Rust-Client-Windows-x64-QA
           path: dist/*
           retention-days: 30
           if-no-files-found: error
