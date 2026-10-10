@@ -247,7 +247,7 @@ index 3ba724a..4844f52 100644
                      match err {
                          ReorderError::TooOld(..) | ReorderError::Replay(..) => {
 diff --git a/bonding-client/src/windows_tun_config.rs b/bonding-client/src/windows_tun_config.rs
-index d5be6fa..96d4673 100644
+index 3b1a537..96d4673 100644
 --- a/bonding-client/src/windows_tun_config.rs
 +++ b/bonding-client/src/windows_tun_config.rs
 @@ -99,6 +99,59 @@ fn find_interface_index(interface_name: &str) -> Result<u32> {
@@ -310,7 +310,7 @@ index d5be6fa..96d4673 100644
  /// Set only the IPv4 address and prefix on a specifically selected virtual
  /// adapter. No route, gateway, DNS, firewall, MTU or WAN changes.
  pub fn assign_windows_tun_ipv4_only(
-@@ -110,22 +163,29 @@ pub fn assign_windows_tun_ipv4_only(
+@@ -110,20 +163,29 @@ pub fn assign_windows_tun_ipv4_only(
      if ipv4.is_unspecified() || ipv4.is_multicast() || ipv4.is_loopback() || prefix == 0 {
          bail!("invalid tunnel ASSIGN address/prefix: {ipv4}/{prefix}");
      }
@@ -324,11 +324,11 @@ index d5be6fa..96d4673 100644
 -        &ipv4.to_string(),
 -        &mask.to_string(),
 -    ])
--    .with_context(|| {
+-    .with_context(|| format!("could not assign {ipv4}/{prefix} on virtual adapter '{interface_name}'"))?;
 +    let args = build_assign_address_args(interface_name, ipv4, mask);
 +    run_netsh_owned(&args).with_context(|| {
-         format!("could not assign {ipv4}/{prefix} on virtual adapter '{interface_name}'")
-     })?;
++        format!("could not assign {ipv4}/{prefix} on virtual adapter '{interface_name}'")
++    })?;
      Ok(())
  }
  
@@ -351,7 +351,7 @@ index d5be6fa..96d4673 100644
  pub fn configure_windows_tun(
      interface_name: &str,
      mtu: usize,
-@@ -212,3 +272,105 @@ mod bond0_mask_tests {
+@@ -210,3 +272,105 @@ mod bond0_mask_tests {
          assert_eq!(prefix_to_mask(32).unwrap().to_string(), "255.255.255.255");
      }
  }
