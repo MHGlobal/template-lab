@@ -86,7 +86,7 @@ index 80d06dd..35000f9 100644
                          }
                      }
 diff --git a/bonding-core/src/transport.rs b/bonding-core/src/transport.rs
-index 2e4486d..0f15d6e 100644
+index 2e4486d..4b4f9ff 100644
 --- a/bonding-core/src/transport.rs
 +++ b/bonding-core/src/transport.rs
 @@ -119,6 +119,14 @@ impl TransportPath {
@@ -97,7 +97,7 @@ index 2e4486d..0f15d6e 100644
 +        // ~64KB receive buffer, which silently drops bursts that arrive while
 +        // the reorder buffer drains after a stall. Best-effort: the OS may
 +        // cap the granted size (Linux clamps to net.core.rmem_max).
-+        const UDP_SOCKET_BUFFER_BYTES: u32 = 4 * 1024 * 1024;
++        const UDP_SOCKET_BUFFER_BYTES: usize = 4 * 1024 * 1024;
 +        let _ = socket.set_recv_buffer_size(UDP_SOCKET_BUFFER_BYTES);
 +        let _ = socket.set_send_buffer_size(UDP_SOCKET_BUFFER_BYTES);
 +
