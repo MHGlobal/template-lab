@@ -35,6 +35,14 @@ jobs:
           cl.exe /nologo /utf-8 /std:c++20 /EHsc /W4 /O2 /DNDEBUG /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /Fe:dist/RS-Screen-Manager/RS-Screen-Manager.exe apps/rs-screen-manager/src/main.cpp /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib dwmapi.lib comctl32.lib
           if ($LASTEXITCODE -ne 0) { throw 'Native C++ compiler failed' }
           if (!(Test-Path dist/RS-Screen-Manager/RS-Screen-Manager.exe)) { throw 'Executable missing' }
+      - name: Compile and test game input state engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cl.exe /nologo /utf-8 /std:c++20 /EHsc /W4 /O2 /Fe:dist/game-mapping-test.exe apps/rs-screen-manager/tests/game_mapping_test.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'Game input core compilation failed' }
+          & dist/game-mapping-test.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Game input state tests failed' }
       - name: Download and verify official scrcpy 5.0.1 Windows distribution
         shell: pwsh
         run: |
