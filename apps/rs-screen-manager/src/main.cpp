@@ -26,6 +26,7 @@ HINSTANCE inst{};
 HWND win{}, deviceList{},sessionList{},statusBar{},endpointEdit{},codeEdit{},resBox{},fpsBox{},bitrateBox{},audioBox{},hidBox{},launcherEdit{};
 HFONT font{},heading{};
 std::vector<std::wstring> serials;
+struct DevicesResult{bool ok;std::wstring text;std::vector<std::wstring> names;std::vector<std::wstring> ids;};
 struct Session { std::wstring serial; bool virtualDisplay; PROCESS_INFORMATION pi{}; };
 std::vector<Session> sessions;
 std::atomic<bool> refreshing{false};
@@ -95,8 +96,7 @@ void refresh(){
  std::thread([]{
   std::wstring output;
   bool ok=runCapture(adb(),L"devices -l",output);
-  struct Result{bool ok;std::wstring text;std::vector<std::wstring> names;std::vector<std::wstring> ids;};
-  auto* r=new Result; r->ok=ok;r->text=output;
+  auto* r=new DevicesResult; r->ok=ok;r->text=output;
   std::wistringstream input(output);std::wstring line;
   while(std::getline(input,line)){
    if(line.find(L"List of devices")!=std::wstring::npos||line.empty()||line.rfind(L"*",0)==0)continue;
@@ -256,7 +256,7 @@ void initControls(){
 }
 LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp){
  switch(msg){
- case WM_CREATE: initControls();SetTimer(h,1,4000,nullptr);refresh();return 0;
+ case WM_CREATE: win=h;initControls();SetTimer(h,1,4000,nullptr);refresh();return 0;
  case WM_COMMAND: if(HIWORD(wp)==BN_CLICKED){
   switch(LOWORD(wp)){
    case ID_REFRESH:refresh();break;
@@ -272,8 +272,7 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp){
  case WM_TIMER: if(wp==1){refresh();reapSessions();}return 0;
  case WM_STATUS:{std::unique_ptr<std::wstring> s(reinterpret_cast<std::wstring*>(lp));setStatus(*s);return 0;}
  case WM_DEVICES:{
-  struct Result{bool ok;std::wstring text;std::vector<std::wstring> names;std::vector<std::wstring> ids;};
-  std::unique_ptr<Result> r(reinterpret_cast<Result*>(lp));
+  std::unique_ptr<DevicesResult> r(reinterpret_cast<DevicesResult*>(lp));
   auto selected=selectedSerial();
   serials=r->ids;
   SendMessageW(deviceList,LB_RESETCONTENT,0,0);
