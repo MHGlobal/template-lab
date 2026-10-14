@@ -23,7 +23,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   void start(bool virtualDisplay);
   void command(const std::wstring& args);
   std::wstring tools(const wchar_t* file) const;
-  std::wstring selected() const;
+  std::wstring selected();
   std::wstring option(Microsoft::UI::Xaml::Controls::ComboBox const& combo) const;
   void status(const wchar_t* message);
  };
