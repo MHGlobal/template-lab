@@ -40,7 +40,7 @@ std::wstring MainWindow::tools(const wchar_t* file) const {
 void MainWindow::status(const wchar_t* txt){StatusText().Text(txt);}
 std::wstring MainWindow::option(Microsoft::UI::Xaml::Controls::ComboBox const& combo) const {
  auto selected=combo.SelectedItem();
- return selected?std::wstring(unbox_value<hstring>(selected)):L"";
+ return selected?std::wstring(unbox_value<hstring>(selected).c_str()):L"";
 }
 std::wstring MainWindow::selected() const {
  int idx=DevicesCombo().SelectedIndex();
@@ -77,7 +77,7 @@ void MainWindow::start(bool v){
  std::wstring args=L"--serial="+quote(serial)+L" --max-fps="+fps+L" --video-bit-rate="+bitrate+L"M --video-codec=h264 --keep-active";
  if(v){
   args+=L" --new-display="+resolution+L" --flex-display";
-  auto app=std::wstring(LauncherBox().Text());
+  auto app=std::wstring(LauncherBox().Text().c_str());
   if(!app.empty()){
    if(!std::all_of(app.begin(),app.end(),[](auto c){return std::iswalnum(c)||c==L'.'||c==L'_';})){status(L"Invalid launcher package.");return;}
    args+=L" --start-app="+app;
@@ -103,14 +103,14 @@ void MainWindow::Stop_Click(IInspectable const&, RoutedEventArgs const&){
  TerminateProcess(p.hProcess,0);CloseHandle(p.hThread);CloseHandle(p.hProcess);status(L"Session stopped.");
 }
 void MainWindow::Pair_Click(IInspectable const&, RoutedEventArgs const&){
- auto ep=std::wstring(EndpointBox().Text()),pin=std::wstring(PairCodeBox().Text());
+ auto ep=std::wstring(EndpointBox().Text().c_str()),pin=std::wstring(PairCodeBox().Text().c_str());
  if(!valid(ep)||!valid(pin,true)){status(L"Enter IP:port and 6-digit PIN.");return;}command(L"pair "+ep+L" "+pin);
 }
 void MainWindow::Connect_Click(IInspectable const&, RoutedEventArgs const&){
- auto ep=std::wstring(EndpointBox().Text());if(!valid(ep)){status(L"Enter valid IP:port.");return;}command(L"connect "+ep);
+ auto ep=std::wstring(EndpointBox().Text().c_str());if(!valid(ep)){status(L"Enter valid IP:port.");return;}command(L"connect "+ep);
 }
 void MainWindow::Disconnect_Click(IInspectable const&, RoutedEventArgs const&){
- auto ep=std::wstring(EndpointBox().Text());if(!valid(ep)){status(L"Enter valid IP:port.");return;}command(L"disconnect "+ep);
+ auto ep=std::wstring(EndpointBox().Text().c_str());if(!valid(ep)){status(L"Enter valid IP:port.");return;}command(L"disconnect "+ep);
 }
 void MainWindow::Advanced_Click(IInspectable const&, RoutedEventArgs const&){
  wchar_t path[MAX_PATH]{};GetModuleFileNameW(nullptr,path,MAX_PATH);
