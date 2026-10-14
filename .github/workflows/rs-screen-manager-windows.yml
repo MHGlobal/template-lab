@@ -1,0 +1,90 @@
+name: RS Screen Manager Windows x64
+on:
+  push:
+    branches:
+      - editor
+      - feature/rs-screen-manager
+    paths:
+      - "apps/rs-screen-manager/**"
+      - ".github/workflows/rs-screen-manager-windows.yml"
+  pull_request:
+    branches: [editor]
+    paths:
+      - "apps/rs-screen-manager/**"
+      - ".github/workflows/rs-screen-manager-windows.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: rs-screen-manager-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compile native C++ executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist/RS-Screen-Manager | Out-Null
+          cl.exe /nologo /utf-8 /std:c++20 /EHsc /W4 /O2 /DNDEBUG /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /Fe:dist/RS-Screen-Manager/RS-Screen-Manager.exe apps/rs-screen-manager/src/main.cpp /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib dwmapi.lib comctl32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Native C++ compiler failed' }
+          if (!(Test-Path dist/RS-Screen-Manager/RS-Screen-Manager.exe)) { throw 'Executable missing' }
+      - name: Download and verify official scrcpy 5.0.1 Windows distribution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url='https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-win64-v5.0.1.zip'
+          Invoke-WebRequest -Uri $url -OutFile scrcpy.zip -MaximumRedirection 10
+          $expected='b12a2c4ee8be317422451fc7dcf8ee20a71b5ea7ef9ad73ddd825a25316227a5'
+          $actual=(Get-FileHash scrcpy.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "scrcpy checksum mismatch: $actual" }
+          Expand-Archive scrcpy.zip -DestinationPath scrcpy-extract -Force
+          New-Item -ItemType Directory -Force -Path dist/RS-Screen-Manager/tools | Out-Null
+          Copy-Item -Path 'scrcpy-extract/scrcpy-win64-v5.0.1/*' -Destination 'dist/RS-Screen-Manager/tools' -Recurse -Force
+          if (!(Test-Path 'dist/RS-Screen-Manager/tools/adb.exe') -or !(Test-Path 'dist/RS-Screen-Manager/tools/scrcpy.exe')) { throw 'Required tools missing' }
+          Copy-Item apps/rs-screen-manager/README.md dist/RS-Screen-Manager/README.md
+      - name: Verify bundled executable can launch without Android
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tool='dist/RS-Screen-Manager/tools/adb.exe'
+          & $tool version
+          if ($LASTEXITCODE -ne 0) { throw 'ADB executable failed to start' }
+          $scr='dist/RS-Screen-Manager/tools/scrcpy.exe'
+          & $scr --version
+          if ($LASTEXITCODE -ne 0) { throw 'scrcpy executable failed to start' }
+          # GUI startup and physical-device tests require an interactive Windows host.
+      - name: Build Windows installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install innosetup --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup install failed' }
+          $iscc='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $iscc)) { throw "ISCC.exe missing" }
+          & $iscc 'apps/rs-screen-manager/packaging/RS-Screen-Manager.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'Installer failed to build' }
+      - name: Generate zip, hashes and artifact manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Compress-Archive -Path 'dist/RS-Screen-Manager' -DestinationPath 'dist/RS-Screen-Manager-Portable-x64.zip' -Force
+          Get-ChildItem dist -File -Recurse | Where-Object { $_.Extension -in '.zip','.exe' } | ForEach-Object {
+            "$( (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() )  $($_.Name)"
+          } | Set-Content dist/SHA256SUMS.txt
+          if (!(Test-Path dist/RS-Screen-Manager-Portable-x64.zip)) { throw 'Portable ZIP not created' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RS-Screen-Manager-Windows-x64
+          path: |
+            dist/RS-Screen-Manager-Portable-x64.zip
+            dist/RS-Screen-Manager-Setup-x64.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
