@@ -55,10 +55,59 @@ jobs:
           New-Item -Type Directory -Path 'dist/RS-Screen-Manager-WinUI' -Force | Out-Null
           Copy-Item "$dir/*" -Destination 'dist/RS-Screen-Manager-WinUI' -Recurse -Force
           if (!(Test-Path dist/RS-Screen-Manager-WinUI/RSScreenManagerUI.exe)) { throw 'WinUI package missing' }
-          Compress-Archive 'dist/RS-Screen-Manager-WinUI' dist/RS-Screen-Manager-WinUI-preview.zip -Force
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compile the native fallback manager
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cl.exe /nologo /utf-8 /std:c++20 /EHsc /W4 /O2 /DNDEBUG /DUNICODE /D_UNICODE /Fe:dist/RS-Screen-Manager-WinUI/RS-Screen-Manager.exe apps/rs-screen-manager/src/main.cpp /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib dwmapi.lib comctl32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Native fallback manager failed to compile' }
+          cl.exe /nologo /utf-8 /std:c++20 /EHsc /W4 /O2 /Fe:dist/game-mapping-test.exe apps/rs-screen-manager/tests/game_mapping_test.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'Touch mapping test build failed' }
+          & dist/game-mapping-test.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Touch mapping tests failed' }
+      - name: Bundle scrcpy 5.0.1 and ADB with pinned integrity hash
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-win64-v5.0.1.zip'
+          Invoke-WebRequest -Uri $url -OutFile scrcpy.zip -MaximumRedirection 10
+          $expected='b12a2c4ee8be317422451fc7dcf8ee20a71b5ea7ef9ad73ddd825a25316227a5'
+          $actual=(Get-FileHash scrcpy.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "scrcpy release SHA mismatch: $actual" }
+          Expand-Archive scrcpy.zip -DestinationPath scrcpy-extract -Force
+          New-Item -Type Directory -Path dist/RS-Screen-Manager-WinUI/tools -Force | Out-Null
+          Copy-Item -Path 'scrcpy-extract/scrcpy-win64-v5.0.1/*' -Destination 'dist/RS-Screen-Manager-WinUI/tools' -Recurse -Force
+          Copy-Item apps/rs-screen-manager/README.md dist/RS-Screen-Manager-WinUI/README.md
+          foreach ($bin in 'adb.exe','scrcpy.exe','scrcpy-server') {
+            if (!(Test-Path "dist/RS-Screen-Manager-WinUI/tools/$bin")) { throw "Required tool missing: $bin" }
+          }
+      - name: Build WinUI installer and portable bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install innosetup --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          $iscc='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $iscc)) { throw 'Inno Setup compiler not found' }
+          & $iscc apps/rs-screen-manager/packaging/RS-Screen-Manager-WinUI.iss
+          if ($LASTEXITCODE -ne 0) { throw 'WinUI installer compilation failed' }
+          Get-ChildItem dist/RS-Screen-Manager-WinUI -File | Select-Object Name,Length
+          Compress-Archive 'dist/RS-Screen-Manager-WinUI' dist/RS-Screen-Manager-WinUI-Portable-x64.zip -Force
+          if (!(Test-Path dist/RS-Screen-Manager-WinUI-Setup-x64.exe)) { throw 'WinUI setup executable missing' }
+          if (!(Test-Path dist/RS-Screen-Manager-WinUI-Portable-x64.zip)) { throw 'WinUI portable archive missing' }
+          @(
+            "setup_sha256=$((Get-FileHash dist/RS-Screen-Manager-WinUI-Setup-x64.exe -Algorithm SHA256).Hash.ToLowerInvariant())"
+            "zip_sha256=$((Get-FileHash dist/RS-Screen-Manager-WinUI-Portable-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant())"
+          ) | Set-Content dist/RS-Screen-Manager-WinUI-SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: RS-Screen-Manager-WinUI-preview
-          path: dist/RS-Screen-Manager-WinUI-preview.zip
+          name: RS-Screen-Manager-WinUI-Full-Bundle
+          path: |
+            dist/RS-Screen-Manager-WinUI-Portable-x64.zip
+            dist/RS-Screen-Manager-WinUI-Setup-x64.exe
+            dist/RS-Screen-Manager-WinUI-SHA256.txt
           if-no-files-found: error
           retention-days: 14
