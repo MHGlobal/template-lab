@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="RSScreenManagerUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="RS Screen Manager">
+    <Grid ColumnDefinitions="238,*" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" Padding="24" RowDefinitions="Auto,Auto,*">
+            <StackPanel Spacing="6">
+                <TextBlock Text="RS SCREEN" FontSize="22" FontWeight="SemiBold"/>
+                <TextBlock Text="MANAGER" FontSize="19" FontWeight="SemiBold" Opacity="0.75"/>
+                <TextBlock Text="C++ / WinUI 3" FontSize="12" Opacity="0.5" Margin="0,12,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Row="1" Margin="0,38,0,0" Spacing="12">
+                <TextBlock Text="DEVICE CENTER" FontSize="11" Opacity="0.6"/>
+                <Button Content="Refresh devices" Click="Refresh_Click" HorizontalAlignment="Stretch" />
+                <Button Content="Advanced manager" Click="Advanced_Click" HorizontalAlignment="Stretch" />
+            </StackPanel>
+            <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Spacing="7">
+                <TextBlock Text="Agentless scrcpy + ADB" FontSize="11" Opacity="0.65"/>
+                <TextBlock Text="Game-to-touch mapping: planned" TextWrapping="Wrap" FontSize="11" Opacity="0.55"/>
+            </StackPanel>
+        </Grid>
+        <ScrollViewer Grid.Column="1">
+            <StackPanel Padding="35" Spacing="20" MaxWidth="1000">
+                <TextBlock Text="Device workspace" FontSize="30" FontWeight="SemiBold"/>
+                <TextBlock Text="Connect your Android, choose a session, and control it without using a terminal."
+                           TextWrapping="Wrap" Opacity="0.7"/>
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="20" CornerRadius="18">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Connected devices" FontSize="19" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="DevicesCombo" HorizontalAlignment="Stretch" PlaceholderText="No device selected"/>
+                        <TextBlock x:Name="StatusText" Text="Checking ADB..." TextWrapping="Wrap" Opacity="0.7"/>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Mirror physical screen" Click="Mirror_Click"/>
+                            <Button Content="Create virtual display" Click="Virtual_Click"/>
+                            <Button Content="Stop last session" Click="Stop_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="20" CornerRadius="18">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Video and audio" FontSize="19" FontWeight="SemiBold"/>
+                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+                            <StackPanel>
+                                <TextBlock Text="Resolution / density"/>
+                                <ComboBox x:Name="ResolutionCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+                                    <x:String>1080x1920/320</x:String>
+                                    <x:String>1920x1080/320</x:String>
+                                    <x:String>720x1280/320</x:String>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="FPS target"/>
+                                <ComboBox x:Name="FpsCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+                                    <x:String>60</x:String><x:String>30</x:String><x:String>90</x:String><x:String>120</x:String>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Bitrate Mbps"/>
+                                <ComboBox x:Name="BitrateCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+                                    <x:String>16</x:String><x:String>8</x:String><x:String>24</x:String>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="Virtual launcher Android package"/>
+                        <TextBox x:Name="LauncherBox" Text="org.fossify.home" PlaceholderText="org.fossify.home"/>
+                        <ToggleSwitch x:Name="DuplicateAudio" Header="Duplicate audio to Android and Windows"/>
+                    </StackPanel>
+                </Border>
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="20" CornerRadius="18">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Wireless debugging" FontSize="19" FontWeight="SemiBold"/>
+                        <TextBlock Text="Use the pairing address and PIN from Android developer options. The connection port may differ." TextWrapping="Wrap" Opacity="0.7"/>
+                        <TextBox x:Name="EndpointBox" PlaceholderText="IP:port"/>
+                        <TextBox x:Name="PairCodeBox" PlaceholderText="6-digit pairing code"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button Content="Pair" Click="Pair_Click"/>
+                            <Button Content="Connect" Click="Connect_Click"/>
+                            <Button Content="Disconnect" Click="Disconnect_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>
