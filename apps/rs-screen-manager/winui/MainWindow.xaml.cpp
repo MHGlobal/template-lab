@@ -42,7 +42,7 @@ std::wstring MainWindow::option(Microsoft::UI::Xaml::Controls::ComboBox const& c
  auto selected=combo.SelectedItem();
  return selected?std::wstring(unbox_value<hstring>(selected).c_str()):L"";
 }
-std::wstring MainWindow::selected() const {
+std::wstring MainWindow::selected(){
  int idx=DevicesCombo().SelectedIndex();
  return idx>=0&&size_t(idx)<serials_.size()?serials_[idx]:std::wstring{};
 }
