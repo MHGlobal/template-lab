@@ -10,6 +10,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   MainWindow();
   ~MainWindow();
 
+  void WelcomeNext_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Root_Loaded(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Home_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Devices_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -43,6 +44,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   std::vector<std::pair<std::wstring,bool>> sessionInfo_;
   std::wstring history_;
   bool loaded_=false;
+  int onboardingStep_=0;
   bool syncing_=false;
 
   void navigate(int page);
