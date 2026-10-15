@@ -111,6 +111,16 @@ void MainWindow::Root_Loaded(IInspectable const&,RoutedEventArgs const&){
  loaded_=true;
  navigate(0);
  loadSettings();
+ if(AutoRestoreSwitch().IsOn()){
+  const auto ep=ini(settingsPath(),L"wireless",L"endpoint");
+  if(valid(ep)){
+   PROCESS_INFORMATION pi{};
+   if(process(tools(L"adb.exe"),L"connect "+ep,pi,false)){
+    WaitForSingleObject(pi.hProcess,8000);
+    CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
+   }
+  }
+ }
  refresh();
  restoreSessions();
 }
@@ -154,7 +164,7 @@ void MainWindow::updateSummary(){
  diagnostics+=L"\nSessões ativas: "+std::to_wstring(active);
  for(size_t i=0;i<serials_.size();++i)diagnostics+=L"\n"+serials_[i]+L" — "+deviceStates_[i];
  DiagnosticsText().Text(hstring(diagnostics));
- HistoryText().Text(history_.empty()?L"Ainda não há sessões registadas.":hstring(history_));
+ HistoryText().Text(hstring(history_.empty()?std::wstring(L"Ainda não há sessões registadas."):history_));
 }
 void MainWindow::refresh(){
  const auto previous=DevicesCombo().SelectedIndex();
@@ -215,7 +225,8 @@ void MainWindow::saveSessions(){
 void MainWindow::restoreSessions(){
  if(!AutoRestoreSwitch().IsOn())return;
  const auto path=settingsPath();
- int count=std::clamp(GetPrivateProfileIntW(L"resume",L"count",0,path.c_str()),0,16);
+ int count=static_cast<int>(GetPrivateProfileIntW(L"resume",L"count",0,path.c_str()));
+ count=std::clamp(count,0,16);
  std::vector<std::pair<std::wstring,bool>> requested;
  for(int i=0;i<count;++i){
   auto sk=L"serial"+std::to_wstring(i);
