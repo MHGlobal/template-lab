@@ -4,11 +4,13 @@ on:
     branches: [feature/rs-screen-manager, editor]
     paths:
       - 'apps/rs-screen-manager/winui/**'
+      - 'apps/rs-screen-manager/packaging/RS-Screen-Manager-WinUI.iss'
       - '.github/workflows/rs-screen-manager-winui.yml'
   pull_request:
     branches: [editor]
     paths:
       - 'apps/rs-screen-manager/winui/**'
+      - 'apps/rs-screen-manager/packaging/RS-Screen-Manager-WinUI.iss'
       - '.github/workflows/rs-screen-manager-winui.yml'
   workflow_dispatch:
 permissions:
@@ -109,5 +111,12 @@ jobs:
             dist/RS-Screen-Manager-WinUI-Portable-x64.zip
             dist/RS-Screen-Manager-WinUI-Setup-x64.exe
             dist/RS-Screen-Manager-WinUI-SHA256.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload installer-only artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Screen-Manager-Setup-Only
+          path: dist/RS-Screen-Manager-WinUI-Setup-x64.exe
           if-no-files-found: error
           retention-days: 14
