@@ -213,7 +213,7 @@ void MainWindow::refresh(){
 }
 void MainWindow::saveSessions(){
  const auto path=settingsPath();
- size_t count=std::min(sessionInfo_.size(),size_t(16));
+ size_t count=(std::min)(sessionInfo_.size(),size_t(16));
  writeIni(path,L"resume",L"count",std::to_wstring(count));
  for(size_t i=0;i<count;++i){
   auto key1=L"serial"+std::to_wstring(i);
