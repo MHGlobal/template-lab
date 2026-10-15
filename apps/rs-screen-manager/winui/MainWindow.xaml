@@ -195,9 +195,22 @@
                         <StackPanel Spacing="12">
                             <TextBlock Text="SESSÃO DE ESPELHAMENTO" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
                             <TextBlock Text="Usa o dispositivo selecionado na página Dispositivos. Ajusta a qualidade na página Definições." Foreground="#BECBE0" TextWrapping="Wrap"/>
+                            <ToggleSwitch x:Name="RecordMirrorToggle" Header="Gravar esta sessão em MP4" IsOn="False"/>
+                            <TextBlock Text="A gravação será guardada localmente. Para finalizar o MP4 sem corromper, termina a sessão pelo gestor." Foreground="#9DAFC6" FontSize="12" TextWrapping="Wrap"/>
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <Button Content="▶ Iniciar espelhamento" Click="Mirror_Click" Style="{StaticResource BlueButton}"/>
                                 <Button Content="■ Terminar última sessão" Click="Stop_Click" Style="{StaticResource QuietButton}"/>
+                                <Button Content="◫ Screenshot" Click="Screenshot_Click" Style="{StaticResource QuietButton}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="11">
+                            <TextBlock Text="SESSÕES ATIVAS · CONTROLO INDIVIDUAL" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <ListView x:Name="MirrorSessionsList" MaxHeight="215" SelectionMode="Single" HorizontalAlignment="Stretch"/>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Content="Terminar sessão selecionada" Click="StopMirrorSelected_Click" Style="{StaticResource BlueButton}"/>
+                                <Button Content="Abrir gravações e imagens" Click="OpenRecordings_Click" Style="{StaticResource QuietButton}"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -225,11 +238,19 @@
                                 <x:String>720x1280/320</x:String>
                             </ComboBox>
                             <TextBox x:Name="LauncherBox" Header="Pacote launcher virtual" Text="org.fossify.home" PlaceholderText="org.fossify.home"/>
+                            <ToggleSwitch x:Name="RecordVirtualToggle" Header="Gravar este ecrã virtual em MP4" IsOn="False"/>
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <Button Content="＋ Criar ecrã virtual" Click="Virtual_Click" Style="{StaticResource BlueButton}"/>
                                 <Button Content="■ Terminar última sessão" Click="Stop_Click" Style="{StaticResource QuietButton}"/>
                             </StackPanel>
                             <TextBlock Text="Nota: ecrã virtual não é o Segundo Espaço do HyperOS." Foreground="#B4C2D7" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="11">
+                            <TextBlock Text="SESSÕES VIRTUAIS E FÍSICAS ATIVAS" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <ListView x:Name="VirtualSessionsList" MaxHeight="215" SelectionMode="Single" HorizontalAlignment="Stretch"/>
+                            <Button Content="Terminar sessão selecionada" Click="StopVirtualSelected_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -346,7 +367,8 @@
                         <StackPanel Spacing="10">
                             <TextBlock Text="SESSÕES NESTA EXECUÇÃO" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
                             <TextBlock x:Name="HistoryText" Text="Ainda não há sessões registadas." Foreground="#D0DBEB" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
-                            <TextBlock Text="A biblioteca de gravações e os relatórios de sessões anteriores ainda não estão implementados." Foreground="#9BAEC7" TextWrapping="Wrap" FontSize="12"/>
+                            <TextBlock Text="Gravações MP4 e screenshots ficam em %LOCALAPPDATA%\\RS Screen Manager\\Recordings. A catalogação e pesquisa avançada ainda não estão disponíveis." Foreground="#9BAEC7" TextWrapping="Wrap" FontSize="12"/>
+                            <Button Content="Abrir pasta de gravações e screenshots" Click="OpenRecordings_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
