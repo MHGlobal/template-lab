@@ -34,6 +34,8 @@ namespace winrt::RSScreenManagerUI::implementation {
   void Advanced_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void ApplyProfile_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Screenshot_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void RefreshRecordings_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void OpenSelectedRecording_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void OpenRecordings_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void StopMirrorSelected_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void StopVirtualSelected_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -55,6 +57,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   std::vector<Session> sessions_;
   Microsoft::UI::Xaml::DispatcherTimer maintenanceTimer_{nullptr};
   std::wstring history_;
+  std::vector<std::wstring> recordings_;
   bool loaded_=false;
   int onboardingStep_=0;
   bool syncing_=false;
@@ -70,6 +73,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   void stopAt(size_t index);
   void reapExitedSessions();
   void refreshSessionLists();
+  void refreshRecordings();
   std::wstring recordingsPath() const;
   std::wstring newMediaPath(const wchar_t* extension) const;
   void restoreSessions();
