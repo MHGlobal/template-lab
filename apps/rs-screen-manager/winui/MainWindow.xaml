@@ -368,7 +368,13 @@
                             <TextBlock Text="SESSÕES NESTA EXECUÇÃO" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
                             <TextBlock x:Name="HistoryText" Text="Ainda não há sessões registadas." Foreground="#D0DBEB" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                             <TextBlock Text="Gravações MP4 e screenshots ficam em %LOCALAPPDATA%\\RS Screen Manager\\Recordings. A catalogação e pesquisa avançada ainda não estão disponíveis." Foreground="#9BAEC7" TextWrapping="Wrap" FontSize="12"/>
-                            <Button Content="Abrir pasta de gravações e screenshots" Click="OpenRecordings_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left"/>
+                            <TextBlock Text="FICHEIROS GUARDADOS" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <ListView x:Name="RecordingsList" MaxHeight="260" SelectionMode="Single" HorizontalAlignment="Stretch"/>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Content="▶ Abrir selecionado" Click="OpenSelectedRecording_Click" Style="{StaticResource BlueButton}"/>
+                                <Button Content="↻ Atualizar" Click="RefreshRecordings_Click" Style="{StaticResource QuietButton}"/>
+                                <Button Content="Abrir pasta" Click="OpenRecordings_Click" Style="{StaticResource QuietButton}"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
