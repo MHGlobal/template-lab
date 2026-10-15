@@ -8,6 +8,8 @@
 #include <sstream>
 #include <utility>
 #include <chrono>
+#include <iterator>
+#include <cstddef>
 #include <shellapi.h>
 #pragma comment(lib,"shell32.lib")
 
@@ -152,6 +154,7 @@ void MainWindow::Root_Loaded(IInspectable const&,RoutedEventArgs const&){
  }
  refresh();
  restoreSessions();
+ refreshRecordings();
  maintenanceTimer_=Microsoft::UI::Xaml::DispatcherTimer();
  maintenanceTimer_.Interval(std::chrono::seconds(3));
  maintenanceTimer_.Tick({this,&MainWindow::Maintenance_Tick});
@@ -302,7 +305,7 @@ void MainWindow::reapExitedSessions(){
  for(size_t i=0;i<sessions_.size();){
   auto& sess=sessions_[i];
   if(sess.process.hProcess&&WaitForSingleObject(sess.process.hProcess,0)==WAIT_TIMEOUT){++i;continue;}
-  if(sess.recording)history_+=L"Gravação finalizada: "+sess.recordingFile+L"\n";
+  if(sess.recording){history_+=L"Gravação finalizada: "+sess.recordingFile+L"\n";refreshRecordings();}
   if(sess.process.hThread)CloseHandle(sess.process.hThread);
   if(sess.process.hProcess)CloseHandle(sess.process.hProcess);
   sessions_.erase(sessions_.begin()+static_cast<std::ptrdiff_t>(i));
@@ -327,7 +330,7 @@ void MainWindow::stopAt(size_t i){
   TerminateProcess(session.process.hProcess,0);
   if(session.recording)status(L"Sessão forçada a terminar; o MP4 pode não estar finalizado.");
  }
- if(session.recording)history_+=L"MP4: "+session.recordingFile+L"\n";
+ if(session.recording){history_+=L"MP4: "+session.recordingFile+L"\n";refreshRecordings();}
  if(session.process.hThread)CloseHandle(session.process.hThread);
  if(session.process.hProcess)CloseHandle(session.process.hProcess);
  sessions_.erase(sessions_.begin()+static_cast<std::ptrdiff_t>(i));
@@ -416,6 +419,39 @@ void MainWindow::StopVirtualSelected_Click(IInspectable const&,RoutedEventArgs c
  if(i<0){status(L"Seleciona uma sessão na lista.");return;}
  stopAt(static_cast<size_t>(i));
 }
+void MainWindow::refreshRecordings(){
+ recordings_.clear();
+ auto list=RecordingsList();
+ list.Items().Clear();
+ const auto search=recordingsPath()+L"\\*";
+ WIN32_FIND_DATAW item{};
+ HANDLE h=FindFirstFileW(search.c_str(),&item);
+ if(h==INVALID_HANDLE_VALUE)return;
+ do{
+  if((item.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)!=0)continue;
+  std::wstring name(item.cFileName);
+  auto dot=name.find_last_of(L'.');
+  if(dot==std::wstring::npos)continue;
+  auto extension=name.substr(dot);
+  std::transform(extension.begin(),extension.end(),extension.begin(),[](wchar_t c){return static_cast<wchar_t>(std::towlower(c));});
+  if(extension!=L".mp4"&&extension!=L".png")continue;
+  recordings_.push_back(name);
+ }while(FindNextFileW(h,&item)&&recordings_.size()<500);
+ FindClose(h);
+ std::sort(recordings_.rbegin(),recordings_.rend());
+ for(const auto& name:recordings_)list.Items().Append(box_value(hstring(name)));
+}
+void MainWindow::RefreshRecordings_Click(IInspectable const&,RoutedEventArgs const&){
+ refreshRecordings();
+ status(L"Lista de gravações e screenshots atualizada.");
+}
+void MainWindow::OpenSelectedRecording_Click(IInspectable const&,RoutedEventArgs const&){
+ int index=RecordingsList().SelectedIndex();
+ if(index<0||static_cast<size_t>(index)>=recordings_.size()){status(L"Seleciona um ficheiro da lista.");return;}
+ const auto file=recordingsPath()+L"\\"+recordings_[index];
+ auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",file.c_str(),nullptr,nullptr,SW_SHOWNORMAL));
+ if(result<=32)status(L"Não foi possível abrir o ficheiro com o Windows.");
+}
 void MainWindow::OpenRecordings_Click(IInspectable const&,RoutedEventArgs const&){
  const auto folder=recordingsPath();
  auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",folder.c_str(),nullptr,nullptr,SW_SHOWNORMAL));
@@ -454,7 +490,7 @@ void MainWindow::Screenshot_Click(IInspectable const&,RoutedEventArgs const&){
   DeleteFileW(file.c_str());
   status(L"A captura falhou; confirma que o dispositivo está autorizado e desbloqueado.");return;
  }
- history_+=L"Screenshot: "+file+L"\n";updateSummary();
+ history_+=L"Screenshot: "+file+L"\n";refreshRecordings();updateSummary();
  status(L"Screenshot do ecrã físico guardado na pasta Recordings.");
 }
 void MainWindow::Pair_Click(IInspectable const&,RoutedEventArgs const&){
