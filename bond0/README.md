@@ -4,6 +4,12 @@
 **Ambiente:** Projecto Bond0 Windows ↔ Oracle `mcpe-net` / Netlify.
 **IA no produto:** nenhuma.
 
+## Auditoria de arquitetura Plexo (15/10/2026)
+
+- [Relatório Plexo × Bond0 com ficheiros concretos, prioridades e testes](./PLEXO_TECHNICAL_AUDIT.md)
+- **Decisão:** aproveitar monitorização de redes, medição por caminho, limites de consumo, failover e testes de caos; **não** importar o scheduler HTTP Range do Plexo para pacotes IP.
+- A análise foi registada sem alterar a implementação Rust actualmente instalada na VPS.
+
 ## Pastas
 - [Plano completo](./PLAN.md): M0–M7, segurança, vários Wi-Fi, opções de partilha e testes.
 - [Desktop .NET 8](./desktop/): POC WinForms, perfis A/B/A+B e múltiplos adaptadores; compilação win-x64 self-contained em GitHub Actions. Utiliza motor Rust existente em C:\Bond0.
