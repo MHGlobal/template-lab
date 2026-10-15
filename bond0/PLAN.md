@@ -148,6 +148,12 @@ Não afirmar soma de velocidades até testar A, B e A+B nas mesmas condições (
 - Deployment preview até existir domínio/API protegida. Só tornar dashboard operacional com `https://` e sessão OIDC.
 - Deploys e build não reiniciam o servidor Oracle nem modificam o data-plane.
 
+## 11.1. Auditoria Plexo e decisão de implementação (15/10/2026)
+
+Ver [Auditoria Plexo × Bond0](./PLEXO_TECHNICAL_AUDIT.md) para referências de código-fonte, achados e prioridades P0–P3.
+
+**Prioridade imediata de engenharia:** provar binding do UDP à NIC correta, recolher métricas reais por WAN nos **dois sentidos**, implementar health/failover e timer de reorder antes de scheduler ponderado. Só depois habilitar pesos adaptativos, limites e controlo live N-WAN; desktop e hotspot dependem dessa base. O trabalho de comparação não aplica patch ao motor de produção nem cria endpoint remoto público.
+
 ## 12. Estado factual e próximos trabalhos
 Concluído: branch criada, POC WinForms com perfis multi-WAN, HTML de pré-visualização, cliente actual compatível com whitelist por nome, testes do core Rust anteriores, e servidor de benchmark local na VPS.
 Ainda pendente: CI do branch, validação Windows da POC, serviço Windows separado, pairing/autenticação, API operacional segura, ligação Netlify, hotspot e benchmarking comparativo.
