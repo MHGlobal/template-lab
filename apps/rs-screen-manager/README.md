@@ -1,4 +1,4 @@
-# RS Screen Manager — WinUI 3 preview (connect+)
+# RS Screen Manager — connect+ 0.2.1-alpha (WinUI 3 preview)
 
 **Status: development preview, not v1.0.** Windows x64 app in native C++20/WinUI 3. The original Win32 manager is still included and has not been removed. The application stays agentless for core features; any future Android Companion must remain optional and require user permission.
 
@@ -13,7 +13,10 @@
 ## Functionality available in this preview
 - ADB device discovery of `device`, `unauthorized` and `offline`, with state surfaced to the user.
 - Selected-device mirroring and independent virtual-display sessions through bundled official scrcpy.
-- Multiple scrcpy processes, with last-session stop and simple current-run history.
+- Multiple simultaneous scrcpy sessions with individual selection/termination, and an automatic lifecycle check to remove exited scrcpy processes.
+- Optional native scrcpy MP4 recording for new mirroring or virtual-display sessions. Uses a graceful WM_CLOSE stop to help finalize recording containers before forced termination fallback.
+- Physical-device screenshots via authorized `adb exec-out screencap -p`, saved as PNG after verifying the PNG signature and successful capture process exit.
+- Local recordings catalogue: enumerate saved PNG/MP4, select/open with the system default application, refresh, and open the containing folder.
 - Wi-Fi pairing using PIN, connect/disconnect and optional reconnect of the saved endpoint.
 - Saved FPS, bitrate, virtual resolution, launcher, audio duplication and auto-restore choices under `%LOCALAPPDATA%\RS Screen Manager\winui-settings.ini`.
 - Eco, Balanced, Quality and Gaming video presets (targets, subject to actual device capability).
@@ -25,9 +28,12 @@
 - **Gaming touch editor**: real multi-pointer injection, Raw Input/Windows gamepad pipeline, drag-and-drop editor, macros, per-game profiles, overlays, import/export and simultaneous session touch mapping.
 - **Additional virtual-display workflows**: app-launch picker, arbitrary custom presets, per-display lifecycle control, comprehensive virtual-display capability detection.
 - **Full localization**: Portuguese UI is present, automatic English localization remains unimplemented.
-- **Recording library and management**, native screenshots panel, latency/CPU/GPU telemetry, full connection wizard with illustrated screenshots, compulsory first-run onboarding and complete accessibility auditing.
+- **Advanced recording library**: thumbnail previews, media metadata, filtering/search, record controls after a session starts, native screenshot of an Android virtual display, and stable recording integrity guarantees under unexpected power/process failure.
+- Latency/CPU/GPU telemetry, full connection wizard with illustrated screenshots and comprehensive accessibility auditing. A first-run onboarding flow is implemented, but still needs physical UI testing.
 - Final polished brand logomark and actual animation/motion system (the current geometric mark is a provisional implementation proposal).
 - Optional Android Companion APK is not built and must never be installed without consent.
+
+Media is saved under `%LOCALAPPDATA%\\RS Screen Manager\\Recordings`. Recording is only enabled when explicitly switched on for a new session. Automatic resume intentionally does not restart recording, to avoid unintentional recording after a restart.
 
 The UI explicitly explains when a capability is unfinished rather than showing controls that only pretend to work. Existing native fallback functionality is retained.
 
