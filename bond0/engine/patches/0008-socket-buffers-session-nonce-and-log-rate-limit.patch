@@ -1,0 +1,106 @@
+diff --git a/bonding-client/src/runtime.rs b/bonding-client/src/runtime.rs
+index 80d06dd..35000f9 100644
+--- a/bonding-client/src/runtime.rs
++++ b/bonding-client/src/runtime.rs
+@@ -210,11 +210,16 @@ pub async fn run_client(
+         None
+     };
+ 
+-    let session_id: u64 = SystemTime::now()
++    let boot_nanos: u64 = SystemTime::now()
+         .duration_since(UNIX_EPOCH)
+         .unwrap_or_default()
+         .as_nanos() as u64;
+-    let mut tx_seq: u64 = 1;
++    // session_id stays unique per run. tx_seq starts at a distinct non-zero
++    // value per session so a restart never reuses (key, nonce) pairs from a
++    // previous session under the same PSK; sequences remain monotonic and
++    // the receiver tolerates any monotone start via its gap-skip.
++    let session_id: u64 = boot_nanos;
++    let mut tx_seq: u64 = boot_nanos.wrapping_add(0x9E37_79B9_7F4A_7C15) | 1;
+ 
+     // Bind an ephemeral UDP socket.
+     let sock = UdpSocket::bind("0.0.0.0:0")
+@@ -328,11 +333,16 @@ async fn run_client_tun_mode(
+         None
+     };
+ 
+-    let session_id: u64 = SystemTime::now()
++    let boot_nanos: u64 = SystemTime::now()
+         .duration_since(UNIX_EPOCH)
+         .unwrap_or_default()
+         .as_nanos() as u64;
+-    let mut tx_seq: u64 = 1;
++    // session_id stays unique per run. tx_seq starts at a distinct non-zero
++    // value per session so a restart never reuses (key, nonce) pairs from a
++    // previous session under the same PSK; sequences remain monotonic and
++    // the receiver tolerates any monotone start via its gap-skip.
++    let session_id: u64 = boot_nanos;
++    let mut tx_seq: u64 = boot_nanos.wrapping_add(0x9E37_79B9_7F4A_7C15) | 1;
+ 
+     const NET_TO_TUN_QUEUE: usize = 1024;
+     let mut dropped_net_to_tun: u64 = 0;
+@@ -346,6 +356,10 @@ async fn run_client_tun_mode(
+     );
+     let mut reorder_stats = ReorderDiagnostics::default();
+     let mut reorder_diag_logged = Instant::now();
++    let mut decode_err_count: u64 = 0;
++    let mut decode_err_logged = Instant::now();
++    let mut decrypt_err_count: u64 = 0;
++    let mut decrypt_err_logged = Instant::now();
+ 
+     // Interface Discovery & Transport Setup
+     let mut paths = Vec::new();
+@@ -912,7 +926,16 @@ async fn run_client_tun_mode(
+                 let pkt = match Packet::decode(&buf) {
+                     Ok(p) => p,
+                     Err(e) => {
+-                        (log.as_ref())(format!("Recv bytes from {peer} on path {path_id}: invalid protocol packet: {e}"));
++                        // Rate-limited: a malformed-packet storm must not
++                        // flood the shared UI log or couple it to the
++                        // data plane.
++                        decode_err_count = decode_err_count.saturating_add(1);
++                        if decode_err_logged.elapsed() >= Duration::from_secs(5) {
++                            (log.as_ref())(format!(
++                                "Recv decode errors: {decode_err_count} total (rate-limited 5s); last from {peer} on path {path_id}: {e}"
++                            ));
++                            decode_err_logged = Instant::now();
++                        }
+                         continue;
+                     }
+                 };
+@@ -921,7 +944,14 @@ async fn run_client_tun_mode(
+                     match crypto.open_packet(NONCE_DOMAIN_SERVER_TO_CLIENT, &pkt) {
+                         Ok(p) => p,
+                         Err(e) => {
+-                            (log.as_ref())(format!("Recv pkt from {peer} on path {path_id}: decrypt failed: {e}"));
++                            // Rate-limited for the same reason as decode errors.
++                            decrypt_err_count = decrypt_err_count.saturating_add(1);
++                            if decrypt_err_logged.elapsed() >= Duration::from_secs(5) {
++                                (log.as_ref())(format!(
++                                    "Recv decrypt errors: {decrypt_err_count} total (rate-limited 5s); last from {peer} on path {path_id}: {e}"
++                                ));
++                                decrypt_err_logged = Instant::now();
++                            }
+                             continue;
+                         }
+                     }
+diff --git a/bonding-core/src/transport.rs b/bonding-core/src/transport.rs
+index 2e4486d..4b4f9ff 100644
+--- a/bonding-core/src/transport.rs
++++ b/bonding-core/src/transport.rs
+@@ -119,6 +119,14 @@ impl TransportPath {
+         let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+         socket.set_nonblocking(true)?;
+ 
++        // Enlarge UDP buffers well beyond OS defaults: Windows defaults to a
++        // ~64KB receive buffer, which silently drops bursts that arrive while
++        // the reorder buffer drains after a stall. Best-effort: the OS may
++        // cap the granted size (Linux clamps to net.core.rmem_max).
++        const UDP_SOCKET_BUFFER_BYTES: usize = 4 * 1024 * 1024;
++        let _ = socket.set_recv_buffer_size(UDP_SOCKET_BUFFER_BYTES);
++        let _ = socket.set_send_buffer_size(UDP_SOCKET_BUFFER_BYTES);
++
+         #[cfg(target_os = "windows")]
+         if let Some(if_index) = interface_index {
+             // Best-effort egress pinning for Windows.

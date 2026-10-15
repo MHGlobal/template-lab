@@ -1,0 +1,459 @@
+diff --git a/bonding-client/src/runtime.rs b/bonding-client/src/runtime.rs
+index 3ba724a..4844f52 100644
+--- a/bonding-client/src/runtime.rs
++++ b/bonding-client/src/runtime.rs
+@@ -71,6 +71,30 @@ fn drain_reorder_to_tun(
+     }
+ }
+ 
++/// Machine-readable lifecycle event for the Control Center.
++/// Format is stable: `BOND0_STATE <token>[ detail]`.
++#[cfg(target_os = "windows")]
++fn emit_state(log: &Arc<LogFn>, event: &str) {
++    (log.as_ref())(format!("BOND0_STATE {event}"));
++}
++
++/// Tracks verified IPv4 state and first-traffic milestones for the virtual
++/// adapter. Updated from the 2s control tick and the packet branches.
++#[cfg(target_os = "windows")]
++#[derive(Default)]
++struct TunLifecycle {
++    remote_handshake: bool,
++    tunnel_reachable: bool,
++    uplink_first: bool,
++    ipv4_verified: bool,
++    assigns_issued: u32,
++    verify_fails: u32,
++    ticks_since_verify: u32,
++    slow_retry_ticks: u32,
++    lost_logged: bool,
++    route_checked: bool,
++}
++
+ fn decode_key_b64(s: &str) -> Result<EncryptionKey> {
+     let raw = base64::engine::general_purpose::STANDARD
+         .decode(s)
+@@ -365,6 +389,8 @@ async fn run_client_tun_mode(
+         );
+     }
+ 
++    emit_state(&log, &format!("paths_ready count={}", paths.len()));
++
+     // Scheduler Setup
+     let mode = match cfg.bonding_mode.as_str() {
+         "redundant" => BondingMode::Redundant,
+@@ -395,6 +421,7 @@ async fn run_client_tun_mode(
+         tun.mtu(),
+         cfg.mtu
+     ));
++    emit_state(&log, "adapter_created");
+ 
+     let tun_name = tun.name().to_string();
+     let effective_mtu = cfg.mtu.min(tun.mtu());
+@@ -408,7 +435,9 @@ async fn run_client_tun_mode(
+     }
+ 
+     let mut assigned_ipv4: Option<Ipv4Addr> = None;
++    let mut assigned_prefix: Option<u8> = None;
+     let mut tun_configured: bool = false;
++    let mut tun_life = TunLifecycle::default();
+ 
+     if cfg.auto_config_tun {
+         if let Some(ip) = cfg.tun_ipv4_addr {
+@@ -603,6 +632,103 @@ async fn run_client_tun_mode(
+                         "Warning: dropped {dropped_delta} UDP->TUN packets due to full queue (total dropped={dropped_net_to_tun})"
+                     ));
+                 }
++
++                // Verified-IPv4 watchdog (safe opt-in path only): confirm the
++                // adapter still holds the assigned address, re-apply it when
++                // lost, and never touch routes, gateways or physical adapters.
++                if let (Some(ipv4), Some(prefix)) = (assigned_ipv4, assigned_prefix) {
++                    if cfg.auto_assign_tun_ipv4 && !cfg.auto_config_tun {
++                        tun_life.ticks_since_verify =
++                            tun_life.ticks_since_verify.saturating_add(1);
++                        let interval = if tun_life.ipv4_verified { 5 } else { 1 };
++                        if tun_life.ticks_since_verify >= interval {
++                            tun_life.ticks_since_verify = 0;
++                            match crate::windows_tun_config::verify_windows_tun_ipv4(
++                                &tun_name, ipv4, prefix,
++                            ) {
++                                Ok(true) => {
++                                    if !tun_life.ipv4_verified {
++                                        tun_life.ipv4_verified = true;
++                                        emit_state(&log, "ipv4_verified");
++                                    }
++                                    tun_life.verify_fails = 0;
++                                    tun_life.slow_retry_ticks = 0;
++                                    tun_life.lost_logged = false;
++                                    if !tun_life.route_checked {
++                                        tun_life.route_checked = true;
++                                        match crate::windows_tun_config::check_windows_route_via_local_ip(ipv4, ipv4) {
++                                            Ok(true) => emit_state(&log, "route_checked ok"),
++                                            Ok(false) => {
++                                                (log.as_ref())(format!(
++                                                    "Bond0 route check: no on-link route for {ipv4} via adapter '{tun_name}' (read-only check; nothing was modified)"
++                                                ));
++                                                emit_state(&log, "route_missing");
++                                            }
++                                            Err(e) => {
++                                                (log.as_ref())(format!(
++                                                    "Bond0 route check failed: {e:#}"
++                                                ));
++                                            }
++                                        }
++                                    }
++                                }
++                                verify_result => {
++                                    if let Err(e) = verify_result {
++                                        (log.as_ref())(format!(
++                                            "Bond0 IPv4 verify error: {e:#}"
++                                        ));
++                                    }
++                                    if tun_life.ipv4_verified && !tun_life.lost_logged {
++                                        tun_life.lost_logged = true;
++                                        tun_life.ipv4_verified = false;
++                                        emit_state(&log, "ipv4_lost");
++                                    }
++                                    tun_life.verify_fails =
++                                        tun_life.verify_fails.saturating_add(1);
++                                    if tun_life.verify_fails >= 3 {
++                                        if tun_life.assigns_issued < 3 {
++                                            tun_life.assigns_issued =
++                                                tun_life.assigns_issued.saturating_add(1);
++                                            match crate::windows_tun_config::assign_windows_tun_ipv4_only(
++                                                &tun_name, ipv4, prefix,
++                                            ) {
++                                                Ok(()) => {
++                                                    tun_life.verify_fails = 0;
++                                                    emit_state(&log, "ipv4_assign_retry");
++                                                }
++                                                Err(e) => {
++                                                    (log.as_ref())(format!(
++                                                        "Bond0 IPv4 re-assign failed: {e:#}"
++                                                    ));
++                                                }
++                                            }
++                                        } else {
++                                            // Fast retries exhausted: slow, controlled
++                                            // recovery instead of a busy loop.
++                                            tun_life.slow_retry_ticks =
++                                                tun_life.slow_retry_ticks.saturating_add(1);
++                                            if tun_life.slow_retry_ticks >= 30 {
++                                                tun_life.slow_retry_ticks = 0;
++                                                match crate::windows_tun_config::assign_windows_tun_ipv4_only(
++                                                    &tun_name, ipv4, prefix,
++                                                ) {
++                                                    Ok(()) => {
++                                                        emit_state(&log, "ipv4_assign_retry_slow");
++                                                    }
++                                                    Err(e) => {
++                                                        (log.as_ref())(format!(
++                                                            "Bond0 IPv4 slow recovery re-assign failed: {e:#}"
++                                                        ));
++                                                    }
++                                                }
++                                            }
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
+             }
+ 
+             maybe_pkt = tun_to_net_rx.recv() => {
+@@ -616,6 +742,11 @@ async fn run_client_tun_mode(
+                     continue;
+                 }
+ 
++                if !tun_life.uplink_first {
++                    tun_life.uplink_first = true;
++                    emit_state(&log, "data_uplink_first");
++                }
++
+                 let wire = if let Some(ref crypto) = crypto {
+                     crypto
+                         .seal_packet(
+@@ -703,28 +834,50 @@ async fn run_client_tun_mode(
+                     pkt.payload
+                 };
+ 
++                if !tun_life.remote_handshake {
++                    tun_life.remote_handshake = true;
++                    emit_state(&log, "remote_handshake");
++                }
++
+                 // Handle control-plane packets (ASSIGN/NACK) first.
+                 if let Some(ctrl) = control::decode(&payload) {
+                     match ctrl {
+                         ControlMessage::Assign { ipv4, prefix } => {
+                             assigned_ipv4 = Some(ipv4);
++                            assigned_prefix = Some(prefix);
+                             (log.as_ref())(format!(
+                                 "Server assigned tunnel IPv4: {ipv4}/{prefix}"
+                             ));
+ 
+                             // Safe opt-in: configure only the local TUN IPv4,
+                             // leaving all physical interfaces and routes intact.
++                            // A failed assign must not abort the data plane: the
++                            // control-tick watchdog retries in a bounded way.
+                             if cfg.auto_assign_tun_ipv4
+                                 && !cfg.auto_config_tun
+                                 && !tun_configured
+                             {
+-                                crate::windows_tun_config::assign_windows_tun_ipv4_only(
+-                                    &tun_name, ipv4, prefix
+-                                )?;
+-                                tun_configured = true;
+-                                (log.as_ref())(format!(
+-                                    "Bond0 IPv4 configured: {ipv4}/{prefix} (no routes changed)"
+-                                ));
++                                match crate::windows_tun_config::assign_windows_tun_ipv4_only(
++                                    &tun_name, ipv4, prefix,
++                                ) {
++                                    Ok(()) => {
++                                        tun_configured = true;
++                                        tun_life.assigns_issued =
++                                            tun_life.assigns_issued.saturating_add(1);
++                                        (log.as_ref())(format!(
++                                            "Bond0 IPv4 configured: {ipv4}/{prefix} (no routes changed)"
++                                        ));
++                                        emit_state(&log, "ipv4_assigned");
++                                    }
++                                    Err(e) => {
++                                        tun_life.assigns_issued =
++                                            tun_life.assigns_issued.saturating_add(1);
++                                        (log.as_ref())(format!(
++                                            "Bond0 IPv4 assign failed (watchdog will retry): {e:#}"
++                                        ));
++                                        emit_state(&log, "ipv4_assign_failed");
++                                    }
++                                }
+                             }
+ 
+                             if cfg.auto_config_tun
+@@ -759,6 +912,11 @@ async fn run_client_tun_mode(
+                     continue;
+                 }
+ 
++                if !tun_life.tunnel_reachable {
++                    tun_life.tunnel_reachable = true;
++                    emit_state(&log, "tunnel_reachable");
++                }
++
+                 if let Err(err) = reorder.insert(pkt.header.sequence, payload) {
+                     match err {
+                         ReorderError::TooOld(..) | ReorderError::Replay(..) => {
+diff --git a/bonding-client/src/windows_tun_config.rs b/bonding-client/src/windows_tun_config.rs
+index 3b1a537..96d4673 100644
+--- a/bonding-client/src/windows_tun_config.rs
++++ b/bonding-client/src/windows_tun_config.rs
+@@ -99,6 +99,59 @@ fn find_interface_index(interface_name: &str) -> Result<u32> {
+     bail!("could not find interface index for '{interface_name}' in netsh output")
+ }
+ 
++/// Pure: netsh arguments that assign one static IPv4 to one named adapter.
++/// Only ever references the virtual adapter; no gateway argument is
++/// produced, so default routes and physical interfaces are untouched.
++fn build_assign_address_args(interface_name: &str, ipv4: Ipv4Addr, mask: Ipv4Addr) -> Vec<String> {
++    vec![
++        "interface".to_string(),
++        "ipv4".to_string(),
++        "set".to_string(),
++        "address".to_string(),
++        format!("name={interface_name}"),
++        "static".to_string(),
++        ipv4.to_string(),
++        mask.to_string(),
++    ]
++}
++
++/// Pure: netsh arguments to READ the IPv4 configuration of one adapter.
++fn build_show_addresses_args(interface_name: &str) -> Vec<String> {
++    vec![
++        "interface".to_string(),
++        "ipv4".to_string(),
++        "show".to_string(),
++        "addresses".to_string(),
++        format!("name={interface_name}"),
++    ]
++}
++
++/// Pure: locale-tolerant confirmation that `netsh interface ipv4 show
++/// addresses` output contains the expected address with a matching prefix
++/// or dotted mask. Only value literals are matched, never localized labels.
++fn parse_assigned_ipv4_present(output: &str, ipv4: Ipv4Addr, prefix: u8, mask: Ipv4Addr) -> bool {
++    if !output.contains(ipv4.to_string().as_str()) {
++        return false;
++    }
++    output.contains(&format!("/{prefix}")) || output.contains(mask.to_string().as_str())
++}
++
++/// Pure: route.exe arguments to READ the active route for a destination.
++/// Read-only: the only verb is `print`; never ADD/CHANGE/DELETE.
++fn build_route_print_args(dest: Ipv4Addr) -> Vec<String> {
++    vec!["print".to_string(), "-4".to_string(), dest.to_string()]
++}
++
++/// Pure: locale-tolerant check that `route print` output mentions the
++/// tunnel local IP as the route interface (the connected on-link route).
++fn parse_route_via_local_ip(output: &str, local_ip: Ipv4Addr) -> bool {
++    output.contains(local_ip.to_string().as_str())
++}
++
++fn run_netsh_owned(args: &[String]) -> Result<String> {
++    run("netsh", args)
++}
++
+ /// Set only the IPv4 address and prefix on a specifically selected virtual
+ /// adapter. No route, gateway, DNS, firewall, MTU or WAN changes.
+ pub fn assign_windows_tun_ipv4_only(
+@@ -110,20 +163,29 @@ pub fn assign_windows_tun_ipv4_only(
+     if ipv4.is_unspecified() || ipv4.is_multicast() || ipv4.is_loopback() || prefix == 0 {
+         bail!("invalid tunnel ASSIGN address/prefix: {ipv4}/{prefix}");
+     }
+-    netsh(&[
+-        "interface",
+-        "ipv4",
+-        "set",
+-        "address",
+-        &format!("name={interface_name}"),
+-        "static",
+-        &ipv4.to_string(),
+-        &mask.to_string(),
+-    ])
+-    .with_context(|| format!("could not assign {ipv4}/{prefix} on virtual adapter '{interface_name}'"))?;
++    let args = build_assign_address_args(interface_name, ipv4, mask);
++    run_netsh_owned(&args).with_context(|| {
++        format!("could not assign {ipv4}/{prefix} on virtual adapter '{interface_name}'")
++    })?;
+     Ok(())
+ }
+ 
++/// Read-only verification that the named adapter currently holds the given
++/// IPv4/prefix. Never mutates adapter, route or firewall state.
++pub fn verify_windows_tun_ipv4(interface_name: &str, ipv4: Ipv4Addr, prefix: u8) -> Result<bool> {
++    let mask = prefix_to_mask(prefix)?;
++    let out = run_netsh_owned(&build_show_addresses_args(interface_name))?;
++    Ok(parse_assigned_ipv4_present(&out, ipv4, prefix, mask))
++}
++
++/// Read-only check that the OS has an active route for `dest` whose
++/// interface is the tunnel local IP (the connected on-link route).
++pub fn check_windows_route_via_local_ip(dest: Ipv4Addr, local_ip: Ipv4Addr) -> Result<bool> {
++    let args = build_route_print_args(dest);
++    let out = run("route", &args)?;
++    Ok(parse_route_via_local_ip(&out, local_ip))
++}
++
+ pub fn configure_windows_tun(
+     interface_name: &str,
+     mtu: usize,
+@@ -210,3 +272,105 @@ mod bond0_mask_tests {
+         assert_eq!(prefix_to_mask(32).unwrap().to_string(), "255.255.255.255");
+     }
+ }
++
++#[cfg(test)]
++mod bond0_lifecycle_tests {
++    use super::*;
++
++    const EN_SAMPLE: &str = "\r\nConfiguration for interface \"Bond0\"\r\n   DHCP enabled:  No\r\n   IP Address:       198.18.0.2\r\n   Subnet Prefix:     255.255.255.0 (/24)\r\n   InterfaceMetric:  5000\r\n";
++    const PT_SAMPLE: &str = "\r\nConfiguracao da interface \"Bond0\"\r\n   DHCP ativado:  Nao\r\n   Endereco IP:  198.18.0.2\r\n   Prefixo de Sub-rede:  255.255.255.0 (/24)\r\n";
++    const APIPA_SAMPLE: &str =
++        "\r\n   IP Address:  169.254.140.109\r\n   Subnet Prefix: 255.255.0.0 (/16)\r\n";
++
++    #[test]
++    fn assign_args_only_target_named_adapter() {
++        let args = build_assign_address_args(
++            "Bond0",
++            "198.18.0.2".parse().unwrap(),
++            "255.255.255.0".parse().unwrap(),
++        );
++        assert_eq!(
++            args,
++            vec![
++                "interface",
++                "ipv4",
++                "set",
++                "address",
++                "name=Bond0",
++                "static",
++                "198.18.0.2",
++                "255.255.255.0",
++            ]
++            .into_iter()
++            .map(String::from)
++            .collect::<Vec<_>>()
++        );
++        // No gateway argument can ever be produced by this path.
++        assert!(!args.iter().any(|a| a.eq_ignore_ascii_case("gateway")));
++        assert_eq!(args.iter().filter(|a| a.starts_with("name=")).count(), 1);
++    }
++
++    #[test]
++    fn show_addresses_args_are_read_only() {
++        let args = build_show_addresses_args("Bond0");
++        assert_eq!(
++            args,
++            vec!["interface", "ipv4", "show", "addresses", "name=Bond0",]
++                .into_iter()
++                .map(String::from)
++                .collect::<Vec<_>>()
++        );
++        assert!(!args.iter().any(|a| a.eq_ignore_ascii_case("set")));
++    }
++
++    #[test]
++    fn verify_parse_matches_english_and_portuguese_netsh() {
++        let ip: Ipv4Addr = "198.18.0.2".parse().unwrap();
++        let mask: Ipv4Addr = "255.255.255.0".parse().unwrap();
++        assert!(parse_assigned_ipv4_present(EN_SAMPLE, ip, 24, mask));
++        assert!(parse_assigned_ipv4_present(PT_SAMPLE, ip, 24, mask));
++        assert!(!parse_assigned_ipv4_present(APIPA_SAMPLE, ip, 24, mask));
++        assert!(!parse_assigned_ipv4_present("", ip, 24, mask));
++    }
++
++    #[test]
++    fn verify_parse_requires_matching_prefix() {
++        let ip: Ipv4Addr = "198.18.0.2".parse().unwrap();
++        let mask16: Ipv4Addr = "255.255.0.0".parse().unwrap();
++        let out = "Endereco IP: 198.18.0.2 Mascara: 255.255.0.0 (/16)";
++        assert!(!parse_assigned_ipv4_present(
++            out,
++            ip,
++            24,
++            "255.255.255.0".parse().unwrap()
++        ));
++        assert!(parse_assigned_ipv4_present(out, ip, 16, mask16));
++    }
++
++    #[test]
++    fn route_print_args_are_read_only() {
++        let args = build_route_print_args("198.18.0.1".parse().unwrap());
++        assert_eq!(
++            args,
++            vec!["print", "-4", "198.18.0.1"]
++                .into_iter()
++                .map(String::from)
++                .collect::<Vec<_>>()
++        );
++        assert!(!args.iter().any(|a| {
++            a.eq_ignore_ascii_case("add")
++                || a.eq_ignore_ascii_case("delete")
++                || a.eq_ignore_ascii_case("change")
++        }));
++    }
++
++    #[test]
++    fn route_parse_detects_tunnel_local_ip() {
++        let out = "\r\nActive Routes:\r\nNetwork Destination        Netmask          Gateway   Interface  Metric\r\n      198.18.0.0  255.255.255.0    On-link    198.18.0.2     271\r\n";
++        let ip: Ipv4Addr = "198.18.0.2".parse().unwrap();
++        let other: Ipv4Addr = "192.168.1.20".parse().unwrap();
++        assert!(parse_route_via_local_ip(out, ip));
++        assert!(!parse_route_via_local_ip(out, other));
++        assert!(!parse_route_via_local_ip("route print: no match", ip));
++    }
++}

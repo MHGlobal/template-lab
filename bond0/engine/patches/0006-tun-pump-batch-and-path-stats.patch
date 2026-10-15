@@ -1,0 +1,197 @@
+diff --git a/bonding-client/src/runtime.rs b/bonding-client/src/runtime.rs
+index 4844f52..65c9ff2 100644
+--- a/bonding-client/src/runtime.rs
++++ b/bonding-client/src/runtime.rs
+@@ -19,8 +19,10 @@ use bonding_core::transport::{EncryptionKey, PacketCrypto};
+ use std::net::Ipv4Addr;
+ use std::net::SocketAddr;
+ #[cfg(target_os = "windows")]
+-use std::sync::atomic::{AtomicBool, Ordering};
++use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+ use std::sync::Arc;
++#[cfg(target_os = "windows")]
++use std::sync::Mutex;
+ use std::time::Duration;
+ #[cfg(target_os = "windows")]
+ use std::time::Instant;
+@@ -95,6 +97,40 @@ struct TunLifecycle {
+     route_checked: bool,
+ }
+ 
++/// Per-path counters shared between the select loop (sends) and the
++/// per-path receive tasks. Updated with brief Mutex locks only; the lock
++/// is never held across an await point.
++#[cfg(target_os = "windows")]
++#[derive(Default, Clone, Copy)]
++struct PathStatCounters {
++    sent_pkts: u64,
++    sent_bytes: u64,
++    recv_pkts: u64,
++    recv_bytes: u64,
++}
++
++/// Record one uplink datagram on the given path (id-indexed).
++#[cfg(target_os = "windows")]
++fn record_path_sent(stats: &Arc<Mutex<Vec<PathStatCounters>>>, path_id: usize, bytes: u64) {
++    if let Ok(mut s) = stats.lock() {
++        if let Some(c) = s.get_mut(path_id) {
++            c.sent_pkts = c.sent_pkts.saturating_add(1);
++            c.sent_bytes = c.sent_bytes.saturating_add(bytes);
++        }
++    }
++}
++
++/// Record one downlink datagram on the given path (id-indexed).
++#[cfg(target_os = "windows")]
++fn record_path_recv(stats: &Arc<Mutex<Vec<PathStatCounters>>>, path_id: usize, bytes: u64) {
++    if let Ok(mut s) = stats.lock() {
++        if let Some(c) = s.get_mut(path_id) {
++            c.recv_pkts = c.recv_pkts.saturating_add(1);
++            c.recv_bytes = c.recv_bytes.saturating_add(bytes);
++        }
++    }
++}
++
+ fn decode_key_b64(s: &str) -> Result<EncryptionKey> {
+     let raw = base64::engine::general_purpose::STANDARD
+         .decode(s)
+@@ -458,6 +494,13 @@ async fn run_client_tun_mode(
+         }
+     }
+ 
++    // Per-path counters (diagnostics for the Control Center and benchmarks).
++    let path_stats: Arc<Mutex<Vec<PathStatCounters>>> =
++        Arc::new(Mutex::new(vec![PathStatCounters::default(); paths.len()]));
++    let mut path_stats_logged = Instant::now();
++    let tun_reads = Arc::new(AtomicU64::new(0));
++    let tun_reads_thread = Arc::clone(&tun_reads);
++
+     // Channel: UDP -> TUN (bounded; drop on overflow).
+     let (net_to_tun_tx, mut net_to_tun_rx) = mpsc::channel::<Vec<u8>>(NET_TO_TUN_QUEUE);
+ 
+@@ -472,6 +515,7 @@ async fn run_client_tun_mode(
+     let tun_thread = thread::spawn(move || {
+         let mut tun = tun;
+         let mut buf = vec![0u8; mtu.clamp(1500, 65535)];
++        let mut last_write_err_log: Option<Instant> = None;
+ 
+         while !stop_flag_thread.load(Ordering::Relaxed) {
+             // Drain outbound packets to the TUN adapter.
+@@ -479,7 +523,16 @@ async fn run_client_tun_mode(
+                 match net_to_tun_rx.try_recv() {
+                     Ok(pkt) => {
+                         if let Err(e) = tun.write_packet(&pkt) {
+-                            (log_thread.as_ref())(format!("TUN write error: {e}"));
++                            // A burst of write errors (e.g. MTU mismatch) must
++                            // not flood the shared log and stall this thread.
++                            if last_write_err_log
++                                .map_or(true, |t| t.elapsed() >= Duration::from_secs(5))
++                            {
++                                last_write_err_log = Some(Instant::now());
++                                (log_thread.as_ref())(format!(
++                                    "TUN write error (rate-limited 5s): {e}"
++                                ));
++                            }
+                         }
+                     }
+                     Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+@@ -487,21 +540,35 @@ async fn run_client_tun_mode(
+                 }
+             }
+ 
+-            match tun.read_packet(&mut buf) {
+-                Ok(n) => {
+-                    if n > 0 && tun_to_net_tx.blocking_send(buf[..n].to_vec()).is_err() {
+-                        return;
++            // Batch-read uplink packets until the ring is empty (or the serving
++            // cap is hit) so throughput is not bound to one packet per sleep.
++            let mut read_this_round: usize = 0;
++            loop {
++                match tun.read_packet(&mut buf) {
++                    Ok(n) => {
++                        if n > 0 && tun_to_net_tx.blocking_send(buf[..n].to_vec()).is_err() {
++                            return;
++                        }
++                        tun_reads_thread.fetch_add(1, Ordering::Relaxed);
++                        read_this_round += 1;
++                        if read_this_round >= 256 {
++                            // Give the downlink queue a turn before continuing.
++                            break;
++                        }
++                    }
++                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
++                    Err(e) => {
++                        (log_thread.as_ref())(format!("TUN read error: {e}"));
++                        break;
+                     }
+-                }
+-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+-                    // No packet ready right now.
+-                }
+-                Err(e) => {
+-                    (log_thread.as_ref())(format!("TUN read error: {e}"));
+                 }
+             }
+ 
+-            thread::sleep(Duration::from_millis(1));
++            if read_this_round == 0 {
++                // Idle only: short poll. While traffic flows the loop does not
++                // sleep and pumps packets at line rate.
++                thread::sleep(Duration::from_millis(1));
++            }
+         }
+     });
+ 
+@@ -513,11 +580,13 @@ async fn run_client_tun_mode(
+         let path = path.clone();
+         let tx = udp_rx_tx.clone();
+         let log = log.clone();
++        let path_stats_rx = path_stats.clone();
+         tokio::spawn(async move {
+             let mut buf = [0u8; UDP_RECV_BUF_SIZE];
+             loop {
+                 match path.recv(&mut buf).await {
+                     Ok((n, peer)) => {
++                        record_path_recv(&path_stats_rx, path.id, n as u64);
+                         if tx.send((buf[..n].to_vec(), peer, path.id)).await.is_err() {
+                             break;
+                         }
+@@ -633,6 +702,25 @@ async fn run_client_tun_mode(
+                     ));
+                 }
+ 
++                // Per-path and TUN pump statistics for the Control Center and
++                // benchmarks (cumulative counters, logged every 10s).
++                if path_stats_logged.elapsed() >= Duration::from_secs(10) {
++                    path_stats_logged = Instant::now();
++                    if let Ok(stats) = path_stats.lock() {
++                        for (id, c) in stats.iter().enumerate() {
++                            (log.as_ref())(format!(
++                                "Bond0 path stats: p{id} sent_pkts={} sent_bytes={} recv_pkts={} recv_bytes={}",
++                                c.sent_pkts, c.sent_bytes, c.recv_pkts, c.recv_bytes
++                            ));
++                        }
++                    }
++                    (log.as_ref())(format!(
++                        "Bond0 tun stats: reads={} net_to_tun_dropped={}",
++                        tun_reads.load(Ordering::Relaxed),
++                        dropped_net_to_tun
++                    ));
++                }
++
+                 // Verified-IPv4 watchdog (safe opt-in path only): confirm the
+                 // adapter still holds the assigned address, re-apply it when
+                 // lost, and never touch routes, gateways or physical adapters.
+@@ -765,10 +853,12 @@ async fn run_client_tun_mode(
+                 if let Some(decision) = scheduler.schedule() {
+                     if let Some(path) = paths.iter().find(|p| p.id == decision.primary_path) {
+                         let _ = path.send(&wire).await;
++                        record_path_sent(&path_stats, decision.primary_path, wire.len() as u64);
+                     }
+                     for pid in decision.redundant_paths {
+                         if let Some(path) = paths.iter().find(|p| p.id == pid) {
+                             let _ = path.send(&wire).await;
++                            record_path_sent(&path_stats, pid, wire.len() as u64);
+                         }
+                     }
+ 

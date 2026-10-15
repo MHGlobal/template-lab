@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0b1424" />
+  <meta name="description" content="Bond0 — painel de monitorização multipath e de gestão de redes." />
+  <title>Bond0 · Painel de controlo</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script src="./app.js" defer></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-icon">B<span>0</span></span><div><strong>Bond0</strong><small>NETWORK CONTROL</small></div></div>
+    <div class="nav-label">WORKSPACE</div>
+    <nav aria-label="Navegação principal">
+      <button data-view="overview" class="nav-item active"><span>◈</span>Painel geral</button>
+      <button data-view="networks" class="nav-item"><span>⌘</span>Interfaces de rede</button>
+      <button data-view="server" class="nav-item"><span>▤</span>Servidor Oracle</button>
+      <button data-view="share" class="nav-item"><span>↗</span>Partilhar Internet</button>
+      <button data-view="tests" class="nav-item"><span>◷</span>Testes e métricas</button>
+      <button data-view="settings" class="nav-item"><span>⚙</span>Definições</button>
+    </nav>
+    <div class="side-footer"><div class="small-dot"></div><div><strong>Modo de pré-visualização</strong><small>Sem ligação de gestão à VPS</small></div></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div class="breadcrumbs">Workspace <span>/</span> <strong id="breadcrumb">Painel geral</strong></div><div class="top-actions"><span class="pill neutral">● API não configurada</span><span class="avatar">B0</span></div></header>
+    <div class="page">
+      <section id="overview" class="view active" aria-labelledby="heading-overview">
+        <div class="page-head"><div><div class="eyebrow">CENTRO DE CONTROLO</div><h1 id="heading-overview">Visão geral do Bond0</h1><p>Estado do túnel, interfaces e servidor num único lugar.</p></div><span class="version">v0.1 • Preview</span></div>
+        <div class="notice"><span>ⓘ</span><p>Interface de pré-visualização. Os indicadores só passarão a ser reais depois de estabelecer uma API HTTPS autenticada. O motor multipath continua independente deste painel.</p></div>
+        <section class="connection-panel" aria-label="Estado da ligação entre os componentes">
+          <div class="connection-heading"><div><span class="eyebrow">CONEXÃO ENTRE COMPONENTES</span><h2>Arquitetura do Bond0</h2><p>A infraestrutura de dados está separada da gestão remota.</p></div><span class="pill caution">Ligação remota pendente</span></div>
+          <div class="connection-flow">
+            <div class="connection-node"><span class="node-icon">⌘</span><strong>Desktop Windows</strong><small>Motor Rust / múltiplas WANs</small><span class="node-state neutral">Estado remoto desconhecido</span></div>
+            <span class="connection-arrow" aria-hidden="true">⇄</span>
+            <div class="connection-node"><span class="node-icon">▣</span><strong>Oracle VPS</strong><small>Manager 127.0.0.1:8870</small><span class="node-state ready">Serviço local verificado</span></div>
+            <span class="connection-arrow blocked" aria-hidden="true">╳</span>
+            <div class="connection-node"><span class="node-icon">◈</span><strong>Netlify Web</strong><small>Pré-visualização estática</small><span class="node-state pending">Sem API autenticada</span></div>
+          </div>
+          <p class="connection-footnote">O Manager escuta apenas na VPS. Falta gateway HTTPS, autenticação e emparelhamento. Nenhuma porta administrativa foi exposta à Internet.</p>
+        </section>
+        <div class="metrics">
+          <article class="metric"><div class="metric-title">Estado do túnel <span>⤢</span></div><div class="metric-value muted">Desconhecido</div><small>Sem telemetria ligada</small></article>
+          <article class="metric"><div class="metric-title">Velocidade combinada <span>⇅</span></div><div class="metric-value muted">— <em>Mbps</em></div><small>Requer medição A/B/A+B</small></article>
+          <article class="metric"><div class="metric-title">Interfaces ativas <span>⌘</span></div><div class="metric-value muted">—</div><small>Adicione ou sincronize interfaces</small></article>
+          <article class="metric"><div class="metric-title">Latência média <span>◷</span></div><div class="metric-value muted">— <em>ms</em></div><small>Aguardando telemetria</small></article>
+        </div>
+        <div class="split">
+          <section class="surface"><div class="section-heading"><div><h2>Caminhos de Internet</h2><p>Gestão de ligações por adaptador.</p></div><button class="text-action" data-go="networks">Gerir redes →</button></div><div id="overview-paths"></div></section>
+          <section class="surface"><div class="section-heading"><div><h2>Estado do servidor</h2><p>API de controlo — Oracle VPS</p></div><span class="pill neutral">Não emparelhado</span></div><div class="server-empty"><div class="server-pict">▤</div><strong>Nenhuma sessão administrativa</strong><p>O túnel UDP funciona independentemente deste painel.</p><button class="primary" data-go="server">Configurar servidor</button></div></section>
+        </div>
+        <section class="surface"><div class="section-heading"><div><h2>Próximos passos</h2><p>Implementação por fases e com validação.</p></div></div><div class="steps"><div><b>01</b><span>Selecionar redes</span><small>Disponível na pré-visualização</small></div><div><b>02</b><span>Emparelhar VPS</span><small>Requer API HTTPS/OIDC</small></div><div><b>03</b><span>Medir STRIPE</span><small>Antes de ativar partilha</small></div><div><b>04</b><span>Partilhar Internet</span><small>Depois dos testes de NAT/ICS</small></div></div></section>
+      </section>
+      <section id="networks" class="view" aria-labelledby="heading-networks"><div class="page-head"><div><div class="eyebrow">MULTI-WAN</div><h1 id="heading-networks">Interfaces de rede</h1><p>Adicione tantos adaptadores reais quantos forem necessários.</p></div><span class="pill neutral">Configuração local</span></div><div class="notice"><span>ⓘ</span><p>Esta lista é apenas uma proposta de configuração, armazenada durante esta sessão do navegador. No desktop, os adaptadores serão descobertos automaticamente por GUID e verificados antes de ligar.</p></div><section class="surface"><div class="section-heading"><div><h2>Redes escolhidas</h2><p>Modos de prioridade, utilização e distribuição.</p></div><span class="pill">Sem limite fixo de redes</span></div><div id="networks-list"></div><form id="add-network" class="add-row"><input id="new-network" aria-label="Nome do adaptador" placeholder="Ex.: Wi-Fi 3, Ethernet 4, USB tethering" maxlength="90" required /><button class="primary" type="submit">+ Adicionar interface</button></form><div class="helper">Evite escolher Bond0, Wi-Fi Direct ou interfaces de hotspot como uplinks.</div></section></section>
+      <section id="server" class="view" aria-labelledby="heading-server"><div class="page-head"><div><div class="eyebrow">INFRAESTRUTURA</div><h1 id="heading-server">Servidor Oracle</h1><p>Controlo remoto independente do túnel de dados.</p></div></div><div class="notice"><span>🔒</span><p>O serviço Bond0 Manager está ativo na VPS, mas apenas em 127.0.0.1:8870. A ligação desktop/web só será ativada após HTTPS, autenticação OIDC e controlo de permissões. Não introduzas chaves privadas do Bond0 neste site.</p></div><div class="split"><section class="surface"><div class="section-heading"><div><h2>Configurar ligação de gestão</h2><p>Somente HTTPS autenticado.</p></div></div><label class="field">Endereço HTTPS da API<input id="api-url" placeholder="https://api.bond0.exemplo.com" type="url" autocomplete="off" /></label><label class="field">Autenticação <input value="OIDC / PKCE — ainda não implementada" disabled /></label><button class="primary" id="btn-api-check">Verificar requisitos</button><p class="helper" id="api-result">Nunca introduza a chave secreta do túnel num website.</p></section><section class="surface"><div class="section-heading"><h2>Componentes previstos</h2></div><div class="info-line"><span>Bond0 Server</span><b>Motor Rust / UDP 5000</b></div><div class="info-line"><span>API Manager</span><b>Loopback + proxy TLS</b></div><div class="info-line"><span>Canal web</span><b>OIDC / acesso condicionado</b></div><div class="info-line"><span>Frontend</span><b>Netlify estático</b></div></section></div></section>
+      <section id="share" class="view" aria-labelledby="heading-share"><div class="page-head"><div><div class="eyebrow">HOTSPOT E GATEWAY</div><h1 id="heading-share">Partilhar Internet</h1><p>Transforme o Bond0 numa ligação partilhável com segurança.</p></div></div><section class="surface"><div class="section-heading"><div><h2>Opções planeadas</h2><p>O serviço Windows irá aplicar e reverter regras de forma transacional.</p></div><span class="pill caution">Em desenvolvimento</span></div><div class="share-grid"><div class="feature"><span>◉</span><strong>Hotspot Wi-Fi</strong><p>Distribuir a Internet do túnel pelo hotspot do Windows quando suportado.</p><button disabled>Ativação futura</button></div><div class="feature"><span>⇄</span><strong>Ethernet / LAN</strong><p>Gateway de Internet para outros dispositivos por cabo de rede.</p><button disabled>Ativação futura</button></div><div class="feature"><span>↻</span><strong>Restauro automático</strong><p>Repor DNS, rotas e NAT após falha ou fecho da partilha.</p><button disabled>Em validação</button></div></div><p class="helper">Não é seguro ativar ICS ou modificar a rota predefinida a partir deste painel web sem um agente local autenticado.</p></section></section>
+      <section id="tests" class="view" aria-labelledby="heading-tests"><div class="page-head"><div><div class="eyebrow">VALIDAÇÃO</div><h1 id="heading-tests">Testes e métricas</h1><p>Separar prova de distribuição de prova de melhoria real.</p></div></div><section class="surface"><h2>Plano A / B / A+B / N redes</h2><p class="helper">O teste do motor é executado pelo desktop ou agente. Este painel receberá relatórios verificados via API.</p><div class="metrics three"><article class="metric"><div class="metric-title">A</div><div class="metric-value muted">—</div><small>Não medido por esta UI</small></article><article class="metric"><div class="metric-title">B</div><div class="metric-value muted">—</div><small>Não medido por esta UI</small></article><article class="metric"><div class="metric-title">A+B</div><div class="metric-value muted">—</div><small>Sem sessão atual</small></article></div><div class="notice"><span>ⓘ</span><p>A medição histórica de 12,15 Mbps não é automaticamente um valor atual. Os benchmarks finais exigem três ou mais repetições com condições comparáveis.</p></div></section></section>
+      <section id="settings" class="view" aria-labelledby="heading-settings"><div class="page-head"><div><div class="eyebrow">SEGURANÇA E OPERAÇÃO</div><h1 id="heading-settings">Definições</h1><p>Controlo do equipamento, da API e das permissões.</p></div></div><section class="surface"><h2>Políticas</h2><div class="info-line"><span>Modo sem IA</span><b>Obrigatório</b></div><div class="info-line"><span>Regras firewall</span><b>Somente regras explícitas com rollback</b></div><div class="info-line"><span>Segredos</span><b>Não armazenados em Netlify</b></div><div class="info-line"><span>Data-plane</span><b>Independente da interface web</b></div><div class="info-line"><span>Repo de integração</span><b>template-lab / lab/bond0-control-center</b></div></section></section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,363 @@
+diff --git a/bonding-client/src/main.rs b/bonding-client/src/main.rs
+index ee285ed..48f2c1b 100644
+--- a/bonding-client/src/main.rs
++++ b/bonding-client/src/main.rs
+@@ -13,8 +13,6 @@ async fn main() -> Result<()> {
+         }
+     }
+ 
+-    tracing_subscriber::fmt::init();
+-
+     let cli = <cli::Cli as clap::Parser>::parse();
+     let config_path = match cli.config {
+         Some(p) => p,
+@@ -38,6 +36,9 @@ async fn main() -> Result<()> {
+             Ok(())
+         }
+         cli::Command::Run => {
++            // Writing tracing logs directly to stderr corrupts the
++            // alternate-screen interactive UI, so only CLI run installs it.
++            let _ = tracing_subscriber::fmt::try_init();
+             let cfg = config::load(&config_path)?;
+             let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+             runtime::run_client(cfg, stop_rx, Box::new(|m| tracing::info!("{m}"))).await
+diff --git a/bonding-client/src/ui.rs b/bonding-client/src/ui.rs
+index 52b4671..4c685c2 100644
+--- a/bonding-client/src/ui.rs
++++ b/bonding-client/src/ui.rs
+@@ -5,7 +5,7 @@ use bonding_core::control::BondingConfig;
+ use chrono::Local;
+ use crossterm::{
+     cursor::{Hide, Show},
+-    event::{self, Event, KeyCode},
++    event::{self, Event, KeyCode, KeyEventKind},
+     execute,
+     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+ };
+@@ -69,6 +69,9 @@ struct UiState {
+     config_path: PathBuf,
+     config: BondingConfig,
+     running: bool,
++    starting: bool,
++    stopping: bool,
++    failed: bool,
+     logs: VecDeque<LogEntry>,
+     log_scroll: usize,
+     start_time: Option<Instant>,
+@@ -130,6 +133,9 @@ pub async fn run(config_path: PathBuf, config: BondingConfig, config_created: bo
+         config_path,
+         config: config.clone(),
+         running: false,
++        starting: false,
++        stopping: false,
++        failed: false,
+         logs: VecDeque::new(),
+         log_scroll: 0,
+         start_time: None,
+@@ -198,13 +204,27 @@ fn ui_loop(
+     let mut tick = std::time::Instant::now();
+ 
+     loop {
++        settle_finished_runner(&handle, &runner, &state)?;
+         // Snapshot state outside the draw closure so we can handle errors here.
+-        let (running, config_path, cfg, logs_snapshot, log_scroll, uptime) = {
++        let (
++            running,
++            starting,
++            stopping,
++            failed,
++            config_path,
++            cfg,
++            logs_snapshot,
++            log_scroll,
++            uptime,
++        ) = {
+             let s = state
+                 .lock()
+                 .map_err(|_| anyhow!("UI state lock poisoned"))?;
+             (
+                 s.running,
++                s.starting,
++                s.stopping,
++                s.failed,
+                 s.config_path.clone(),
+                 s.config.clone(),
+                 s.logs.clone(),
+@@ -230,12 +250,16 @@ fn ui_loop(
+             // ═══════════════════════════════════════════════════════════════
+             // HEADER
+             // ═══════════════════════════════════════════════════════════════
+-            let status_icon = if running { "●" } else { "○" };
+-            let status_text = if running { "RUNNING" } else { "STOPPED" };
+-            let status_color = if running {
+-                Color::Green
++            let (status_icon, status_text, status_color) = if stopping {
++                ("◌", "STOPPING", Color::Yellow)
++            } else if starting {
++                ("◌", "STARTING", Color::Yellow)
++            } else if failed {
++                ("✕", "ERROR", Color::Red)
++            } else if running {
++                ("●", "TUN READY", Color::Green)
+             } else {
+-                Color::DarkGray
++                ("○", "STOPPED", Color::DarkGray)
+             };
+ 
+             let uptime_text = uptime.map(|u| format!("  ⏱ {}", u)).unwrap_or_default();
+@@ -408,7 +432,14 @@ fn ui_loop(
+             // HELP BAR
+             // ═══════════════════════════════════════════════════════════════
+             let help_items = [
+-                ("s", if running { "Stop" } else { "Start" }),
++                (
++                    "s",
++                    if running || starting || stopping {
++                        "Stop"
++                    } else {
++                        "Start"
++                    },
++                ),
+                 ("r", "Reload"),
+                 ("↑↓", "Scroll"),
+                 ("q", "Quit"),
+@@ -446,8 +477,11 @@ fn ui_loop(
+         let timeout = Duration::from_millis(100);
+         if event::poll(timeout)? {
+             if let Event::Key(key) = event::read()? {
++                if key.kind == KeyEventKind::Release {
++                    continue;
++                }
+                 match key.code {
+-                    KeyCode::Char('q') | KeyCode::Esc => break,
++                    KeyCode::Char('q') | KeyCode::Esc if key.kind == KeyEventKind::Press => break,
+                     KeyCode::Up | KeyCode::Char('k') => {
+                         let mut s = state
+                             .lock()
+@@ -486,7 +520,7 @@ fn ui_loop(
+                             .map_err(|_| anyhow!("UI state lock poisoned"))?;
+                         s.log_scroll = s.logs.len().saturating_sub(1);
+                     }
+-                    KeyCode::Char('r') => {
++                    KeyCode::Char('r') if key.kind == KeyEventKind::Press => {
+                         let (path, cfg) = {
+                             let s = state
+                                 .lock()
+@@ -499,7 +533,13 @@ fn ui_loop(
+                                     .lock()
+                                     .map_err(|_| anyhow!("UI state lock poisoned"))?;
+                                 s.config = new_cfg;
+-                                s.push_log("Config reloaded".to_string());
++                                if s.running || s.starting || s.stopping {
++                                    s.push_log(
++                                        "Config reloaded for NEXT start; current session unchanged",
++                                    );
++                                } else {
++                                    s.push_log("Config reloaded");
++                                }
+                             }
+                             Err(e) => {
+                                 let mut s = state
+@@ -510,65 +550,74 @@ fn ui_loop(
+                             }
+                         }
+                     }
+-                    KeyCode::Char('s') => {
+-                        let mut runner_guard = runner
++                    KeyCode::Char('s') if key.kind == KeyEventKind::Press => {
++                        // An old completed task must never consume the next Start key.
++                        settle_finished_runner(&handle, &runner, &state)?;
++                        let mut guard = runner
+                             .lock()
+                             .map_err(|_| anyhow!("UI runner lock poisoned"))?;
+-                        let (ref stop_tx, ref mut handle_opt) = *runner_guard;
+-
+-                        if handle_opt.is_some() {
+-                            // request stop
+-                            let _ = stop_tx.send(true);
+-                            let mut s = state
++                        if guard.1.is_some() {
++                            let mut current = state
+                                 .lock()
+                                 .map_err(|_| anyhow!("UI state lock poisoned"))?;
+-                            s.running = false;
+-                            s.start_time = None;
+-                            s.push_log("Stopping...");
+-                            // join in background
+-                            if let Some(h) = handle_opt.take() {
+-                                let _ = handle.block_on(h);
++                            if !current.stopping {
++                                guard
++                                    .0
++                                    .send(true)
++                                    .map_err(|_| anyhow!("Failed to signal runner stop"))?;
++                                current.stopping = true;
++                                current.starting = false;
++                                current.running = false;
++                                current.push_log("Stopping asynchronously; wait for STOPPED...");
++                            } else {
++                                current.push_log(
++                                    "Stop already requested; waiting for engine shutdown",
++                                );
+                             }
+-                            // reset stop channel to false for next run
+-                            let _ = stop_tx.send(false);
+-                            let mut s = state
+-                                .lock()
+-                                .map_err(|_| anyhow!("UI state lock poisoned"))?;
+-                            s.push_log("Stopped");
+                         } else {
+-                            // start
+                             let cfg = {
+-                                state
++                                let mut current = state
+                                     .lock()
+-                                    .map_err(|_| anyhow!("UI state lock poisoned"))?
+-                                    .config
+-                                    .clone()
++                                    .map_err(|_| anyhow!("UI state lock poisoned"))?;
++                                current.starting = true;
++                                current.running = false;
++                                current.stopping = false;
++                                current.failed = false;
++                                current.start_time = None;
++                                current.push_log("Starting engine...");
++                                current.config.clone()
+                             };
+                             let state2 = state.clone();
+-                            let stop_rx2 = stop_rx.clone();
++                            let rx = guard.0.subscribe();
+                             let task = handle.spawn(async move {
+-                                let state_for_log = state2.clone();
+-                                let log = Box::new(move |msg: String| {
+-                                    if let Ok(mut s) = state_for_log.lock() {
+-                                        s.push_log(msg);
++                                let for_log = state2.clone();
++                                let logger = Box::new(move |message: String| {
++                                    if let Ok(mut current) = for_log.lock() {
++                                        if message.starts_with("Wintun ready:")
++                                            || message.starts_with("UDP socket bound:")
++                                        {
++                                            current.starting = false;
++                                            current.running = true;
++                                            current.failed = false;
++                                            current.start_time = Some(Instant::now());
++                                        }
++                                        current.push_log(message);
+                                     }
+                                 });
+-                                if let Err(e) = runtime::run_client(cfg, stop_rx2, log).await {
+-                                    if let Ok(mut s) = state2.lock() {
+-                                        s.push_log(format!("Client error: {e}"));
+-                                        s.running = false;
+-                                        s.start_time = None;
++                                let result = runtime::run_client(cfg, rx, logger).await;
++                                if let Ok(mut current) = state2.lock() {
++                                    current.running = false;
++                                    current.starting = false;
++                                    current.start_time = None;
++                                    if let Err(e) = result {
++                                        current.failed = true;
++                                        current.push_log(format!("Client error: {e}"));
++                                    } else if !current.stopping {
++                                        current.push_log("Engine exited");
+                                     }
+                                 }
+                             });
+-                            *handle_opt = Some(task);
+-
+-                            let mut s = state
+-                                .lock()
+-                                .map_err(|_| anyhow!("UI state lock poisoned"))?;
+-                            s.running = true;
+-                            s.start_time = Some(Instant::now());
+-                            s.push_log("Started");
++                            guard.1 = Some(task);
+                         }
+                     }
+                     _ => {}
+@@ -582,9 +631,84 @@ fn ui_loop(
+         }
+     }
+ 
++    // Request graceful engine shutdown before restoring the terminal.
++    let pending = {
++        let mut guard = runner
++            .lock()
++            .map_err(|_| anyhow!("UI runner lock poisoned"))?;
++        if guard.1.is_some() {
++            let _ = guard.0.send(true);
++        }
++        guard.1.take()
++    };
++    if let Some(task) = pending {
++        let _ = handle.block_on(async { tokio::time::timeout(Duration::from_secs(3), task).await });
++    }
++    Ok(())
++}
++
++/// Collect completed background tasks without blocking the keyboard loop.
++/// Most importantly, a failed task no longer consumes the next Start press.
++fn settle_finished_runner(
++    handle: &Handle,
++    runner: &SharedRunner,
++    state: &Arc<Mutex<UiState>>,
++) -> Result<()> {
++    let finished_task = {
++        let mut guard = runner
++            .lock()
++            .map_err(|_| anyhow!("UI runner lock poisoned"))?;
++        if guard.1.as_ref().is_some_and(|task| task.is_finished()) {
++            let finished = guard.1.take();
++            // A fresh watch receiver is retained by this UI controller on restart.
++            guard.0.send_replace(false);
++            finished
++        } else {
++            None
++        }
++    };
++    if let Some(task) = finished_task {
++        let outcome = handle.block_on(task);
++        let mut s = state
++            .lock()
++            .map_err(|_| anyhow!("UI state lock poisoned"))?;
++        s.running = false;
++        s.starting = false;
++        s.stopping = false;
++        s.start_time = None;
++        if let Err(e) = outcome {
++            s.failed = true;
++            s.push_log(format!("Engine task failed: {e}"));
++        } else if !s.failed {
++            s.push_log("Engine stopped");
++        }
++    }
+     Ok(())
+ }
+ 
++#[cfg(test)]
++mod lifecycle_tests {
++    use super::*;
++    #[test]
++    fn default_ui_state_does_not_claim_connected() {
++        let s = UiState {
++            config_path: PathBuf::from("client.toml"),
++            config: BondingConfig::default(),
++            running: false,
++            starting: false,
++            stopping: false,
++            failed: false,
++            logs: VecDeque::new(),
++            log_scroll: 0,
++            start_time: None,
++        };
++        assert!(!s.running);
++        assert!(!s.starting);
++        assert!(!s.stopping);
++        assert!(!s.failed);
++    }
++}
++
+ struct TerminalCleanup;
+ 
+ impl Drop for TerminalCleanup {
