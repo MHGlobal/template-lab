@@ -3,85 +3,375 @@
     x:Class="RSScreenManagerUI.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="RS Screen Manager">
-    <Grid ColumnDefinitions="238,*" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-        <Grid Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" Padding="24" RowDefinitions="Auto,Auto,*">
-            <StackPanel Spacing="6">
-                <TextBlock Text="RS SCREEN" FontSize="22" FontWeight="SemiBold"/>
-                <TextBlock Text="MANAGER" FontSize="19" FontWeight="SemiBold" Opacity="0.75"/>
-                <TextBlock Text="C++ / WinUI 3" FontSize="12" Opacity="0.5" Margin="0,12,0,0"/>
+    Title="RS Screen Manager — connect+">
+    <Grid x:Name="RootGrid" Background="#090B10" RequestedTheme="Dark" Loaded="Root_Loaded" RowDefinitions="Auto,Auto,*">
+        <Grid.Resources>
+            <AcrylicBrush x:Key="GlassBrush" TintColor="#20314C" TintOpacity="0.64" FallbackColor="#1A2330"/>
+            <Style x:Key="GlassCard" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource GlassBrush}"/>
+                <Setter Property="BorderBrush" Value="#51516A87"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="12"/>
+                <Setter Property="Padding" Value="23"/>
+            </Style>
+            <Style x:Key="BlueButton" TargetType="Button">
+                <Setter Property="Background" Value="#007BFF"/>
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="CornerRadius" Value="7"/>
+                <Setter Property="Padding" Value="17,11"/>
+            </Style>
+            <Style x:Key="QuietButton" TargetType="Button">
+                <Setter Property="Background" Value="#2F35465D"/>
+                <Setter Property="Foreground" Value="#F5F8FD"/>
+                <Setter Property="CornerRadius" Value="7"/>
+                <Setter Property="Padding" Value="14,10"/>
+            </Style>
+        </Grid.Resources>
+
+        <!-- Abstract RS identity proposal. No third-party logo. -->
+        <Grid Padding="32,18,32,14" ColumnDefinitions="Auto,*,Auto">
+            <Border Width="42" Height="42" Background="#007BFF" CornerRadius="9" VerticalAlignment="Center">
+                <Grid Margin="10">
+                    <Border Background="#FFFFFF" Width="18" Height="5" VerticalAlignment="Top" HorizontalAlignment="Left" CornerRadius="1"/>
+                    <Border Background="#FFFFFF" Width="12" Height="5" VerticalAlignment="Center" HorizontalAlignment="Right" CornerRadius="1"/>
+                    <Border Background="#FFFFFF" Width="18" Height="5" VerticalAlignment="Bottom" HorizontalAlignment="Left" CornerRadius="1"/>
+                </Grid>
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="13,0,0,0" Spacing="1">
+                <TextBlock Text="RS Screen Manager" FontSize="19" FontWeight="SemiBold" Foreground="#F7F9FD"/>
+                <TextBlock Text="connect+" FontSize="12" Foreground="#9AAAC1"/>
             </StackPanel>
-            <StackPanel Grid.Row="1" Margin="0,38,0,0" Spacing="12">
-                <TextBlock Text="DEVICE CENTER" FontSize="11" Opacity="0.6"/>
-                <Button Content="Refresh devices" Click="Refresh_Click" HorizontalAlignment="Stretch" />
-                <Button Content="Advanced manager" Click="Advanced_Click" HorizontalAlignment="Stretch" />
-            </StackPanel>
-            <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Spacing="7">
-                <TextBlock Text="Agentless scrcpy + ADB" FontSize="11" Opacity="0.65"/>
-                <TextBlock Text="Game-to-touch mapping: planned" TextWrapping="Wrap" FontSize="11" Opacity="0.55"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                <Border Background="#18352B" CornerRadius="8" Padding="11,7">
+                    <TextBlock x:Name="OnlineBadge" Text="● A verificar dispositivos" Foreground="#87E4AE" FontSize="12"/>
+                </Border>
+                <Button Content="↻ Atualizar" Click="Refresh_Click" Style="{StaticResource QuietButton}"/>
             </StackPanel>
         </Grid>
-        <ScrollViewer Grid.Column="1">
-            <StackPanel Padding="35" Spacing="20" MaxWidth="1000">
-                <TextBlock Text="Device workspace" FontSize="30" FontWeight="SemiBold"/>
-                <TextBlock Text="Connect your Android, choose a session, and control it without using a terminal."
-                           TextWrapping="Wrap" Opacity="0.7"/>
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="20" CornerRadius="18">
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Connected devices" FontSize="19" FontWeight="SemiBold"/>
-                        <ComboBox x:Name="DevicesCombo" HorizontalAlignment="Stretch" PlaceholderText="No device selected"/>
-                        <TextBlock x:Name="StatusText" Text="Checking ADB..." TextWrapping="Wrap" Opacity="0.7"/>
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Button Content="Mirror physical screen" Click="Mirror_Click"/>
-                            <Button Content="Create virtual display" Click="Virtual_Click"/>
-                            <Button Content="Stop last session" Click="Stop_Click"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="20" CornerRadius="18">
-                    <StackPanel Spacing="14">
-                        <TextBlock Text="Video and audio" FontSize="19" FontWeight="SemiBold"/>
-                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
-                            <StackPanel>
-                                <TextBlock Text="Resolution / density"/>
-                                <ComboBox x:Name="ResolutionCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                    <x:String>1080x1920/320</x:String>
-                                    <x:String>1920x1080/320</x:String>
-                                    <x:String>720x1280/320</x:String>
-                                </ComboBox>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="FPS target"/>
-                                <ComboBox x:Name="FpsCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                    <x:String>60</x:String><x:String>30</x:String><x:String>90</x:String><x:String>120</x:String>
-                                </ComboBox>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Bitrate Mbps"/>
-                                <ComboBox x:Name="BitrateCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                    <x:String>16</x:String><x:String>8</x:String><x:String>24</x:String>
-                                </ComboBox>
-                            </StackPanel>
-                        </Grid>
-                        <TextBlock Text="Virtual launcher Android package"/>
-                        <TextBox x:Name="LauncherBox" Text="org.fossify.home" PlaceholderText="org.fossify.home"/>
-                        <ToggleSwitch x:Name="DuplicateAudio" Header="Duplicate audio to Android and Windows"/>
-                    </StackPanel>
-                </Border>
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="20" CornerRadius="18">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="Wireless debugging" FontSize="19" FontWeight="SemiBold"/>
-                        <TextBlock Text="Use the pairing address and PIN from Android developer options. The connection port may differ." TextWrapping="Wrap" Opacity="0.7"/>
-                        <TextBox x:Name="EndpointBox" PlaceholderText="IP:port"/>
-                        <TextBox x:Name="PairCodeBox" PlaceholderText="6-digit pairing code"/>
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button Content="Pair" Click="Pair_Click"/>
-                            <Button Content="Connect" Click="Connect_Click"/>
-                            <Button Content="Disconnect" Click="Disconnect_Click"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
+
+        <!-- Horizontal page navigation: dashboard is card-first, no permanent sidebar. -->
+        <ScrollViewer Grid.Row="1" Margin="32,0,32,0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+                <Button Content="Início" Click="Home_Click" Style="{StaticResource BlueButton}"/>
+                <Button Content="Dispositivos" Click="Devices_Click" Style="{StaticResource QuietButton}"/>
+                <Button Content="Espelhamento" Click="MirrorPage_Click" Style="{StaticResource QuietButton}"/>
+                <Button Content="Ecrãs virtuais" Click="VirtualPage_Click" Style="{StaticResource QuietButton}"/>
+                <Button Content="Gaming" Click="Gaming_Click" Style="{StaticResource QuietButton}"/>
+                <Button Content="Editor de controlos" Click="Mapper_Click" Style="{StaticResource QuietButton}"/>
+                <Button Content="Perfis" Click="Profiles_Click" Style="{StaticResource QuietButton}"/>
+                <Button Content="Diagnóstico" Click="Diagnostics_Click" Style="{StaticResource QuietButton}"/>
+                <Button Content="Definições" Click="Settings_Click" Style="{StaticResource QuietButton}"/>
+                <Button Content="Histórico" Click="History_Click" Style="{StaticResource QuietButton}"/>
+                <Button Content="Ajuda" Click="Help_Click" Style="{StaticResource QuietButton}"/>
             </StackPanel>
         </ScrollViewer>
+
+        <Grid Grid.Row="2" Margin="0,12,0,0">
+            <ScrollViewer x:Name="HomePanel">
+                <StackPanel MaxWidth="1210" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="20">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="O teu espaço de controlo" Foreground="#F5F8FF" FontSize="32" FontWeight="SemiBold"/>
+                        <TextBlock Text="Liga dispositivos, inicia sessões e gere ecrãs num único lugar." Foreground="#A9B7CA" FontSize="14"/>
+                    </StackPanel>
+                    <Border Style="{StaticResource GlassCard}">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
+                            <StackPanel Spacing="14">
+                                <TextBlock Text="COMEÇAR AGORA" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                                <TextBlock Text="Cria um ecrã virtual independente" Foreground="White" FontWeight="SemiBold" FontSize="23" TextWrapping="Wrap"/>
+                                <TextBlock Text="Trabalha no Android enquanto manténs o ecrã principal disponível. Escolhe a resolução e o dispositivo na página de ecrãs virtuais." Foreground="#B1BFD1" FontSize="13" TextWrapping="Wrap" MaxWidth="650"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Button Content="＋ Criar ecrã virtual" Click="VirtualPage_Click" Style="{StaticResource BlueButton}"/>
+                                    <Button Content="Espelhar telemóvel" Click="Mirror_Click" Style="{StaticResource QuietButton}"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <Border Grid.Column="1" Width="140" Height="150" Background="#182B49" BorderBrush="#405681" BorderThickness="1" CornerRadius="11" VerticalAlignment="Center">
+                                <Grid Margin="18">
+                                    <Border Background="#23385B" Width="78" Height="120" CornerRadius="9" HorizontalAlignment="Left" VerticalAlignment="Bottom" BorderBrush="#6D84B8" BorderThickness="2"/>
+                                    <Border Background="#007BFF" Width="74" Height="109" CornerRadius="7" HorizontalAlignment="Right" VerticalAlignment="Top" BorderBrush="#A2D4FF" BorderThickness="1">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+                                            <TextBlock Text="▣" FontSize="32" HorizontalAlignment="Center" Foreground="White"/>
+                                            <Border Background="#A9D6FF" Height="5" Width="40" CornerRadius="2"/>
+                                            <Border Background="#6BB4FF" Height="5" Width="28" CornerRadius="2"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                        <Border Style="{StaticResource GlassCard}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="DISPOSITIVOS" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="DeviceCountText" Text="A procurar dispositivos..." Foreground="White" FontSize="21" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="DeviceSummaryText" Text="Liga por USB ou configura depuração sem fios." Foreground="#AAB8CC" TextWrapping="Wrap" FontSize="13"/>
+                                <Button Content="Gerir dispositivos →" Click="Devices_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource GlassCard}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="SESSÕES" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="SessionCountText" Text="0 sessões nesta execução" Foreground="White" FontSize="21" FontWeight="SemiBold"/>
+                                <TextBlock Text="Espelhamento e ecrãs virtuais em janelas independentes." Foreground="#AAB8CC" TextWrapping="Wrap" FontSize="13"/>
+                                <Button Content="Gerir espelhamento →" Click="MirrorPage_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
+                        <Border Grid.Column="0" Style="{StaticResource GlassCard}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="◎" FontSize="23" Foreground="#79B6FF"/>
+                                <TextBlock Text="Gaming" FontSize="18" FontWeight="SemiBold" Foreground="White"/>
+                                <TextBlock Text="Perfis de controlo e estado do mapeamento." TextWrapping="Wrap" Foreground="#AAB8CC" FontSize="12"/>
+                                <Button Content="Abrir Gaming →" Click="Gaming_Click" Style="{StaticResource QuietButton}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1" Style="{StaticResource GlassCard}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="◷" FontSize="23" Foreground="#79B6FF"/>
+                                <TextBlock Text="Perfis" FontSize="18" FontWeight="SemiBold" Foreground="White"/>
+                                <TextBlock Text="Configurações rápidas para vídeo e desempenho." TextWrapping="Wrap" Foreground="#AAB8CC" FontSize="12"/>
+                                <Button Content="Ver perfis →" Click="Profiles_Click" Style="{StaticResource QuietButton}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="2" Style="{StaticResource GlassCard}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="⊙" FontSize="23" Foreground="#79B6FF"/>
+                                <TextBlock Text="Diagnóstico" FontSize="18" FontWeight="SemiBold" Foreground="White"/>
+                                <TextBlock Text="Estado ADB, permissões e ajuda de ligação." TextWrapping="Wrap" Foreground="#AAB8CC" FontSize="12"/>
+                                <Button Content="Ver estado →" Click="Diagnostics_Click" Style="{StaticResource QuietButton}"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="DevicesPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="1100" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                    <TextBlock Text="Os teus dispositivos" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <TextBlock Text="Deteção USB e Wi-Fi. Apenas dispositivos autorizados podem iniciar sessões." Foreground="#A9B7CA" TextWrapping="Wrap"/>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="DISPOSITIVOS DETETADOS" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <ComboBox x:Name="DevicesCombo" PlaceholderText="Sem dispositivo selecionado" HorizontalAlignment="Stretch" SelectionChanged="DeviceSelection_Changed"/>
+                            <GridView x:Name="DeviceGrid" MaxHeight="240" SelectionMode="Single" SelectionChanged="GridSelection_Changed" HorizontalAlignment="Stretch">
+                                <GridView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Width="230" Height="122" Background="#243045" CornerRadius="9" BorderThickness="1" BorderBrush="#50617E" Padding="16" Margin="3">
+                                            <StackPanel Spacing="7">
+                                                <TextBlock Text="▣  ANDROID" Foreground="#78B5FF" FontSize="12" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding}" Foreground="White" TextTrimming="CharacterEllipsis" FontSize="14"/>
+                                                <TextBlock Text="Selecionar dispositivo" Foreground="#A9B9D0" FontSize="11"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </GridView.ItemTemplate>
+                            </GridView>
+                            <Button Content="↻ Procurar dispositivos" Click="Refresh_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="ASSISTENTE DE LIGAÇÃO SEM FIOS" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock Text="1. No Android, abre Opções de programador → Depuração sem fios → Emparelhar com código." Foreground="#D8E1EE" TextWrapping="Wrap"/>
+                            <TextBlock Text="2. Introduz o endereço IP:porta do emparelhamento e o PIN de seis dígitos." Foreground="#D8E1EE" TextWrapping="Wrap"/>
+                            <TextBlock Text="3. Depois do emparelhamento, usa o endereço IP:porta de ligação, que pode ser diferente." Foreground="#D8E1EE" TextWrapping="Wrap"/>
+                            <TextBox x:Name="EndpointBox" Header="Endereço IP:porta" PlaceholderText="192.168.1.10:37123"/>
+                            <TextBox x:Name="PairCodeBox" Header="Código de emparelhamento" PlaceholderText="6 dígitos"/>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Content="Emparelhar" Click="Pair_Click" Style="{StaticResource BlueButton}"/>
+                                <Button Content="Conectar" Click="Connect_Click" Style="{StaticResource QuietButton}"/>
+                                <Button Content="Desconectar" Click="Disconnect_Click" Style="{StaticResource QuietButton}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="MirrorPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                    <TextBlock Text="Espelhamento" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <TextBlock Text="Abre o ecrã físico do Android numa janela scrcpy independente, com controlo do rato e teclado." Foreground="#A9B7CA" TextWrapping="Wrap"/>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="SESSÃO DE ESPELHAMENTO" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock Text="Usa o dispositivo selecionado na página Dispositivos. Ajusta a qualidade na página Definições." Foreground="#BECBE0" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Content="▶ Iniciar espelhamento" Click="Mirror_Click" Style="{StaticResource BlueButton}"/>
+                                <Button Content="■ Terminar última sessão" Click="Stop_Click" Style="{StaticResource QuietButton}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="JANELAS E VISUALIZAÇÃO" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock Text="A versão atual abre o vídeo numa janela scrcpy independente. A visualização integrada na aplicação e a grelha de vídeos em tempo real requerem um renderizador próprio e ainda não estão disponíveis." Foreground="#B9C7D8" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="VirtualPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                    <TextBlock Text="Ecrãs virtuais" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <TextBlock Text="Cria um ecrã Android independente sem substituir o ecrã físico. A compatibilidade depende do dispositivo." Foreground="#A9B7CA" TextWrapping="Wrap"/>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="14">
+                            <TextBlock Text="NOVA SESSÃO VIRTUAL" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock Text="Seleciona primeiro um dispositivo autorizado na página Dispositivos." Foreground="#BECBE0"/>
+                            <TextBlock Text="Resolução / densidade" Foreground="#D8E3EF"/>
+                            <ComboBox x:Name="ResolutionCombo" SelectedIndex="1" HorizontalAlignment="Stretch">
+                                <x:String>1080x1920/320</x:String>
+                                <x:String>1920x1080/320</x:String>
+                                <x:String>720x1280/320</x:String>
+                            </ComboBox>
+                            <TextBox x:Name="LauncherBox" Header="Pacote launcher virtual" Text="org.fossify.home" PlaceholderText="org.fossify.home"/>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Content="＋ Criar ecrã virtual" Click="Virtual_Click" Style="{StaticResource BlueButton}"/>
+                                <Button Content="■ Terminar última sessão" Click="Stop_Click" Style="{StaticResource QuietButton}"/>
+                            </StackPanel>
+                            <TextBlock Text="Nota: ecrã virtual não é o Segundo Espaço do HyperOS." Foreground="#B4C2D7" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="GamingPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                    <Border Background="#33271B" BorderBrush="#87FF6B35" BorderThickness="1" CornerRadius="12" Padding="24">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="GAMING · RS SCREEN MANAGER" Foreground="#FF6B35" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock Text="Um espaço próprio para jogar" Foreground="White" FontSize="29" FontWeight="SemiBold"/>
+                            <TextBlock Text="Identidade RS com destaque laranja. Aqui o desempenho do vídeo tem prioridade sobre os efeitos de transparência." Foreground="#D9CABF" TextWrapping="Wrap"/>
+                            <Button Content="Abrir editor de controlos →" Click="Mapper_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="ESTADO DA FUNCIONALIDADE" Foreground="#FF6B35" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Text="O motor C++ de estados WASD/mira/disparo já dispõe de testes. A injeção multitoque real no Android, os perfis por jogo e o editor drag-and-drop ainda exigem integração com o protocolo de controlo do scrcpy. Não estão operacionais nesta versão." TextWrapping="Wrap" Foreground="#D0DBEA"/>
+                            <Button Content="Abrir gestor nativo avançado" Click="Advanced_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="MapperPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                    <TextBlock Text="Editor de controlos" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="IMPLEMENTAÇÃO PENDENTE" Foreground="#FF6B35" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Text="O editor visual de mapeamento ainda não está ligado ao fluxo de vídeo e ao motor de injeção de toques. Apresentar aqui um editor interativo antes dessa integração daria a impressão errada de que os comandos funcionam." Foreground="#CDD9E8" TextWrapping="Wrap"/>
+                            <TextBlock Text="Requisitos aprovados: WASD→joystick, mira com rato, disparo, multitoque, gamepads, macros, perfis por jogo, drag-and-drop, sobreposições, desfazer/refazer e importação/exportação de perfis." Foreground="#AABAD0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="ProfilesPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                    <TextBlock Text="Perfis de desempenho" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="13">
+                            <TextBlock Text="QUALIDADE DE SESSÃO" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Text="Escolhe um perfil para configurar FPS e bitrate. As preferências são guardadas localmente." Foreground="#BECBE0" TextWrapping="Wrap"/>
+                            <ComboBox x:Name="ProfileCombo" SelectedIndex="1" HorizontalAlignment="Stretch">
+                                <x:String>Eco</x:String><x:String>Equilibrado</x:String><x:String>Qualidade</x:String><x:String>Gaming</x:String>
+                            </ComboBox>
+                            <Button Content="Aplicar perfil" Click="ApplyProfile_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left"/>
+                            <TextBlock x:Name="ProfileSummaryText" Text="Equilibrado: 60 FPS e 16 Mbps." Foreground="#AABAD0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="DiagnosticsPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                    <TextBlock Text="Diagnóstico" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="ESTADO DO SISTEMA" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="DiagnosticsText" Text="A aguardar diagnóstico..." Foreground="#DAE5F3" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                            <Button Content="↻ Atualizar diagnóstico" Click="Refresh_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="PERMISSÕES E PROTEÇÃO" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock Text="ADB requer autorização no Android. O Companion é opcional e não é instalado automaticamente. Sem root, sem contornar permissões e sem transmissão para serviços externos por esta interface." Foreground="#B9C8DD" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                    <TextBlock Text="Definições" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="13">
+                            <TextBlock Text="VÍDEO E ÁUDIO" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Text="FPS pretendidos" Foreground="#DDE7F4"/>
+                            <ComboBox x:Name="FpsCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+                                <x:String>60</x:String><x:String>30</x:String><x:String>90</x:String><x:String>120</x:String>
+                            </ComboBox>
+                            <TextBlock Text="Bitrate (Mbps)" Foreground="#DDE7F4"/>
+                            <ComboBox x:Name="BitrateCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+                                <x:String>16</x:String><x:String>8</x:String><x:String>24</x:String>
+                            </ComboBox>
+                            <ToggleSwitch x:Name="DuplicateAudio" Header="Duplicar áudio para Android e Windows"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="ARRANQUE E RECUPERAÇÃO" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <ToggleSwitch x:Name="AutoRestoreSwitch" IsOn="True" Header="Reconectar e recuperar automaticamente a última sessão autorizada"/>
+                            <TextBlock Text="O restauro depende de o Android estar ligado e com autorização ADB. Nunca força acesso não autorizado." Foreground="#B5C4D8" TextWrapping="Wrap" FontSize="12"/>
+                            <Button Content="Guardar definições" Click="SaveSettings_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="APARÊNCIA" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Text="Tema escuro · #090B10 | Azul principal · #007BFF | Gaming · #FF6B35" Foreground="#CFD9E9" TextWrapping="Wrap"/>
+                            <TextBlock Text="O dashboard usa Glass destacado; as áreas de vídeo e Gaming reduzem efeitos para preservar o FPS." Foreground="#AABAD0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="HistoryPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                    <TextBlock Text="Histórico e gravações" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="SESSÕES NESTA EXECUÇÃO" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="HistoryText" Text="Ainda não há sessões registadas." Foreground="#D0DBEB" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                            <TextBlock Text="A biblioteca de gravações e os relatórios de sessões anteriores ainda não estão implementados." Foreground="#9BAEC7" TextWrapping="Wrap" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="HelpPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                    <TextBlock Text="Primeiros passos" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="13">
+                            <TextBlock Text="1  Ativa as Opções de programador e Depuração USB no Android." Foreground="#D5E0EF" TextWrapping="Wrap"/>
+                            <TextBlock Text="2  Liga o telemóvel por USB e autoriza a chave RSA no dispositivo." Foreground="#D5E0EF" TextWrapping="Wrap"/>
+                            <TextBlock Text="3  Abre Dispositivos e verifica se o estado é device (autorizado)." Foreground="#D5E0EF" TextWrapping="Wrap"/>
+                            <TextBlock Text="4  Escolhe Espelhamento ou Ecrãs virtuais para iniciar." Foreground="#D5E0EF" TextWrapping="Wrap"/>
+                            <TextBlock Text="Para Wi-Fi, o endereço de emparelhamento pode ser diferente do de conexão. O assistente está na página Dispositivos." Foreground="#A9BBD3" TextWrapping="Wrap"/>
+                            <Button Content="Ir para Dispositivos →" Click="Devices_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Persistent feedback independently of the visible page -->
+        <Border Grid.Row="2" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="20" Padding="13,8" Background="#EC1C2B40" BorderBrush="#485F7A" BorderThickness="1" CornerRadius="8" MaxWidth="460">
+            <TextBlock x:Name="StatusText" Text="A iniciar RS Screen Manager..." Foreground="#DCEAFF" FontSize="12" TextWrapping="Wrap"/>
+        </Border>
     </Grid>
 </Window>
