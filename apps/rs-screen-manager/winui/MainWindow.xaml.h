@@ -33,6 +33,11 @@ namespace winrt::RSScreenManagerUI::implementation {
   void Disconnect_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Advanced_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void ApplyProfile_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void Screenshot_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void OpenRecordings_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void StopMirrorSelected_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void StopVirtualSelected_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void Maintenance_Tick(Windows::Foundation::IInspectable const&, Windows::Foundation::IInspectable const&);
   void SaveSettings_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void DeviceSelection_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
   void GridSelection_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
@@ -40,8 +45,15 @@ namespace winrt::RSScreenManagerUI::implementation {
  private:
   std::vector<std::wstring> serials_;
   std::vector<std::wstring> deviceStates_;
-  std::vector<PROCESS_INFORMATION> children_;
-  std::vector<std::pair<std::wstring,bool>> sessionInfo_;
+  struct Session {
+   PROCESS_INFORMATION process{};
+   std::wstring serial;
+   bool virtualDisplay=false;
+   bool recording=false;
+   std::wstring recordingFile;
+  };
+  std::vector<Session> sessions_;
+  Microsoft::UI::Xaml::DispatcherTimer maintenanceTimer_{nullptr};
   std::wstring history_;
   bool loaded_=false;
   int onboardingStep_=0;
@@ -55,6 +67,11 @@ namespace winrt::RSScreenManagerUI::implementation {
   void saveSettings();
   void loadSettings();
   void saveSessions();
+  void stopAt(size_t index);
+  void reapExitedSessions();
+  void refreshSessionLists();
+  std::wstring recordingsPath() const;
+  std::wstring newMediaPath(const wchar_t* extension) const;
   void restoreSessions();
   void updateSummary();
   std::wstring settingsPath() const;
