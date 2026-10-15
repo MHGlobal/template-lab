@@ -123,6 +123,25 @@ void MainWindow::Root_Loaded(IInspectable const&,RoutedEventArgs const&){
  }
  refresh();
  restoreSessions();
+ if(GetPrivateProfileIntW(L"onboarding",L"completed",0,settingsPath().c_str())!=1)
+  WelcomeOverlay().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+}
+void MainWindow::WelcomeNext_Click(IInspectable const&,RoutedEventArgs const&){
+ ++onboardingStep_;
+ if(onboardingStep_==1){
+  WelcomeStepTitle().Text(L"1. Liga o teu Android");
+  WelcomeStepText().Text(L"Ativa a depuração USB nas opções de programador, liga o cabo e autoriza o pedido RSA no telemóvel. Para Wi-Fi, utiliza o assistente da página Dispositivos.");
+  WelcomeProgress().Text(L"Passo 2 de 3");
+ }else if(onboardingStep_==2){
+  WelcomeStepTitle().Text(L"2. Cria o teu espaço");
+  WelcomeStepText().Text(L"Seleciona o dispositivo, abre o ecrã físico ou cria um ecrã virtual. As sessões anteriores serão recuperadas automaticamente sempre que o Android voltar a estar autorizado.");
+  WelcomeProgress().Text(L"Passo 3 de 3");
+  WelcomeNextButton().Content(box_value(hstring(L"Começar →")));
+ }else{
+  WelcomeOverlay().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
+  writeIni(settingsPath(),L"onboarding",L"completed",L"1");
+  status(L"Configuração inicial concluída. Bem-vindo!");
+ }
 }
 void MainWindow::loadSettings(){
  const auto path=settingsPath();
