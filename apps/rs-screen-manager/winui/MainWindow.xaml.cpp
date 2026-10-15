@@ -7,6 +7,9 @@
 #include <cwctype>
 #include <sstream>
 #include <utility>
+#include <chrono>
+#include <shellapi.h>
+#pragma comment(lib,"shell32.lib")
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -47,8 +50,20 @@ void choose(Controls::ComboBox const& combo,const std::wstring& value){
 
 MainWindow::MainWindow() {}
 MainWindow::~MainWindow(){
- for(auto& p:children_){
-  if(p.hProcess&&WaitForSingleObject(p.hProcess,0)==WAIT_TIMEOUT)TerminateProcess(p.hProcess,0);
+ if(maintenanceTimer_)maintenanceTimer_.Stop();
+ // Preserve session manifest so the next launch can restore it.
+ saveSessions();
+ for(auto& session:sessions_){
+  auto& p=session.process;
+  if(p.hProcess&&WaitForSingleObject(p.hProcess,0)==WAIT_TIMEOUT){
+   const auto pid=p.dwProcessId;
+   EnumWindows([](HWND window,LPARAM param)->BOOL{
+    DWORD owner=0;GetWindowThreadProcessId(window,&owner);
+    if(owner==static_cast<DWORD>(param))PostMessageW(window,WM_CLOSE,0,0);
+    return TRUE;
+   },static_cast<LPARAM>(pid));
+   if(WaitForSingleObject(p.hProcess,2500)==WAIT_TIMEOUT)TerminateProcess(p.hProcess,0);
+  }
   if(p.hThread)CloseHandle(p.hThread);
   if(p.hProcess)CloseHandle(p.hProcess);
  }
@@ -69,6 +84,20 @@ std::wstring MainWindow::settingsPath() const{
  std::wstring folder=std::wstring(data)+L"\\RS Screen Manager";
  CreateDirectoryW(folder.c_str(),nullptr);
  return folder+L"\\winui-settings.ini";
+}
+std::wstring MainWindow::recordingsPath() const{
+ auto path=settingsPath();
+ const auto slash=path.find_last_of(L"\\/");
+ if(slash!=std::wstring::npos)path.resize(slash);
+ auto folder=path+L"\\Recordings";
+ CreateDirectoryW(folder.c_str(),nullptr);
+ return folder;
+}
+std::wstring MainWindow::newMediaPath(const wchar_t* extension) const{
+ SYSTEMTIME t{};GetLocalTime(&t);
+ wchar_t stamp[64]{};
+ swprintf_s(stamp,L"%04d%02d%02d-%02d%02d%02d-%03d-%lu",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond,t.wMilliseconds,GetCurrentProcessId());
+ return recordingsPath()+L"\\RS-"+stamp+extension;
 }
 void MainWindow::status(const wchar_t* message){StatusText().Text(message);}
 std::wstring MainWindow::option(Controls::ComboBox const& combo) const{
@@ -123,6 +152,10 @@ void MainWindow::Root_Loaded(IInspectable const&,RoutedEventArgs const&){
  }
  refresh();
  restoreSessions();
+ maintenanceTimer_=Microsoft::UI::Xaml::DispatcherTimer();
+ maintenanceTimer_.Interval(std::chrono::seconds(3));
+ maintenanceTimer_.Tick({this,&MainWindow::Maintenance_Tick});
+ maintenanceTimer_.Start();
  if(GetPrivateProfileIntW(L"onboarding",L"completed",0,settingsPath().c_str())!=1)
   WelcomeOverlay().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
 }
@@ -152,6 +185,8 @@ void MainWindow::loadSettings(){
  DuplicateAudio().IsOn(ini(path,L"video",L"audio_dup",L"0")==L"1");
  AutoRestoreSwitch().IsOn(ini(path,L"startup",L"auto_restore",L"1")==L"1");
  EndpointBox().Text(ini(path,L"wireless",L"endpoint",L""));
+ RecordMirrorToggle().IsOn(ini(path,L"recording",L"mirror",L"0")==L"1");
+ RecordVirtualToggle().IsOn(ini(path,L"recording",L"virtual",L"0")==L"1");
 }
 void MainWindow::saveSettings(){
  const auto path=settingsPath();
@@ -163,6 +198,8 @@ void MainWindow::saveSettings(){
  writeIni(path,L"startup",L"auto_restore",AutoRestoreSwitch().IsOn()?L"1":L"0");
  auto endpoint=std::wstring(EndpointBox().Text().c_str());
  if(endpoint.empty()||valid(endpoint))writeIni(path,L"wireless",L"endpoint",endpoint);
+ writeIni(path,L"recording",L"mirror",RecordMirrorToggle().IsOn()?L"1":L"0");
+ writeIni(path,L"recording",L"virtual",RecordVirtualToggle().IsOn()?L"1":L"0");
 }
 void MainWindow::SaveSettings_Click(IInspectable const&,RoutedEventArgs const&){
  saveSettings();status(L"Definições guardadas localmente.");
@@ -173,7 +210,7 @@ void MainWindow::updateSummary(){
  DeviceCountText().Text(hstring(std::to_wstring(authorized)+L" autorizado(s)"));
  DeviceSummaryText().Text(authorized?L"Dispositivo(s) autorizado(s), pronto(s) para abrir sessões.":L"Liga por USB e autoriza a depuração, ou emparelha por Wi-Fi.");
  size_t active=0;
- for(auto& p:children_)if(p.hProcess&&WaitForSingleObject(p.hProcess,0)==WAIT_TIMEOUT)++active;
+ for(auto& s:sessions_)if(s.process.hProcess&&WaitForSingleObject(s.process.hProcess,0)==WAIT_TIMEOUT)++active;
  SessionCountText().Text(hstring(std::to_wstring(active)+L" sessão(ões) ativa(s)"));
  OnlineBadge().Text(authorized?L"● Android conectado":L"○ Sem Android autorizado");
  std::wstring diagnostics=L"ADB: "+std::wstring(GetFileAttributesW(tools(L"adb.exe").c_str())!=INVALID_FILE_ATTRIBUTES?L"disponível":L"não encontrado");
@@ -184,6 +221,7 @@ void MainWindow::updateSummary(){
  for(size_t i=0;i<serials_.size();++i)diagnostics+=L"\n"+serials_[i]+L" — "+deviceStates_[i];
  DiagnosticsText().Text(hstring(diagnostics));
  HistoryText().Text(hstring(history_.empty()?std::wstring(L"Ainda não há sessões registadas."):history_));
+ refreshSessionLists();
 }
 void MainWindow::refresh(){
  const auto previous=DevicesCombo().SelectedIndex();
@@ -232,14 +270,69 @@ void MainWindow::refresh(){
 }
 void MainWindow::saveSessions(){
  const auto path=settingsPath();
- size_t count=(std::min)(sessionInfo_.size(),size_t(16));
- writeIni(path,L"resume",L"count",std::to_wstring(count));
- for(size_t i=0;i<count;++i){
-  auto key1=L"serial"+std::to_wstring(i);
-  auto key2=L"virtual"+std::to_wstring(i);
-  writeIni(path,L"resume",key1.c_str(),sessionInfo_[i].first);
-  writeIni(path,L"resume",key2.c_str(),sessionInfo_[i].second?L"1":L"0");
+ size_t count=0;
+ for(auto& s:sessions_){
+  if(!s.process.hProcess||WaitForSingleObject(s.process.hProcess,0)!=WAIT_TIMEOUT)continue;
+  if(count>=16)break;
+  auto sk=L"serial"+std::to_wstring(count);
+  auto vk=L"virtual"+std::to_wstring(count);
+  writeIni(path,L"resume",sk.c_str(),s.serial);
+  writeIni(path,L"resume",vk.c_str(),s.virtualDisplay?L"1":L"0");
+  ++count;
  }
+ writeIni(path,L"resume",L"count",std::to_wstring(count));
+}
+void MainWindow::refreshSessionLists(){
+ auto mirror=MirrorSessionsList();
+ auto virtuals=VirtualSessionsList();
+ int mi=mirror.SelectedIndex(),vi=virtuals.SelectedIndex();
+ mirror.Items().Clear();
+ virtuals.Items().Clear();
+ for(const auto& session:sessions_){
+  auto label=hstring((session.virtualDisplay?L"Ecrã virtual":L"Espelhamento")+std::wstring(L" · ")+session.serial+
+    (session.recording?L" · ● MP4":L"") +L" · PID "+std::to_wstring(session.process.dwProcessId));
+  mirror.Items().Append(box_value(label));
+  virtuals.Items().Append(box_value(label));
+ }
+ if(mi>=0&&static_cast<size_t>(mi)<sessions_.size())mirror.SelectedIndex(mi);
+ if(vi>=0&&static_cast<size_t>(vi)<sessions_.size())virtuals.SelectedIndex(vi);
+}
+void MainWindow::reapExitedSessions(){
+ bool changed=false;
+ for(size_t i=0;i<sessions_.size();){
+  auto& sess=sessions_[i];
+  if(sess.process.hProcess&&WaitForSingleObject(sess.process.hProcess,0)==WAIT_TIMEOUT){++i;continue;}
+  if(sess.recording)history_+=L"Gravação finalizada: "+sess.recordingFile+L"\n";
+  if(sess.process.hThread)CloseHandle(sess.process.hThread);
+  if(sess.process.hProcess)CloseHandle(sess.process.hProcess);
+  sessions_.erase(sessions_.begin()+static_cast<std::ptrdiff_t>(i));
+  changed=true;
+ }
+ if(changed){saveSessions();updateSummary();}
+}
+void MainWindow::Maintenance_Tick(IInspectable const&,IInspectable const&){
+ reapExitedSessions();
+}
+void MainWindow::stopAt(size_t i){
+ if(i>=sessions_.size()){status(L"Seleciona uma sessão ativa.");return;}
+ auto& session=sessions_[i];
+ DWORD pid=session.process.dwProcessId;
+ EnumWindows([](HWND window,LPARAM param)->BOOL{
+  DWORD owner=0;GetWindowThreadProcessId(window,&owner);
+  if(owner==static_cast<DWORD>(param))PostMessageW(window,WM_CLOSE,0,0);
+  return TRUE;
+ },static_cast<LPARAM>(pid));
+ if(WaitForSingleObject(session.process.hProcess,3500)==WAIT_TIMEOUT){
+  // No responsive scrcpy window; fall back to force-stop.
+  TerminateProcess(session.process.hProcess,0);
+  if(session.recording)status(L"Sessão forçada a terminar; o MP4 pode não estar finalizado.");
+ }
+ if(session.recording)history_+=L"MP4: "+session.recordingFile+L"\n";
+ if(session.process.hThread)CloseHandle(session.process.hThread);
+ if(session.process.hProcess)CloseHandle(session.process.hProcess);
+ sessions_.erase(sessions_.begin()+static_cast<std::ptrdiff_t>(i));
+ saveSessions();updateSummary();
+ status(L"Sessão selecionada terminada.");
 }
 void MainWindow::restoreSessions(){
  if(!AutoRestoreSwitch().IsOn())return;
@@ -259,8 +352,8 @@ void MainWindow::restoreSessions(){
   for(size_t i=0;i<serials_.size();++i)if(serials_[i]==r.first&&deviceStates_[i]==L"device")allowed=true;
   if(allowed)startFor(r.first,r.second,false);
  }
- if(!requested.empty()&&sessionInfo_.empty())status(L"Sessões anteriores encontradas; liga e autoriza o dispositivo para as recuperar.");
- if(!sessionInfo_.empty())saveSessions();
+ if(!requested.empty()&&sessions_.empty())status(L"Sessões anteriores encontradas; liga e autoriza o dispositivo para as recuperar.");
+ if(!sessions_.empty())saveSessions();
 }
 void MainWindow::startFor(const std::wstring& serial,bool virtualDisplay,bool persist){
  const auto fps=option(FpsCombo()),bitrate=option(BitrateCombo()),resolution=option(ResolutionCombo());
@@ -278,11 +371,18 @@ void MainWindow::startFor(const std::wstring& serial,bool virtualDisplay,bool pe
  }
  if(DuplicateAudio().IsOn())args+=L" --audio-source=playback --audio-dup";
  else args+=L" --audio-source=output";
+ bool recording=virtualDisplay?RecordVirtualToggle().IsOn():RecordMirrorToggle().IsOn();
+ std::wstring recordingFile;
+ // Resumed sessions deliberately start without recording: avoid endless duplicate MP4 files on reconnect.
+ if(!persist)recording=false;
+ if(recording){
+  recordingFile=newMediaPath(L".mp4");
+  args+=L" --record="+quote(recordingFile);
+ }
  PROCESS_INFORMATION pi{};
  if(!process(tools(L"scrcpy.exe"),args,pi,false)){status(L"scrcpy.exe não encontrado no pacote.");return;}
- children_.push_back(pi);
- sessionInfo_.push_back({serial,virtualDisplay});
- history_+=(virtualDisplay?L"Ecrã virtual — ":L"Espelhamento — ")+serial+L"\n";
+ sessions_.push_back(Session{pi,serial,virtualDisplay,recording,recordingFile});
+ history_+=(virtualDisplay?L"Ecrã virtual — ":L"Espelhamento — ")+serial+(recording?L" (a gravar MP4)":L"")+L"\n";
  if(persist)saveSessions();
  saveSettings();
  updateSummary();
@@ -303,14 +403,59 @@ void MainWindow::Refresh_Click(IInspectable const&,RoutedEventArgs const&){refre
 void MainWindow::Mirror_Click(IInspectable const&,RoutedEventArgs const&){start(false);}
 void MainWindow::Virtual_Click(IInspectable const&,RoutedEventArgs const&){start(true);}
 void MainWindow::Stop_Click(IInspectable const&,RoutedEventArgs const&){
- if(children_.empty()){status(L"Não existem sessões desta execução para terminar.");return;}
- auto pi=children_.back();children_.pop_back();
- sessionInfo_.pop_back();
- if(pi.hProcess&&WaitForSingleObject(pi.hProcess,0)==WAIT_TIMEOUT)TerminateProcess(pi.hProcess,0);
- CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
- saveSessions();
- updateSummary();
- status(L"Última sessão terminada.");
+ if(sessions_.empty()){status(L"Não existem sessões ativas.");return;}
+ stopAt(sessions_.size()-1);
+}
+void MainWindow::StopMirrorSelected_Click(IInspectable const&,RoutedEventArgs const&){
+ int i=MirrorSessionsList().SelectedIndex();
+ if(i<0){status(L"Seleciona uma sessão na lista.");return;}
+ stopAt(static_cast<size_t>(i));
+}
+void MainWindow::StopVirtualSelected_Click(IInspectable const&,RoutedEventArgs const&){
+ int i=VirtualSessionsList().SelectedIndex();
+ if(i<0){status(L"Seleciona uma sessão na lista.");return;}
+ stopAt(static_cast<size_t>(i));
+}
+void MainWindow::OpenRecordings_Click(IInspectable const&,RoutedEventArgs const&){
+ const auto folder=recordingsPath();
+ auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",folder.c_str(),nullptr,nullptr,SW_SHOWNORMAL));
+ if(result<=32)status(L"Não foi possível abrir a pasta de gravações.");
+}
+void MainWindow::Screenshot_Click(IInspectable const&,RoutedEventArgs const&){
+ const auto serial=selected();
+ if(serial.empty()){status(L"Seleciona primeiro um Android autorizado.");navigate(1);return;}
+ const auto file=newMediaPath(L".png");
+ HANDLE out=CreateFileW(file.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+ if(out==INVALID_HANDLE_VALUE){status(L"Não foi possível criar a imagem na pasta de gravações.");return;}
+ SECURITY_ATTRIBUTES sa{sizeof(sa),nullptr,TRUE};HANDLE reader{},writer{};
+ if(!CreatePipe(&reader,&writer,&sa,0)){CloseHandle(out);DeleteFileW(file.c_str());status(L"Erro ao preparar a captura.");return;}
+ SetHandleInformation(reader,HANDLE_FLAG_INHERIT,0);
+ PROCESS_INFORMATION pi{};
+ const auto cmd=L"-s "+quote(serial)+L" exec-out screencap -p";
+ if(!process(tools(L"adb.exe"),cmd,pi,true,writer)){
+  CloseHandle(writer);CloseHandle(reader);CloseHandle(out);DeleteFileW(file.c_str());
+  status(L"Não foi possível iniciar a captura ADB.");return;
+ }
+ CloseHandle(writer);
+ char block[16384];DWORD got=0,written=0;
+ size_t total=0;bool success=true;unsigned char signature[8]{};size_t sigCount=0;
+ while(ReadFile(reader,block,sizeof(block),&got,nullptr)&&got){
+  for(DWORD i=0;i<got&&sigCount<8;++i)signature[sigCount++]=static_cast<unsigned char>(block[i]);
+  total+=got;
+  if(total>64ull*1024ull*1024ull||!WriteFile(out,block,got,&written,nullptr)||written!=got){success=false;break;}
+ }
+ CloseHandle(reader);
+ if(!success)TerminateProcess(pi.hProcess,1);
+ WaitForSingleObject(pi.hProcess,5000);
+ DWORD exitCode=1;GetExitCodeProcess(pi.hProcess,&exitCode);
+ CloseHandle(pi.hThread);CloseHandle(pi.hProcess);CloseHandle(out);
+ constexpr unsigned char png[8]={137,80,78,71,13,10,26,10};
+ if(!success||exitCode!=0||total<8||!std::equal(std::begin(signature),std::end(signature),std::begin(png))){
+  DeleteFileW(file.c_str());
+  status(L"A captura falhou; confirma que o dispositivo está autorizado e desbloqueado.");return;
+ }
+ history_+=L"Screenshot: "+file+L"\n";updateSummary();
+ status(L"Screenshot do ecrã físico guardado na pasta Recordings.");
 }
 void MainWindow::Pair_Click(IInspectable const&,RoutedEventArgs const&){
  const auto ep=std::wstring(EndpointBox().Text().c_str());
