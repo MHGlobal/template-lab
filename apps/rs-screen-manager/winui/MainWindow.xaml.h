@@ -64,6 +64,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   bool syncing_=false;
 
   void navigate(int page);
+  void updateResponsive(double width);
   void refresh();
   void start(bool virtualDisplay);
   void startFor(const std::wstring& serial,bool virtualDisplay,bool save);
