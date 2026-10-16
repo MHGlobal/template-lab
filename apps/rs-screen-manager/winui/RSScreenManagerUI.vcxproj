@@ -124,6 +124,11 @@
     <Manifest Include="app.manifest" />
   </ItemGroup>
   <ItemGroup>
+    <ResourceCompile Include="rs-brand.rc" />
+    <None Include="assets\icon-source.svg" />
+    <None Include="tools\generate_icon.py" />
+  </ItemGroup>
+  <ItemGroup>
     <ClInclude Include="pch.h" />
     <ClInclude Include="App.xaml.h">
       <DependentUpon>App.xaml</DependentUpon>
