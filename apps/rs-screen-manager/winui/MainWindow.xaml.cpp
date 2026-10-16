@@ -125,6 +125,56 @@ void MainWindow::navigate(int page){
  SettingsPanel().Visibility(page==8?Visibility::Visible:Visibility::Collapsed);
  HistoryPanel().Visibility(page==9?Visibility::Visible:Visibility::Collapsed);
  HelpPanel().Visibility(page==10?Visibility::Visible:Visibility::Collapsed);
+ const wchar_t* captions[]={L"Visão geral",L"Dispositivos",L"Espelhamento",L"Ecrãs virtuais",
+  L"Gaming",L"Editor de controlos",L"Perfis",L"Diagnóstico",L"Definições",L"Biblioteca",L"Ajuda"};
+ if(page<0||page>=11)return;
+ CurrentLocationText().Text(captions[page]);
+ const int group=(page==0?0:page==1?1:page>=2&&page<=3?2:page>=4&&page<=6?3:page==9?4:5);
+ auto resources=RootGrid().Resources();
+ auto active=resources.Lookup(box_value(hstring(L"NavActiveButton"))).as<Microsoft::UI::Xaml::Style>();
+ auto idle=resources.Lookup(box_value(hstring(L"NavButton"))).as<Microsoft::UI::Xaml::Style>();
+ std::vector<Microsoft::UI::Xaml::Controls::Button> tabs{
+  NavHome(),NavDevices(),NavSessions(),NavGaming(),NavLibrary(),NavTools()};
+ for(size_t i=0;i<tabs.size();++i)tabs[i].Style(i==static_cast<size_t>(group)?active:idle);
+}
+void MainWindow::updateResponsive(double width){
+ using Microsoft::UI::Xaml::Visibility;
+ HeroVisual().Visibility(width<960?Visibility::Collapsed:Visibility::Visible);
+ CurrentLocationText().Visibility(width<1020?Visibility::Collapsed:Visibility::Visible);
+ ConnectivityChip().Visibility(width<760?Visibility::Collapsed:Visibility::Visible);
+ const bool narrow=width<800;
+ auto grid=HomeStatsGrid();
+ grid.RowDefinitions().Clear();
+ grid.ColumnDefinitions().Clear();
+ Microsoft::UI::Xaml::Controls::ColumnDefinition first;
+ first.Width(Microsoft::UI::Xaml::GridLength{1,Microsoft::UI::Xaml::GridUnitType::Star});
+ grid.ColumnDefinitions().Append(first);
+ if(!narrow){
+  Microsoft::UI::Xaml::Controls::ColumnDefinition second;
+  second.Width(Microsoft::UI::Xaml::GridLength{1,Microsoft::UI::Xaml::GridUnitType::Star});
+  grid.ColumnDefinitions().Append(second);
+ }
+ Microsoft::UI::Xaml::Controls::RowDefinition top;
+ top.Height(Microsoft::UI::Xaml::GridLength{1,Microsoft::UI::Xaml::GridUnitType::Auto});
+ grid.RowDefinitions().Append(top);
+ if(narrow){
+  Microsoft::UI::Xaml::Controls::RowDefinition bottom;
+  bottom.Height(Microsoft::UI::Xaml::GridLength{1,Microsoft::UI::Xaml::GridUnitType::Auto});
+  grid.RowDefinitions().Append(bottom);
+ }
+ Microsoft::UI::Xaml::Controls::Grid::SetRow(DevicesStatCard(),0);
+ Microsoft::UI::Xaml::Controls::Grid::SetColumn(DevicesStatCard(),0);
+ Microsoft::UI::Xaml::Controls::Grid::SetRow(SessionsStatCard(),narrow?1:0);
+ Microsoft::UI::Xaml::Controls::Grid::SetColumn(SessionsStatCard(),narrow?0:1);
+}
+void MainWindow::Root_SizeChanged(IInspectable const&,SizeChangedEventArgs const& args){
+ const bool narrow=args.NewSize().Width<800;
+ if(narrow==lastNarrow_ && (args.NewSize().Width<960)==lastHeroHidden_ && (args.NewSize().Width<1020)==lastBreadcrumbHidden_ && (args.NewSize().Width<760)==lastChipHidden_)return;
+ lastNarrow_=narrow;
+ lastHeroHidden_=args.NewSize().Width<960;
+ lastBreadcrumbHidden_=args.NewSize().Width<1020;
+ lastChipHidden_=args.NewSize().Width<760;
+ updateResponsive(args.NewSize().Width);
 }
 void MainWindow::Home_Click(IInspectable const&,RoutedEventArgs const&){navigate(0);}
 void MainWindow::Devices_Click(IInspectable const&,RoutedEventArgs const&){navigate(1);}
