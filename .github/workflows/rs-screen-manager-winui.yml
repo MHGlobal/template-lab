@@ -35,6 +35,20 @@ jobs:
           }
           nuget restore "$directory/packages.config" -PackagesDirectory "$directory/packages" -NonInteractive
           if ($LASTEXITCODE -ne 0) { throw 'NuGet native C++ restore failed' }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate connect+ application icon (multi-resolution ICO)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check Pillow==11.3.0
+          if ($LASTEXITCODE -ne 0) { throw 'Pillow icon generator dependency failed' }
+          python apps/rs-screen-manager/winui/tools/generate_icon.py
+          if ($LASTEXITCODE -ne 0) { throw 'RS icon generation failed' }
+          foreach ($icon in 'rs-screen-manager.ico','rs-screen-manager.png') {
+            if (!(Test-Path "apps/rs-screen-manager/winui/assets/$icon")) { throw "Generated icon missing: $icon" }
+          }
       - name: Compile Windows App SDK / C++ WinRT
         shell: pwsh
         run: |
