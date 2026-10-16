@@ -491,5 +491,22 @@
                 <TextBlock Grid.Column="2" Text="connect+ · v0.2.2 preview" Foreground="#647C96" FontSize="11" VerticalAlignment="Center" Margin="15,0,0,0"/>
             </Grid>
         </Border>
+        <!-- Guided first-run flow: intentionally sits above content but never disappears from XAML. -->
+        <Grid x:Name="WelcomeOverlay" Grid.RowSpan="4" Background="#F0090B10" Visibility="Collapsed">
+            <Border Width="630" MaxWidth="630" VerticalAlignment="Center" HorizontalAlignment="Center" Background="#162437" BorderBrush="#486686" BorderThickness="1" CornerRadius="16" Padding="35">
+                <StackPanel Spacing="19">
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                        <FontIcon Glyph="&#xE80F;" FontFamily="Segoe Fluent Icons" FontSize="17" Foreground="#72B6FF"/>
+                        <TextBlock Text="RS SCREEN MANAGER · CONNECT+" Foreground="#80BAFF" FontSize="12" CharacterSpacing="90" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <TextBlock x:Name="WelcomeStepTitle" Text="Bem-vindo ao RS Screen Manager" FontSize="29" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="White"/>
+                    <TextBlock x:Name="WelcomeStepText" Text="Vamos apresentar a ligação Android, o ecrã virtual e as funcionalidades disponíveis nesta versão." FontSize="15" Foreground="#C3D1E5" TextWrapping="Wrap"/>
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                        <TextBlock x:Name="WelcomeProgress" Text="Passo 1 de 3" Foreground="#97AAC6" FontSize="12" VerticalAlignment="Center"/>
+                        <Button x:Name="WelcomeNextButton" Grid.Column="1" Content="Continuar" Click="WelcomeNext_Click" Style="{StaticResource BlueButton}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>
