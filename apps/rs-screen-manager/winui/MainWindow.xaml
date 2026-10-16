@@ -238,7 +238,7 @@
                     <Border Style="{StaticResource GlassCard}">
                         <StackPanel Spacing="12">
                             <TextBlock Text="DISPOSITIVOS DETETADOS" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
-                            <ComboBox x:Name="DevicesCombo" PlaceholderText="Sem dispositivo selecionado" HorizontalAlignment="Stretch" SelectionChanged="DeviceSelection_Changed"/>
+                            <ComboBox x:Name="DevicesCombo" Visibility="Collapsed" PlaceholderText="Sem dispositivo selecionado" HorizontalAlignment="Stretch" SelectionChanged="DeviceSelection_Changed"/>
                             <GridView x:Name="DeviceGrid" MaxHeight="240" SelectionMode="Single" SelectionChanged="GridSelection_Changed" HorizontalAlignment="Stretch">
                                 <GridView.ItemTemplate>
                                     <DataTemplate>
@@ -279,14 +279,14 @@
                     <TextBlock Text="Abre o ecrã físico do Android numa janela scrcpy independente, com controlo do rato e teclado." Foreground="#A9B7CA" TextWrapping="Wrap"/>
                     <Border Style="{StaticResource GlassCard}">
                         <StackPanel Spacing="12">
-                            <TextBlock Text="SESSÃO DE ESPELHAMENTO" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock Text="SESSÃO DE ESPELHAMENTO" Foreground="#80BAFF" FontSize="11" CharacterSpacing="90" FontWeight="SemiBold"/>
                             <TextBlock Text="Usa o dispositivo selecionado na página Dispositivos. Ajusta a qualidade na página Definições." Foreground="#BECBE0" TextWrapping="Wrap"/>
                             <ToggleSwitch x:Name="RecordMirrorToggle" Header="Gravar esta sessão em MP4" IsOn="False"/>
                             <TextBlock Text="A gravação será guardada localmente. Para finalizar o MP4 sem corromper, termina a sessão pelo gestor." Foreground="#9DAFC6" FontSize="12" TextWrapping="Wrap"/>
                             <StackPanel Orientation="Horizontal" Spacing="10">
-                                <Button Content="▶ Iniciar espelhamento" Click="Mirror_Click" Style="{StaticResource BlueButton}"/>
-                                <Button Content="■ Terminar última sessão" Click="Stop_Click" Style="{StaticResource QuietButton}"/>
-                                <Button Content="◫ Screenshot" Click="Screenshot_Click" Style="{StaticResource QuietButton}"/>
+                                <Button Click="Mirror_Click" Style="{StaticResource BlueButton}"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE768;" FontFamily="Segoe Fluent Icons" FontSize="15"/><TextBlock Text="Iniciar espelhamento"/></StackPanel></Button>
+                                <Button Click="Stop_Click" Style="{StaticResource QuietButton}"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE71A;" FontFamily="Segoe Fluent Icons" FontSize="14"/><TextBlock Text="Terminar última sessão"/></StackPanel></Button>
+                                <Button Click="Screenshot_Click" Style="{StaticResource QuietButton}"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE722;" FontFamily="Segoe Fluent Icons" FontSize="14"/><TextBlock Text="Capturar imagem"/></StackPanel></Button>
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -326,8 +326,8 @@
                             <TextBox x:Name="LauncherBox" Header="Pacote launcher virtual" Text="org.fossify.home" PlaceholderText="org.fossify.home"/>
                             <ToggleSwitch x:Name="RecordVirtualToggle" Header="Gravar este ecrã virtual em MP4" IsOn="False"/>
                             <StackPanel Orientation="Horizontal" Spacing="10">
-                                <Button Content="＋ Criar ecrã virtual" Click="Virtual_Click" Style="{StaticResource BlueButton}"/>
-                                <Button Content="■ Terminar última sessão" Click="Stop_Click" Style="{StaticResource QuietButton}"/>
+                                <Button Click="Virtual_Click" Style="{StaticResource BlueButton}"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE710;" FontFamily="Segoe Fluent Icons" FontSize="15"/><TextBlock Text="Criar ecrã virtual"/></StackPanel></Button>
+                                <Button Click="Stop_Click" Style="{StaticResource QuietButton}"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE71A;" FontFamily="Segoe Fluent Icons" FontSize="14"/><TextBlock Text="Terminar última sessão"/></StackPanel></Button>
                             </StackPanel>
                             <TextBlock Text="Nota: ecrã virtual não é o Segundo Espaço do HyperOS." Foreground="#B4C2D7" FontSize="12"/>
                         </StackPanel>
@@ -344,18 +344,18 @@
 
             <ScrollViewer x:Name="GamingPanel" Visibility="Collapsed">
                 <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
-                    <Border Background="#33271B" BorderBrush="#87FF6B35" BorderThickness="1" CornerRadius="12" Padding="24">
+                    <Border Background="#171D28" BorderBrush="#6D4536" BorderThickness="1" CornerRadius="14" Padding="25">
                         <StackPanel Spacing="12">
                             <TextBlock Text="GAMING · RS SCREEN MANAGER" Foreground="#FF6B35" FontSize="12" FontWeight="SemiBold"/>
                             <TextBlock Text="Um espaço próprio para jogar" Foreground="White" FontSize="29" FontWeight="SemiBold"/>
-                            <TextBlock Text="Identidade RS com destaque laranja. Aqui o desempenho do vídeo tem prioridade sobre os efeitos de transparência." Foreground="#D9CABF" TextWrapping="Wrap"/>
+                            <TextBlock Text="Inicia as tuas sessões com prioridade à fluidez. O mapeamento de toques está a ser integrado no motor Gaming." Foreground="#C2CDE0" TextWrapping="Wrap"/>
                             <Button Content="Abrir editor de controlos →" Click="Mapper_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource GlassCard}">
                         <StackPanel Spacing="10">
                             <TextBlock Text="ESTADO DA FUNCIONALIDADE" Foreground="#FF6B35" FontWeight="SemiBold" FontSize="12"/>
-                            <TextBlock Text="O motor C++ de estados WASD/mira/disparo já dispõe de testes. A injeção multitoque real no Android, os perfis por jogo e o editor drag-and-drop ainda exigem integração com o protocolo de controlo do scrcpy. Não estão operacionais nesta versão." TextWrapping="Wrap" Foreground="#D0DBEA"/>
+                            <TextBlock Text="O motor de mapeamento dispõe de testes, mas ainda não controla toques reais no Android. O editor completo será disponibilizado após a integração e validação." TextWrapping="Wrap" Foreground="#D0DBEA"/>
                             <Button Content="Abrir gestor nativo avançado" Click="Advanced_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
@@ -367,8 +367,8 @@
                     <TextBlock Text="Editor de controlos" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
                     <Border Style="{StaticResource GlassCard}">
                         <StackPanel Spacing="12">
-                            <TextBlock Text="IMPLEMENTAÇÃO PENDENTE" Foreground="#FF6B35" FontWeight="SemiBold" FontSize="12"/>
-                            <TextBlock Text="O editor visual de mapeamento ainda não está ligado ao fluxo de vídeo e ao motor de injeção de toques. Apresentar aqui um editor interativo antes dessa integração daria a impressão errada de que os comandos funcionam." Foreground="#CDD9E8" TextWrapping="Wrap"/>
+                            <TextBlock Text="EM DESENVOLVIMENTO" Foreground="#F1A47B" FontWeight="SemiBold" FontSize="11" CharacterSpacing="90"/>
+                            <TextBlock Text="A edição visual dos controlos encontra-se em desenvolvimento. Ainda não é possível aplicar toques reais através deste painel." Foreground="#CDD9E8" TextWrapping="Wrap"/>
                             <TextBlock Text="Requisitos aprovados: WASD→joystick, mira com rato, disparo, multitoque, gamepads, macros, perfis por jogo, drag-and-drop, sobreposições, desfazer/refazer e importação/exportação de perfis." Foreground="#AABAD0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
