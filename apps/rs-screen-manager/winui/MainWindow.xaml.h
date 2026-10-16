@@ -60,6 +60,10 @@ namespace winrt::RSScreenManagerUI::implementation {
   std::wstring history_;
   std::vector<std::wstring> recordings_;
   bool loaded_=false;
+  bool lastNarrow_=false;
+  bool lastHeroHidden_=false;
+  bool lastBreadcrumbHidden_=false;
+  bool lastChipHidden_=false;
   int onboardingStep_=0;
   bool syncing_=false;
 
