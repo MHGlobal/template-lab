@@ -69,7 +69,7 @@
                 <TextBlock Text="connect+  ·  WINDOWS CONTROL" FontSize="10" CharacterSpacing="75" Foreground="#87B8F5"/>
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
-                <Border Background="#13291F" BorderBrush="#2D6548" BorderThickness="1" CornerRadius="8" Padding="12,9">
+                <Border x:Name="ConnectivityChip" Background="#13291F" BorderBrush="#2D6548" BorderThickness="1" CornerRadius="8" Padding="12,9">
                     <StackPanel Orientation="Horizontal" Spacing="7">
                         <FontIcon Glyph="&#xE774;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="#83D9A4"/>
                         <TextBlock x:Name="OnlineBadge" Text="A verificar dispositivos" Foreground="#C6E9D2" FontSize="12" VerticalAlignment="Center"/>
@@ -174,7 +174,7 @@
                         </Grid>
                     </Border>
                     <Grid x:Name="HomeStatsGrid" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="16">
-                        <Border Style="{StaticResource GlassCard}">
+                        <Border x:Name="DevicesStatCard" Style="{StaticResource GlassCard}">
                             <StackPanel Spacing="12">
                                 <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE772;" FontSize="18" Foreground="#75BAFF"/><TextBlock Text="Dispositivos disponíveis" Foreground="#D8E9FB" FontSize="14" FontWeight="SemiBold"/></StackPanel>
                                 <TextBlock x:Name="DeviceCountText" Text="A procurar dispositivos..." Foreground="White" FontSize="21" FontWeight="SemiBold"/>
@@ -182,7 +182,7 @@
                                 <Button Content="Ver dispositivos" Click="Devices_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource GlassCard}">
+                        <Border x:Name="SessionsStatCard" Grid.Column="1" Style="{StaticResource GlassCard}">
                             <StackPanel Spacing="12">
                                 <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A0;" FontSize="18" Foreground="#75BAFF"/><TextBlock Text="Sessões ativas" Foreground="#D8E9FB" FontSize="14" FontWeight="SemiBold"/></StackPanel>
                                 <TextBlock x:Name="SessionCountText" Text="0 sessões nesta execução" Foreground="White" FontSize="21" FontWeight="SemiBold"/>
