@@ -265,7 +265,9 @@ void MainWindow::updateSummary(){
  size_t active=0;
  for(auto& s:sessions_)if(s.process.hProcess&&WaitForSingleObject(s.process.hProcess,0)==WAIT_TIMEOUT)++active;
  SessionCountText().Text(hstring(std::to_wstring(active)+L" sessão(ões) ativa(s)"));
- OnlineBadge().Text(authorized?L"● Android conectado":L"○ Sem Android autorizado");
+ OnlineBadge().Text(authorized?L"Android conectado":L"A aguardar Android");
+ OnlineBadge().Foreground(Microsoft::UI::Xaml::Media::SolidColorBrush(
+  authorized?winrt::Windows::UI::Color{255,142,229,177}:winrt::Windows::UI::Color{255,232,192,119}));
  std::wstring diagnostics=L"ADB: "+std::wstring(GetFileAttributesW(tools(L"adb.exe").c_str())!=INVALID_FILE_ATTRIBUTES?L"disponível":L"não encontrado");
  diagnostics+=L"\nscrcpy: "+std::wstring(GetFileAttributesW(tools(L"scrcpy.exe").c_str())!=INVALID_FILE_ATTRIBUTES?L"disponível":L"não encontrado");
  diagnostics+=L"\nDispositivos detetados: "+std::to_wstring(serials_.size());
@@ -307,7 +309,8 @@ void MainWindow::refresh(){
   if(id.empty()||state.empty())continue;
   if(state!=L"device"&&state!=L"unauthorized"&&state!=L"offline")continue;
   serials_.push_back(id);deviceStates_.push_back(state);
-  auto label=hstring(id+L"  ·  "+state);
+  auto displayState=(state==L"device"?L"Pronto":state==L"unauthorized"?L"Autorizar no Android":L"Desligado");
+  auto label=hstring(id+L"  ·  "+displayState);
   DevicesCombo().Items().Append(box_value(label));
   DeviceGrid().Items().Append(box_value(label));
  }
