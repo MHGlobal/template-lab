@@ -2,6 +2,22 @@
 
 import { useEffect, useCallback, useRef, useState } from 'react';
 import * as fabric from 'fabric';
+import { useSnapping } from './useSnapping';
+import { useVariables } from './useVariables';
+import { useTextPath } from './useTextPath';
+import { useQRCode } from './useQRCode';
+import { useGradient } from './useGradient';
+import type { GradientDef } from './useGradient';
+import { useShadow } from './useShadow';
+import type { ShadowConfig } from './useShadow';
+import { usePenTool } from './usePenTool';
+import { useMask } from './useMask';
+import { useTable } from './useTable';
+import { useAnimation } from './useAnimation';
+import type { Keyframe } from './useAnimation';
+import { useEditorHistory } from './useEditorHistory';
+import { useEditorZoom } from './useEditorZoom';
+import { useEditorPan } from './useEditorPan';
 
 export interface EditorOptions {
   width: number;
@@ -28,22 +44,21 @@ export interface ActiveObjectProps {
   fontWeight?: string;
   textAlign?: string;
   text?: string;
+  aspectLock?: boolean;
+  arrowStyle?: string;
 }
 
-export type ToolId = 'select' | 'rect' | 'circle' | 'triangle' | 'ellipse' | 'line' | 'polygon' | 'star' | 'arrow' | 'rounded-rect' | 'heart' | 'speech-bubble' | 'pentagon' | 'dashed-line';
+export type ToolId = 'select' | 'pan' | 'rect' | 'circle' | 'triangle' | 'ellipse' | 'line' | 'polygon' | 'star' | 'arrow' | 'rounded-rect' | 'heart' | 'speech-bubble' | 'pentagon' | 'dashed-line';
 
 export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options: EditorOptions) => {
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
-  const historyRef = useRef<string[]>([]);
-  const historyIndexRef = useRef(-1);
+  const { setupSnapping } = useSnapping(fabricCanvasRef);
   const [isReady, setIsReady] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [isPanMode, setIsPanMode] = useState(false);
   const [isGridVisible, setIsGridVisible] = useState(false);
   const [isDrawingMode, setIsDrawingModeState] = useState(false);
   const [activeProps, setActiveProps] = useState<ActiveObjectProps | null>(null);
   const [selectedObject, setSelectedObject] = useState<fabric.FabricObject | null>(null);
-  const panStart = useRef<{ x: number; y: number } | null>(null);
+  const [hoveredObject, setHoveredObject] = useState<fabric.FabricObject | null>(null);
   const [activeTool, setActiveToolState] = useState<ToolId>('select');
   const activeToolRef = useRef(activeTool);
   useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
@@ -56,6 +71,19 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
   const isInternalUpdate = useRef(false);
   const isGridVisibleRef = useRef(isGridVisible);
   useEffect(() => { isGridVisibleRef.current = isGridVisible; }, [isGridVisible]);
+
+  // Sub-hooks
+  const { saveHistory, undo, redo, loadJson } = useEditorHistory(fabricCanvasRef, options, {
+    addGridLines: () => addGridLines(),
+    updateActiveProps: () => updateActiveProps(),
+    isGridVisibleRef,
+  });
+  const { zoomLevel, setZoomLevel, zoomLevelRef, zoomIn, zoomOut, zoomTo, zoomFit, zoomToSelection } = useEditorZoom(fabricCanvasRef);
+  const { isPanMode, setIsPanMode, panStart, togglePan, panMouseDown, panMouseMove, panMouseUp } = useEditorPan(
+    fabricCanvasRef,
+    (tool: string) => setActiveToolState(tool as ToolId),
+    setIsDrawingModeState,
+  );
 
   const extractObjectProps = useCallback((obj: fabric.FabricObject | null): ActiveObjectProps | null => {
     if (!obj) return null;
@@ -87,6 +115,8 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       scaleX: obj.scaleX ?? 1,
       scaleY: obj.scaleY ?? 1,
       angle: obj.angle ?? 0,
+      aspectLock: !!(obj as any).data?.aspectLock,
+      arrowStyle: (obj as any).data?.arrowStyle,
     };
 
     if (obj instanceof fabric.IText || obj instanceof fabric.Textbox) {
@@ -105,37 +135,6 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     setSelectedObject(obj ?? null);
     setActiveProps(extractObjectProps(obj ?? null));
   }, [extractObjectProps]);
-
-  const MAX_HISTORY = options.maxHistory ?? 50;
-
-  const getCanvasState = useCallback(() => {
-    if (!fabricCanvasRef.current) return null;
-    const json = fabricCanvasRef.current.toJSON();
-    json.objects = json.objects.filter((o: any) => o.data?.type !== 'grid');
-    return JSON.stringify(json);
-  }, []);
-
-  const captureHistory = useCallback(() => {
-    const state = getCanvasState();
-    if (!state) return;
-    const idx = historyIndexRef.current;
-    historyRef.current.length = idx + 1;
-    historyRef.current[idx + 1] = state;
-    historyIndexRef.current = idx + 1;
-  }, [getCanvasState]);
-
-  const saveHistory = useCallback(() => {
-    const state = getCanvasState();
-    if (!state) return;
-    const idx = historyIndexRef.current;
-    historyRef.current.length = idx + 1;
-    historyRef.current[idx + 1] = state;
-    historyIndexRef.current = idx + 1;
-    if (historyRef.current.length > MAX_HISTORY) {
-      historyRef.current.shift();
-      historyIndexRef.current--;
-    }
-  }, [getCanvasState]);
 
   const addGridLines = useCallback(() => {
     const canvas = fabricCanvasRef.current;
@@ -161,8 +160,54 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       canvas.add(line);
     }
     for (const line of newLines) canvas.moveObjectTo(line, 0);
-    canvas.renderAll();
+    canvas.requestRenderAll();
   }, [options.width, options.height]);
+
+  const createArrow = useCallback((
+    l: number, t: number, w: number, h: number,
+    style: string, extraData?: Record<string, any>
+  ): fabric.Group | null => {
+    const absW = Math.abs(w); const absH = Math.abs(h);
+    const len = Math.sqrt(absW * absW + absH * absH);
+    if (len < 10) return null;
+    const angle = Math.atan2(h, w);
+    const headSize = Math.min(20, len * 0.3);
+    const lineColor = '#10B981';
+    const isDashed = style === 'dashed';
+    const line = new fabric.Line([0, 0, absW, absH], {
+      stroke: lineColor, strokeWidth: 4,
+      strokeDashArray: isDashed ? [8, 4] : undefined,
+      strokeUniform: true,
+    });
+    const children: fabric.FabricObject[] = [line];
+    if (style !== 'chevron') {
+      const head = new fabric.Triangle({
+        left: absW, top: absH, width: headSize, height: headSize * 0.6,
+        fill: lineColor, originX: 'center', originY: 'center',
+      });
+      head.set({ angle: (angle * 180 / Math.PI) + 90 });
+      children.push(head);
+    } else {
+      const hs2 = headSize * 0.5;
+      const chevPts = [
+        { x: absW - hs2, y: absH - hs2 },
+        { x: absW, y: absH },
+        { x: absW - hs2, y: absH + hs2 },
+      ];
+      children.push(new fabric.Polygon(chevPts, { fill: lineColor }));
+    }
+    if (style === 'double') {
+      const startHead = new fabric.Triangle({
+        left: 0, top: 0, width: headSize, height: headSize * 0.6,
+        fill: lineColor, originX: 'center', originY: 'center',
+      });
+      startHead.set({ angle: (angle * 180 / Math.PI) - 90 });
+      children.push(startHead);
+    }
+    const group = new fabric.Group(children, { left: l, top: t });
+    (group as any).data = { ...((group as any).data || {}), arrowStyle: style, ...extraData };
+    return group;
+  }, []);
 
   // Shape factory
   const createShape = useCallback((tool: ToolId, left: number, top: number, width: number, height: number): fabric.FabricObject | null => {
@@ -191,20 +236,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       case 'line':
         return new fabric.Line([0, 0, absW, absH], { left: x, top: y, stroke: '#10B981', strokeWidth: 4, hasBorders: true, strokeUniform: true });
       case 'arrow': {
-        const len = Math.sqrt(absW * absW + absH * absH);
-        if (len < 10) return null;
-        const angle = Math.atan2(height, width);
-        const headSize = Math.min(20, len * 0.3);
-        const arrow = new fabric.Group([
-          new fabric.Line([0, 0, absW, absH], { stroke: colors.arrow, strokeWidth: 4, strokeUniform: true }),
-          new fabric.Triangle({
-            left: absW, top: absH, width: headSize, height: headSize * 0.6,
-            fill: colors.arrow, angle: 0, originX: 'center', originY: 'center',
-          }),
-        ], { left: x, top: y });
-        const head = arrow.item(1) as fabric.Triangle;
-        head.set({ angle: (angle * 180 / Math.PI) + 90 });
-        return arrow;
+        return createArrow(x, y, absW, absH, (options as any)?.arrowStyle || 'simple');
       }
       case 'star': {
         const points: fabric.XY[] = [];
@@ -274,25 +306,46 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       default:
         return null;
     }
-  }, []);
+  }, [createArrow]);
 
   // Set active tool (placement mode)
   const setActiveTool = useCallback((tool: ToolId) => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
+    if (isPanMode && tool !== 'pan') {
+      canvas.selection = true;
+      canvas.defaultCursor = 'default';
+      canvas.off('mouse:down', panMouseDown);
+      canvas.off('mouse:move', panMouseMove);
+      canvas.off('mouse:up', panMouseUp);
+      setIsPanMode(false);
+    }
     setActiveToolState(tool);
     if (tool === 'select') {
       canvas.selection = true;
       canvas.defaultCursor = 'default';
       canvas.isDrawingMode = false;
       setIsDrawingModeState(false);
+    } else if (tool === 'pan') {
+      if (!isPanMode) {
+        if (canvas.isDrawingMode) {
+          canvas.isDrawingMode = false;
+          setIsDrawingModeState(false);
+        }
+        canvas.selection = false;
+        canvas.defaultCursor = 'grab';
+        canvas.on('mouse:down', panMouseDown);
+        canvas.on('mouse:move', panMouseMove);
+        canvas.on('mouse:up', panMouseUp);
+        setIsPanMode(true);
+      }
     } else {
       canvas.selection = false;
       canvas.discardActiveObject();
       canvas.defaultCursor = 'crosshair';
-      canvas.renderAll();
+      canvas.requestRenderAll();
     }
-  }, []);
+  }, [isPanMode]);
 
   // Placement mouse handlers
   const placementMouseDown = useCallback((opt: fabric.TPointerEventInfo<fabric.TPointerEvent>) => {
@@ -306,7 +359,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       preview.set({ selectable: false, evented: false, opacity: 0.6 } as any);
       placementPreview.current = preview;
       canvas.add(preview);
-      canvas.renderAll();
+      canvas.requestRenderAll();
     }
   }, [createShape]);
 
@@ -356,7 +409,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       }
     }
     preview.setCoords();
-    canvas.renderAll();
+    canvas.requestRenderAll();
   }, []);
 
   const placementMouseUp = useCallback(() => {
@@ -371,14 +424,14 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     const w = (preview.width ?? 0) * (preview.scaleX ?? 1);
     const h = (preview.height ?? 0) * (preview.scaleY ?? 1);
     if (w < 5 && h < 5) {
-      canvas.renderAll();
+      canvas.requestRenderAll();
       isPlacingRef.current = false;
       return;
     }
     preview.set({ selectable: true, evented: true, opacity: 1 } as any);
     canvas.add(preview);
     canvas.setActiveObject(preview);
-    canvas.renderAll();
+    canvas.requestRenderAll();
     saveHistory();
     setActiveTool('select');
     isPlacingRef.current = false;
@@ -396,7 +449,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     previewLine.set({ left: ptr.x, top: ptr.y });
     placementPreview.current = previewLine;
     canvas.add(previewLine);
-    canvas.renderAll();
+    canvas.requestRenderAll();
   }, []);
 
   const arrowMouseMove = useCallback((opt: fabric.TPointerEventInfo<fabric.TPointerEvent>) => {
@@ -413,7 +466,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     const y = h >= 0 ? anchor.y : ptr.y;
     preview.set({ x1: 0, y1: 0, x2: absW, y2: absH, left: x, top: y } as any);
     preview.setCoords();
-    canvas.renderAll();
+    canvas.requestRenderAll();
   }, []);
 
   const arrowMouseUp = useCallback(() => {
@@ -427,7 +480,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     const w = (preview as fabric.Line).x2 - (preview as fabric.Line).x1;
     const h = (preview as fabric.Line).y2 - (preview as fabric.Line).y1;
     if (Math.abs(w) < 5 && Math.abs(h) < 5) {
-      canvas.renderAll();
+      canvas.requestRenderAll();
       return;
     }
     const len = Math.sqrt(w * w + h * h);
@@ -447,7 +500,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     head.set({ angle: (angle * 180 / Math.PI) + 90 });
     canvas.add(arrow);
     canvas.setActiveObject(arrow);
-    canvas.renderAll();
+    canvas.requestRenderAll();
     saveHistory();
     setActiveTool('select');
   }, [saveHistory, setActiveTool]);
@@ -460,11 +513,16 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       width: options.width,
       height: options.height,
       backgroundColor: '#ffffff',
+      preserveObjectStacking: true,
+      stopContextMenu: true,
+      fireRightClick: true,
+      renderOnAddRemove: false,
     });
+    canvas.altSelectionKey = 'shiftKey';
 
     fabricCanvasRef.current = canvas;
-    captureHistory();
-    canvas.renderAll();
+    saveHistory();
+    canvas.requestRenderAll();
     setIsReady(true);
 
     canvas.on('object:modified', () => {
@@ -476,15 +534,24 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       saveHistory();
       updateActiveProps();
     });
+    let rafId: ReturnType<typeof requestAnimationFrame> | null = null;
+    const debouncedUpdateProps = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        updateActiveProps();
+        rafId = null;
+      });
+    };
     canvas.on('selection:created', updateActiveProps);
     canvas.on('selection:updated', updateActiveProps);
     canvas.on('selection:cleared', () => {
+      if (rafId) cancelAnimationFrame(rafId);
       setSelectedObject(null);
       setActiveProps(null);
     });
-    canvas.on('object:moving', updateActiveProps);
-    canvas.on('object:scaling', updateActiveProps);
-    canvas.on('object:rotating', updateActiveProps);
+    canvas.on('object:moving', debouncedUpdateProps);
+    canvas.on('object:scaling', debouncedUpdateProps);
+    canvas.on('object:rotating', debouncedUpdateProps);
 
     // Placement events (use ref to avoid stale closure)
     canvas.on('mouse:down', (opt) => {
@@ -495,7 +562,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
             clone.set({ left: (clone.left ?? 0) + 20, top: (clone.top ?? 0) + 20 });
             canvas.add(clone);
             canvas.setActiveObject(clone);
-            canvas.renderAll();
+            canvas.requestRenderAll();
             saveHistory();
           });
           return;
@@ -513,7 +580,27 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       else placementMouseUp();
     });
 
+    // Hover highlights
+    canvas.on('mouse:over', (opt) => {
+      if (opt.target && !('isEditing' in opt.target && (opt.target as any).isEditing)) setHoveredObject(opt.target);
+    });
+    canvas.on('mouse:out', () => setHoveredObject(null));
+
+    // Zoom with mouse wheel / trackpad pinch
+    canvas.on('mouse:wheel', (opt) => {
+      const e = opt.e as WheelEvent;
+      e.preventDefault();
+      e.stopPropagation();
+      const currentZoom = zoomLevelRef.current;
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.min(10, Math.max(0.1, currentZoom * delta));
+      canvas.zoomToPoint({ x: e.offsetX, y: e.offsetY } as any, newZoom);
+      setZoomLevel(newZoom);
+    });
+
+    const cleanupSnapping = setupSnapping();
     return () => {
+      cleanupSnapping();
       canvas.dispose();
       setIsReady(false);
     };
@@ -531,41 +618,106 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     saveHistory();
   }, [saveHistory]);
 
+  const useAsPattern = useCallback((obj: fabric.FabricObject) => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || !(obj instanceof fabric.Image)) return;
+    const imgEl = obj.getElement();
+    const pattern = new fabric.Pattern({ source: imgEl, repeat: 'repeat' });
+    const rect = new fabric.Rect({
+      left: obj.left, top: obj.top, width: obj.width! * obj.scaleX!,
+      height: obj.height! * obj.scaleY!, fill: pattern,
+    });
+    canvas.remove(obj);
+    canvas.add(rect);
+    canvas.setActiveObject(rect);
+    saveHistory();
+  }, [saveHistory]);
+
   const addImage = useCallback((url: string) => {
-    const isBlob = url.startsWith('blob:');
-    const opts = isBlob ? undefined : { crossOrigin: 'anonymous' as const };
-    const promise = fabric.Image.fromURL(url, opts);
-    if (promise && typeof promise.then === 'function') {
-      (promise as Promise<fabric.Image>).then((img: fabric.Image) => {
-        img.scaleToWidth(200);
-        fabricCanvasRef.current?.add(img);
-        fabricCanvasRef.current?.setActiveObject(img);
-        saveHistory();
-      }).catch((err: any) => {
-        console.error('[Editor] Erro ao carregar imagem:', err);
-        const canvas = fabricCanvasRef.current;
-        if (!canvas) return;
-        const fallback = new fabric.Rect({
-          left: 100, top: 100, width: 200, height: 200,
-          fill: '#E5E7EB', stroke: '#9CA3AF', strokeWidth: 2, rx: 8, ry: 8,
-        });
-        const icon = new fabric.IText('🖼', {
-          left: 175, top: 155, fontSize: 48, selectable: false, evented: false,
-        });
-        const label = new fabric.IText('Imagem não carregada', {
-          left: 120, top: 220, fontSize: 12, fill: '#6B7280',
-          fontFamily: 'Inter', selectable: false, evented: false,
-        });
-        canvas.add(fallback, icon, label);
-        const group = new fabric.Group([fallback, icon, label], { left: 100, top: 100 });
-        canvas.remove(fallback, icon, label);
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    const cw = canvas.width ?? 800;
+    const ch = canvas.height ?? 600;
+    const centerX = (cw - 200) / 2;
+    const centerY = (ch - 200) / 2;
+
+    const addImg = (img: fabric.Image) => {
+      const maxDim = Math.min(cw, ch) * 0.6;
+      if (img.width && img.width > maxDim) img.scaleToWidth(maxDim);
+      if (img.height && img.height > maxDim) img.scaleToHeight(maxDim);
+      img.set({ left: centerX, top: centerY });
+      img.setCoords();
+      canvas.add(img);
+      canvas.setActiveObject(img);
+      canvas.requestRenderAll();
+      saveHistory();
+    };
+
+    if (url.match(/\.svg(\?|$)/i)) {
+      fabric.loadSVGFromString(url).then((results: any) => {
+        const group = fabric.util.groupSVGElements(results.objects, results.options);
+        group.set({ left: centerX, top: centerY, scaleX: 1, scaleY: 1 });
         canvas.add(group);
         canvas.setActiveObject(group);
-        canvas.renderAll();
+        canvas.requestRenderAll();
         saveHistory();
+      }).catch(() => {
+        fabric.Image.fromURL(url, { crossOrigin: 'anonymous' }).then(addImg).catch(() => {});
       });
+      return;
     }
+
+    const opts = url.startsWith('blob:') ? undefined : { crossOrigin: 'anonymous' as const };
+    fabric.Image.fromURL(url, opts).then(addImg).catch(() => {});
   }, [saveHistory]);
+
+  const addImages = useCallback((urls: string[]) => {
+    urls.forEach((url, i) => {
+      const canvas = fabricCanvasRef.current;
+      if (!canvas) return;
+      const opts = url.startsWith('blob:') ? undefined : { crossOrigin: 'anonymous' as const };
+      const promise = fabric.Image.fromURL(url, opts);
+      if (promise && typeof promise.then === 'function') {
+        (promise as Promise<fabric.Image>).then((img: fabric.Image) => {
+          img.set({ left: 100 + i * 30, top: 100 + i * 30 });
+          img.scaleToWidth(200);
+          canvas.add(img);
+          canvas.requestRenderAll();
+          saveHistory();
+        }).catch(() => {});
+      }
+    });
+  }, [saveHistory]);
+
+  // Aspect ratio lock
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    const handler = (e: { target?: fabric.FabricObject }) => {
+      const obj = e.target;
+      if (!obj || !(obj as any).data?.aspectLock) return;
+      const origW = obj.width ?? 1;
+      const origH = obj.height ?? 1;
+      const ratio = origW / origH;
+      const newScaleX = obj.scaleX ?? 1;
+      const newScaleY = obj.scaleY ?? 1;
+      const newW = origW * newScaleX;
+      const newH = origH * newScaleY;
+      if (Math.abs(newW / newH - ratio) > 0.001) {
+        const avgScale = Math.sqrt(newScaleX * newScaleY);
+        obj.set({ scaleX: avgScale, scaleY: avgScale } as any);
+        obj.setCoords();
+      }
+    };
+    canvas.on('object:scaling', handler);
+    return () => { canvas.off('object:scaling', handler); };
+  }, []);
+
+  const toggleAspectLock = useCallback((obj: fabric.FabricObject) => {
+    const current = !!(obj as any).data?.aspectLock;
+    (obj as any).data = { ...(obj as any).data, aspectLock: !current };
+    updateActiveProps();
+  }, [updateActiveProps]);
 
   // Grid
   const toggleGrid = useCallback(() => {
@@ -574,13 +726,21 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     const gridLines = canvas.getObjects().filter(o => (o as any).data?.type === 'grid');
     if (gridLines.length > 0) {
       gridLines.forEach(obj => canvas.remove(obj));
-      canvas.renderAll();
+      canvas.requestRenderAll();
       setIsGridVisible(false);
     } else {
       addGridLines();
       setIsGridVisible(true);
     }
   }, [addGridLines]);
+
+  const [gridSnap, setGridSnap] = useState(false);
+  const gridSnapRef = useRef(gridSnap);
+  gridSnapRef.current = gridSnap;
+
+  const toggleGridSnap = useCallback(() => {
+    setGridSnap(p => !p);
+  }, []);
 
   // Selection & Properties
   const setFill = useCallback((color: string) => {
@@ -589,7 +749,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     isInternalUpdate.current = true;
     obj.set({ fill: color } as any);
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
@@ -600,7 +760,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     isInternalUpdate.current = true;
     obj.set({ stroke: color } as any);
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
@@ -611,7 +771,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     isInternalUpdate.current = true;
     obj.set({ strokeWidth: width } as any);
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
@@ -622,41 +782,50 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     isInternalUpdate.current = true;
     obj.set({ opacity: value } as any);
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
+
+  const snapToPixel = useCallback((value: number) => {
+    return zoomLevel >= 1 ? Math.round(value) : Math.round(value * 2) / 2;
+  }, [zoomLevel]);
 
   const setPosition = useCallback((left: number, top: number) => {
     const obj = fabricCanvasRef.current?.getActiveObject();
     if (!obj) return;
     isInternalUpdate.current = true;
-    obj.set({ left, top } as any);
+    obj.set({ left: snapToPixel(left), top: snapToPixel(top) } as any);
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
-  }, [updateActiveProps]);
+  }, [updateActiveProps, snapToPixel]);
 
   const setSize = useCallback((width: number, height: number) => {
     const obj = fabricCanvasRef.current?.getActiveObject();
     if (!obj) return;
     isInternalUpdate.current = true;
+    const w = Math.round(width);
+    const h = Math.round(height);
+    const center = obj.getCenterPoint();
     if (obj instanceof fabric.Line) {
-      const center = obj.getCenterPoint();
-      const halfW = width / 2;
+      const halfW = w / 2;
       obj.set({ x1: center.x - halfW, y1: center.y, x2: center.x + halfW, y2: center.y } as any);
     } else if (obj instanceof fabric.Circle) {
-      obj.set({ radius: Math.min(width, height) / 2, scaleX: 1, scaleY: 1 } as any);
+      obj.set({ radius: Math.min(w, h) / 2, scaleX: 1, scaleY: 1 } as any);
     } else if (obj instanceof fabric.Ellipse) {
-      obj.set({ rx: width / 2, ry: height / 2, scaleX: 1, scaleY: 1 } as any);
+      obj.set({ rx: w / 2, ry: h / 2, scaleX: 1, scaleY: 1 } as any);
     } else {
-      const sx = width / (obj.width ?? 1);
-      const sy = height / (obj.height ?? 1);
+      const sx = w / (obj.width ?? 1);
+      const sy = h / (obj.height ?? 1);
       obj.set({ scaleX: sx, scaleY: sy } as any);
     }
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    if (obj.angle) {
+      obj.setPositionByOrigin(center, 'center', 'center');
+    }
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
@@ -667,7 +836,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     isInternalUpdate.current = true;
     obj.set({ fontFamily } as any);
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
@@ -678,7 +847,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     isInternalUpdate.current = true;
     obj.set({ fontSize } as any);
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
@@ -689,7 +858,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     isInternalUpdate.current = true;
     obj.set({ fontWeight } as any);
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
@@ -700,7 +869,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     isInternalUpdate.current = true;
     obj.set({ textAlign } as any);
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
@@ -711,7 +880,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     isInternalUpdate.current = true;
     obj.set({ text } as any);
     obj.setCoords();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
@@ -741,7 +910,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     }
     obj.filters = filters;
     obj.applyFilters();
-    fabricCanvasRef.current?.renderAll();
+    fabricCanvasRef.current?.requestRenderAll();
     updateActiveProps();
     isInternalUpdate.current = false;
   }, [updateActiveProps]);
@@ -752,7 +921,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     const obj = canvas?.getActiveObject();
     if (canvas && obj) {
       (canvas as any).bringToFront(obj);
-      canvas.renderAll();
+      canvas.requestRenderAll();
     }
   }, []);
 
@@ -761,7 +930,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     const obj = canvas?.getActiveObject();
     if (canvas && obj) {
       (canvas as any).sendToBack(obj);
-      canvas.renderAll();
+      canvas.requestRenderAll();
     }
   }, []);
 
@@ -770,7 +939,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     if (activeObjects) {
       fabricCanvasRef.current?.discardActiveObject();
       activeObjects.forEach((obj) => fabricCanvasRef.current?.remove(obj));
-      fabricCanvasRef.current?.renderAll();
+      fabricCanvasRef.current?.requestRenderAll();
     }
   }, []);
 
@@ -784,7 +953,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     active.forEach(o => canvas.remove(o));
     canvas.add(group);
     canvas.setActiveObject(group);
-    canvas.renderAll();
+    canvas.requestRenderAll();
     saveHistory();
   }, [saveHistory]);
 
@@ -798,7 +967,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     items.forEach((item: fabric.FabricObject) => {
       canvas.add(item);
     });
-    canvas.renderAll();
+    canvas.requestRenderAll();
     saveHistory();
   }, [saveHistory]);
 
@@ -843,7 +1012,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       }
       obj.setCoords();
     });
-    canvas.renderAll();
+    canvas.requestRenderAll();
     saveHistory();
   }, [saveHistory]);
 
@@ -876,12 +1045,59 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       obj.setCoords();
       pos += (dir === 'horizontal' ? r.width : r.height) + step;
     });
-    canvas.renderAll();
+    canvas.requestRenderAll();
     saveHistory();
   }, [saveHistory]);
 
   // Free drawing toggle
-  const toggleFreeDrawing = useCallback((brushColor = '#000000', brushWidth = 5) => {
+  const toggleBold = useCallback(() => {
+    const obj = fabricCanvasRef.current?.getActiveObject();
+    if (!obj || !(obj instanceof fabric.IText)) return;
+    const isBold = obj.fontWeight === 'bold';
+    obj.set('fontWeight', isBold ? 'normal' : 'bold');
+    fabricCanvasRef.current?.requestRenderAll();
+  }, []);
+
+  const toggleItalic = useCallback(() => {
+    const obj = fabricCanvasRef.current?.getActiveObject();
+    if (!obj || !(obj instanceof fabric.IText)) return;
+    const isItalic = obj.fontStyle === 'italic';
+    obj.set('fontStyle', isItalic ? 'normal' : 'italic');
+    fabricCanvasRef.current?.requestRenderAll();
+  }, []);
+
+  const toggleUnderline = useCallback(() => {
+    const obj = fabricCanvasRef.current?.getActiveObject();
+    if (!obj || !(obj instanceof fabric.IText)) return;
+    const isUnderline = obj.underline;
+    obj.set('underline', !isUnderline);
+    fabricCanvasRef.current?.requestRenderAll();
+  }, []);
+
+  const toggleBulletList = useCallback(() => {
+    const obj = fabricCanvasRef.current?.getActiveObject();
+    if (!obj || !(obj instanceof fabric.IText)) return;
+    let text = obj.text || '';
+    const lines = text.split('\n');
+    const hasBullets = lines.every(l => l.startsWith('- '));
+    text = hasBullets ? lines.map(l => l.slice(2)).join('\n') : lines.map(l => '- ' + l).join('\n');
+    obj.set('text', text);
+    fabricCanvasRef.current?.requestRenderAll();
+  }, []);
+
+  const toggleNumberedList = useCallback(() => {
+    const obj = fabricCanvasRef.current?.getActiveObject();
+    if (!obj || !(obj instanceof fabric.IText)) return;
+    let text = obj.text || '';
+    const lines = text.split('\n');
+    const hasNumbers = lines.every((l, i) => l.startsWith((i + 1) + '. '));
+    text = hasNumbers ? lines.map(l => l.replace(/^\d+\.\s*/, '')).join('\n') : lines.map((l, i) => (i + 1) + '. ' + l).join('\n');
+    obj.set('text', text);
+    fabricCanvasRef.current?.requestRenderAll();
+  }, []);
+  const brushSettingsRef = useRef({ color: '#000000', width: 5 });
+
+  const toggleFreeDrawing = useCallback((brushColor?: string, brushWidth?: number) => {
     if (!fabricCanvasRef.current) return;
     const canvas = fabricCanvasRef.current;
     const wasDrawing = canvas.isDrawingMode;
@@ -892,125 +1108,31 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       setIsDrawingModeState(false);
       return;
     }
-    // Exit pan mode if active
+    if (brushColor !== undefined) brushSettingsRef.current.color = brushColor;
+    if (brushWidth !== undefined) brushSettingsRef.current.width = brushWidth;
     setIsPanMode(false);
     canvas.selection = false;
     canvas.isDrawingMode = true;
     canvas.defaultCursor = 'crosshair';
     canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-    canvas.freeDrawingBrush.color = brushColor;
-    canvas.freeDrawingBrush.width = brushWidth;
+    canvas.freeDrawingBrush.color = brushSettingsRef.current.color;
+    canvas.freeDrawingBrush.width = brushSettingsRef.current.width;
     setIsDrawingModeState(true);
   }, []);
 
-  // Undo / Redo
-  const applyHistoryState = useCallback((state: string) => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas || !state) return;
-    canvas.loadFromJSON(state).then(() => {
-      if (!fabricCanvasRef.current) return;
-      fabricCanvasRef.current.renderAll();
-      if (isGridVisibleRef.current) addGridLines();
-      updateActiveProps();
-    });
-  }, [addGridLines, updateActiveProps]);
-
-  const undo = useCallback(() => {
-    const idx = historyIndexRef.current;
-    if (idx > 0) {
-      const prevIndex = idx - 1;
-      const state = historyRef.current[prevIndex];
-      if (!state) return;
-      applyHistoryState(state);
-      historyIndexRef.current = prevIndex;
+  const setBrushColor = useCallback((color: string) => {
+    brushSettingsRef.current.color = color;
+    if (fabricCanvasRef.current?.freeDrawingBrush) {
+      fabricCanvasRef.current.freeDrawingBrush.color = color;
     }
-  }, [applyHistoryState]);
-
-  const redo = useCallback(() => {
-    const idx = historyIndexRef.current;
-    if (idx < historyRef.current.length - 1) {
-      const nextIndex = idx + 1;
-      const state = historyRef.current[nextIndex];
-      if (!state) return;
-      applyHistoryState(state);
-      historyIndexRef.current = nextIndex;
-    }
-  }, [applyHistoryState]);
-
-  const loadJson = useCallback((json: any) => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas || !json) return;
-    if (!json.objects || !Array.isArray(json.objects)) {
-      console.error('[Editor] JSON inválido para loadFromJSON — falta array objects', json);
-      return;
-    }
-    canvas.loadFromJSON(json).then(() => {
-      if (!fabricCanvasRef.current) return;
-      fabricCanvasRef.current.getObjects().forEach(obj => {
-        (obj as any).data = (obj as any).data || {};
-      });
-      fabricCanvasRef.current.renderAll();
-      captureHistory();
-      updateActiveProps();
-    });
-  }, [captureHistory, updateActiveProps]);
-
-  // Zoom
-  const applyZoom = useCallback((zoom: number) => {
-    if (!fabricCanvasRef.current) return;
-    const canvas = fabricCanvasRef.current;
-    const clamped = Math.max(0.1, Math.min(4, zoom));
-    const center = canvas.getCenterPoint();
-    canvas.zoomToPoint(center, clamped);
-    canvas.requestRenderAll();
-    setZoomLevel(clamped);
   }, []);
 
-  const zoomIn = useCallback(() => {
-    if (!fabricCanvasRef.current) return;
-    applyZoom(zoomLevel * 1.2);
-  }, [zoomLevel, applyZoom]);
-
-  const zoomOut = useCallback(() => {
-    if (!fabricCanvasRef.current) return;
-    applyZoom(zoomLevel / 1.2);
-  }, [zoomLevel, applyZoom]);
-
-  const zoomTo = useCallback((value: number) => {
-    applyZoom(value / 100);
-  }, [applyZoom]);
-
-  const zoomFit = useCallback(() => {
-    if (!fabricCanvasRef.current) return;
-    const canvas = fabricCanvasRef.current;
-    const vpt = canvas.viewportTransform;
-    if (!vpt) return;
-    const objects = canvas.getObjects().filter(o => (o as any).data?.type !== 'grid');
-    if (objects.length === 0) {
-      zoomTo(100);
-      return;
+  const setBrushWidth = useCallback((width: number) => {
+    brushSettingsRef.current.width = width;
+    if (fabricCanvasRef.current?.freeDrawingBrush) {
+      fabricCanvasRef.current.freeDrawingBrush.width = width;
     }
-    const bounds = objects.reduce((acc, obj) => {
-      const coords = obj.getBoundingRect();
-      return {
-        minX: Math.min(acc.minX, coords.left),
-        minY: Math.min(acc.minY, coords.top),
-        maxX: Math.max(acc.maxX, coords.left + coords.width),
-        maxY: Math.max(acc.maxY, coords.top + coords.height),
-      };
-    }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
-    const objW = bounds.maxX - bounds.minX;
-    const objH = bounds.maxY - bounds.minY;
-    if (objW <= 0 || objH <= 0) { zoomTo(100); return; }
-    const scaleX = (canvas.width ?? options.width) / objW;
-    const scaleY = (canvas.height ?? options.height) / objH;
-    const scale = Math.min(scaleX, scaleY, 1) * 0.9;
-    applyZoom(scale);
-    canvas.absolutePan(new fabric.Point(
-      -(bounds.minX * scale) + ((canvas.width ?? options.width) - objW * scale) / 2,
-      -(bounds.minY * scale) + ((canvas.height ?? options.height) - objH * scale) / 2,
-    ));
-  }, [options, applyZoom, zoomTo]);
+  }, []);
 
   const resizeCanvas = useCallback((width: number, height: number) => {
     const canvas = fabricCanvasRef.current;
@@ -1024,14 +1146,14 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       options.height = height;
       addGridLines();
     }
-    canvas.renderAll();
+    canvas.requestRenderAll();
   }, [addGridLines]);
 
   const setCanvasBg = useCallback((color: string) => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
     canvas.backgroundColor = color;
-    canvas.renderAll();
+    canvas.requestRenderAll();
     saveHistory();
   }, [saveHistory]);
 
@@ -1043,57 +1165,10 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       canvas.backgroundImage = img;
       img.scaleX = canvas.width! / img.width!;
       img.scaleY = canvas.height! / img.height!;
-      canvas.renderAll();
+      canvas.requestRenderAll();
       saveHistory();
     });
   }, [saveHistory]);
-
-  const togglePan = useCallback(() => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
-    if (isPanMode) {
-      canvas.selection = true;
-      canvas.defaultCursor = 'default';
-      canvas.off('mouse:down', panMouseDown);
-      canvas.off('mouse:move', panMouseMove);
-      canvas.off('mouse:up', panMouseUp);
-      setIsPanMode(false);
-      setActiveToolState('select');
-    } else {
-      // Exit drawing mode if active
-      if (canvas.isDrawingMode) {
-        canvas.isDrawingMode = false;
-        setIsDrawingModeState(false);
-      }
-      setActiveTool('select');
-      canvas.selection = false;
-      canvas.defaultCursor = 'grab';
-      canvas.on('mouse:down', panMouseDown);
-      canvas.on('mouse:move', panMouseMove);
-      canvas.on('mouse:up', panMouseUp);
-      setIsPanMode(true);
-    }
-  }, [isPanMode, setActiveTool]);
-
-  const panMouseDown = useCallback((opt: fabric.TPointerEventInfo<fabric.TPointerEvent>) => {
-    const me = opt.e as MouseEvent;
-    panStart.current = { x: me.clientX, y: me.clientY };
-  }, []);
-  const panMouseMove = useCallback((opt: fabric.TPointerEventInfo<fabric.TPointerEvent>) => {
-    if (!panStart.current || !fabricCanvasRef.current) return;
-    const vpt = fabricCanvasRef.current.viewportTransform;
-    if (!vpt) return;
-    const me = opt.e as MouseEvent;
-    const dx = me.clientX - panStart.current.x;
-    const dy = me.clientY - panStart.current.y;
-    panStart.current = { x: me.clientX, y: me.clientY };
-    vpt[4] += dx;
-    vpt[5] += dy;
-    fabricCanvasRef.current.requestRenderAll();
-  }, []);
-  const panMouseUp = useCallback(() => {
-    panStart.current = null;
-  }, []);
 
   // Keyboard shortcuts
   const clipboardRef = useRef<string | null>(null);
@@ -1142,7 +1217,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
                   canvas.add(obj);
                   canvas.setActiveObject(obj);
                 });
-                canvas.renderAll();
+                canvas.requestRenderAll();
                 saveHistory();
               });
             } catch {}
@@ -1157,7 +1232,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
               canvas.discardActiveObject();
               const sel = new fabric.ActiveSelection(selectable, { canvas });
               canvas.setActiveObject(sel);
-              canvas.renderAll();
+              canvas.requestRenderAll();
             }
           }
           break;
@@ -1169,7 +1244,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
               clone.set({ left: (clone.left ?? 0) + 20, top: (clone.top ?? 0) + 20 });
               canvas!.add(clone);
               canvas!.setActiveObject(clone);
-              canvas!.renderAll();
+              canvas!.requestRenderAll();
               saveHistory();
             });
           }
@@ -1190,6 +1265,34 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
           e.preventDefault();
           nudgeSelected(e.shiftKey ? 10 : 1, 0);
           break;
+        case 'v':
+        case 'V':
+          if (!ctrl) { e.preventDefault(); setActiveTool('select'); }
+          break;
+        case 'r':
+        case 'R':
+          if (!ctrl) { e.preventDefault(); setActiveTool('rect'); }
+          break;
+        case 'c':
+        case 'C':
+          if (!ctrl) { e.preventDefault(); setActiveTool('circle'); }
+          break;
+        case 't':
+        case 'T':
+          if (!ctrl) { e.preventDefault(); addText(); }
+          break;
+        case 'l':
+        case 'L':
+          if (!ctrl) { e.preventDefault(); setActiveTool('line'); }
+          break;
+        case 'p':
+        case 'P':
+          if (!ctrl) { e.preventDefault(); setActiveTool('polygon'); }
+          break;
+        case 'g':
+        case 'G':
+          if (!ctrl) { e.preventDefault(); toggleGrid(); }
+          break;
       }
     };
 
@@ -1198,20 +1301,20 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
       window.removeEventListener('keydown', handleKeyDown);
       if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
     };
-  }, [deleteSelected, undo, redo, saveHistory]);
+  }, [deleteSelected, undo, redo, saveHistory, setActiveTool, addText, toggleGrid]);
 
   const nudgeSelected = useCallback((dx: number, dy: number) => {
     const canvas = fabricCanvasRef.current;
     const active = canvas?.getActiveObjects();
     if (!active || active.length === 0) return;
     active.forEach(obj => {
-      obj.set({ left: (obj.left ?? 0) + dx, top: (obj.top ?? 0) + dy } as any);
+      obj.set({ left: snapToPixel((obj.left ?? 0) + dx), top: snapToPixel((obj.top ?? 0) + dy) } as any);
       obj.setCoords();
     });
-    canvas?.renderAll();
+    canvas?.requestRenderAll();
     if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
     nudgeTimerRef.current = setTimeout(() => saveHistory(), 200);
-  }, [saveHistory]);
+  }, [saveHistory, snapToPixel]);
 
   // Layer panel support
   const getCanvasObjects = useCallback((): { obj: fabric.FabricObject; index: number }[] => {
@@ -1220,26 +1323,57 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
   }, []);
 
   const setLayerVisibility = useCallback((obj: fabric.FabricObject, visible: boolean) => {
-    if (!fabricCanvasRef.current) return;
-    obj.set({ visible, opacity: visible ? (savedOpacityMap.current.get(obj) ?? 1) : 0 });
-    if (!visible) savedOpacityMap.current.set(obj, obj.opacity ?? 1);
-    fabricCanvasRef.current.renderAll();
-  }, []);
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    if (visible) {
+      const saved = savedOpacityMap.current.get(obj) ?? 1;
+      obj.set({ visible: true, opacity: saved, evented: true, selectable: true } as any);
+    } else {
+      savedOpacityMap.current.set(obj, obj.opacity ?? 1);
+      obj.set({ visible: false, opacity: 0, evented: false, selectable: false } as any);
+    }
+    obj.setCoords();
+    canvas.requestRenderAll();
+    updateActiveProps();
+  }, [updateActiveProps]);
 
   const selectObject = useCallback((obj: fabric.FabricObject) => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
     canvas.discardActiveObject();
     canvas.setActiveObject(obj);
-    canvas.renderAll();
+    canvas.requestRenderAll();
     updateActiveProps();
   }, [updateActiveProps]);
 
   const setLayerLock = useCallback((obj: fabric.FabricObject, locked: boolean) => {
     if (!fabricCanvasRef.current) return;
     obj.set({ selectable: !locked, evented: !locked, lockMovementX: locked, lockMovementY: locked, lockRotation: locked, lockScalingX: locked, lockScalingY: locked } as any);
-    fabricCanvasRef.current.renderAll();
+    fabricCanvasRef.current.requestRenderAll();
   }, []);
+
+  const { applyGradient, removeGradient } = useGradient();
+  const { applyShadow, removeShadow } = useShadow();
+  const { applyMask, removeMask } = useMask();
+  const { isDrawing: isPenDrawing, startPath, addPoint, finishPath } = usePenTool();
+  const { createTable } = useTable();
+  const { animations, isPlaying, speed, setSpeed, setKeyframes, removeKeyframes, play, stop: stopAnimation } = useAnimation();
+  const setArrowStyle = useCallback((style: string) => {
+    const obj = fabricCanvasRef.current?.getActiveObject();
+    if (!obj || !(obj instanceof fabric.Group)) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.discardActiveObject();
+    canvas.remove(obj);
+    const b = obj.getBoundingRect();
+    const newArrow = createArrow(b.left, b.top, b.width, b.height, style, { arrowStyle: style });
+    if (newArrow) {
+      canvas.add(newArrow);
+      canvas.setActiveObject(newArrow);
+      canvas.requestRenderAll();
+      saveHistory();
+    }
+  }, [createArrow, saveHistory]);
 
   const reorderLayer = useCallback((obj: fabric.FabricObject, newIndex: number) => {
     const canvas = fabricCanvasRef.current;
@@ -1249,7 +1383,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     if (currentIndex === -1 || currentIndex === newIndex) return;
     const clampedIndex = Math.max(0, Math.min(newIndex, objects.length - 1));
     canvas.moveObjectTo(obj, clampedIndex);
-    canvas.renderAll();
+    canvas.requestRenderAll();
     saveHistory();
   }, [saveHistory]);
 
@@ -1269,7 +1403,7 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     toggleFreeDrawing, addText, addImage,
     toggleGrid, isGridVisible,
     togglePan, isPanMode,
-    zoomIn, zoomOut, zoomTo, zoomFit, zoomLevel,
+    zoomIn, zoomOut, zoomTo, zoomFit, zoomToSelection, zoomLevel,
     setFill, setStroke, setStrokeWidth, setOpacity,
     setPosition, setSize,
     setFontFamily, setFontSize, setFontWeight, setTextAlign, setTextContent,
@@ -1281,7 +1415,19 @@ export const useEditor = (canvasRef: React.RefObject<HTMLCanvasElement>, options
     exportToImage, exportToJson,
     activeProps, selectedObject,
     isDrawingMode, getCanvasObjects, selectObject,
+    setBrushColor, setBrushWidth,
     setLayerVisibility, setLayerLock, reorderLayer,
-    resizeCanvas, setCanvasBg, uploadCanvasBg,
+    resizeCanvas, setCanvasBg, uploadCanvasBg, toggleAspectLock, setArrowStyle,
+    getFabricCanvas: () => fabricCanvasRef.current,
+    hoveredObject,
+    toggleBold, toggleItalic, toggleUnderline, toggleBulletList, toggleNumberedList,
+    applyGradient, removeGradient,
+    applyShadow, removeShadow,
+    applyMask, removeMask,
+    isPenDrawing, startPath, addPoint, finishPath,
+    createTable,
+    animations, isPlaying, speed, setSpeed, setKeyframes, removeKeyframes, play, stopAnimation,
+    useAsPattern,
+    addImages, toggleGridSnap, gridSnap,
   };
 };

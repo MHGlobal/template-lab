@@ -1,14 +1,18 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 import {
   Layers, Move, Maximize, PaintBucket, Minus, Droplets,
-  AlignLeft, AlignCenter, AlignRight, Type, Image,
+  AlignLeft, AlignCenter, AlignRight, Type, Image, Lock, Unlock,
 } from 'lucide-react';
-import type { ActiveObjectProps } from '@/hooks/useEditor';
+import { useSelectionStore } from '@/stores/selectionStore';
+import RichTextToolbar from './RichTextToolbar';
+import GradientPanel from './GradientPanel';
+import ShadowPanel from './ShadowPanel';
+import type { GradientDef } from '@/hooks/useGradient';
+import type { ShadowConfig } from '@/hooks/useShadow';
 
 interface PropertyPanelProps {
-  activeProps: ActiveObjectProps | null;
   onSetFill: (color: string) => void;
   onSetStroke: (color: string) => void;
   onSetStrokeWidth: (width: number) => void;
@@ -26,19 +30,40 @@ interface PropertyPanelProps {
   onDelete: () => void;
   onGroup?: () => void;
   onUngroup?: () => void;
+  onToggleAspectLock?: () => void;
   canvasBg?: string;
   onSetCanvasBg?: (color: string) => void;
   onUploadBgImage?: () => void;
+  onArrowStyleChange?: (style: string) => void;
+  onToggleBold?: () => void;
+  onToggleItalic?: () => void;
+  onToggleUnderline?: () => void;
+  onToggleBulletList?: () => void;
+  onToggleNumberedList?: () => void;
+  onApplyGradient?: (def: GradientDef) => void;
+  onRemoveGradient?: () => void;
+  onApplyShadow?: (config: ShadowConfig) => void;
+  onRemoveShadow?: () => void;
+  onApplyMask?: (shape: 'rect' | 'circle' | 'polygon') => void;
+  onRemoveMask?: () => void;
+  onUseAsPattern?: () => void;
 }
 
 export default function PropertyPanel({
-  activeProps, onSetFill, onSetStroke, onSetStrokeWidth,
+  onSetFill, onSetStroke, onSetStrokeWidth,
   onSetOpacity, onSetPosition, onSetSize,
   onSetFontFamily, onSetFontSize, onSetFontWeight, onSetTextAlign, onSetTextContent,
   onApplyImageFilter, onBringToFront, onSendToBack, onDelete,
-  onGroup, onUngroup,
+  onGroup, onUngroup, onToggleAspectLock,
   canvasBg = '#ffffff', onSetCanvasBg, onUploadBgImage,
+  onArrowStyleChange,
+  onToggleBold, onToggleItalic, onToggleUnderline, onToggleBulletList, onToggleNumberedList,
+  onApplyGradient, onRemoveGradient,
+  onApplyShadow, onRemoveShadow,
+  onApplyMask, onRemoveMask,
+  onUseAsPattern,
 }: PropertyPanelProps) {
+  const activeProps = useSelectionStore().activeProps;
   if (!activeProps) {
     return (
       <aside className="w-72 bg-white border-l border-gray-200 shadow-sm h-full flex flex-col overflow-y-auto">
@@ -102,8 +127,8 @@ export default function PropertyPanel({
         <button onClick={onBringToFront} title="Para a frente" className="flex-1 p-1.5 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
           Frente
         </button>
-        <button onClick={onSendToBack} title="Para trás" className="flex-1 p-1.5 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
-          Trás
+        <button onClick={onSendToBack} title="Para trÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡s" className="flex-1 p-1.5 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
+          TrÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡s
         </button>
         <button onClick={onDelete} title="Eliminar" className="flex-1 p-1.5 border border-red-200 rounded-lg text-xs text-red-500 hover:bg-red-50 transition-colors">
           Eliminar
@@ -119,13 +144,13 @@ export default function PropertyPanel({
       {onGroup && !activeProps.type?.includes('group') && (
         <div className="px-4 pb-3">
           <button onClick={onGroup} className="w-full p-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
-            Agrupar seleção
+            Agrupar seleÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o
           </button>
         </div>
       )}
 
       {/* Position */}
-      <Section title="Posição" icon={Move}>
+      <Section title="PosiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o" icon={Move}>
         <div className="grid grid-cols-2 gap-2">
           <NumberField label="X" value={activeProps.left} onChange={v => onSetPosition(v, activeProps.top)} />
           <NumberField label="Y" value={activeProps.top} onChange={v => onSetPosition(activeProps.left, v)} />
@@ -174,7 +199,15 @@ export default function PropertyPanel({
       {isText && (
         <div className="border-t border-gray-100 pt-3 mt-1">
           <Section title="Texto" icon={Type}>
-            <textarea
+            {onToggleBold && onToggleItalic && (
+              <RichTextToolbar
+                onBold={onToggleBold}
+                onItalic={onToggleItalic}
+                onUnderline={onToggleUnderline || (() => {})}
+                onBulletList={onToggleBulletList || (() => {})}
+                onNumberedList={onToggleNumberedList || (() => {})}
+              />
+            )}            <textarea
               value={activeProps.text || ''}
               onChange={e => onSetTextContent(e.target.value)}
               className="w-full p-2.5 border border-gray-200 rounded-xl text-sm focus:border-[#27A300] focus:outline-none mb-3 resize-none"
@@ -245,7 +278,7 @@ export default function PropertyPanel({
               {[
                 { id: 'brightness', label: 'Brilho' },
                 { id: 'contrast', label: 'Contraste' },
-                { id: 'sepia', label: 'Sépia' },
+                { id: 'sepia', label: 'S\u00E9pia' },
                 { id: 'grayscale', label: 'Cinza' },
                 { id: 'blur', label: 'Desfoque' },
               ].map(f => (
@@ -259,6 +292,13 @@ export default function PropertyPanel({
               ))}
             </div>
           </Section>
+          {onUseAsPattern && (
+            <div className="px-4 pt-2">
+              <button onClick={onUseAsPattern} className="w-full py-2 px-3 bg-purple-50 border border-purple-200 rounded-lg text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-all">
+                Usar como Pattern Fill
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -313,3 +353,44 @@ function ColorField({ value, onChange }: { value: string; onChange: (v: string) 
     </div>
   );
 }
+
+
+
+
+const ARROW_STYLES = [
+  { id: 'simple', label: 'Flecha' },
+  { id: 'dashed', label: 'Trac.' },
+  { id: 'chevron', label: 'Chevron' },
+  { id: 'double', label: 'Dupla' },
+];
+
+function ArrowStyleSelector({ value, onChange }: { value: string; onChange: (style: string) => void }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div style={{ position: 'relative' }}>
+      <label style={{ fontSize: 11, color: '#6B7280', marginBottom: 4, display: 'block' }}>Estilo da Flecha</label>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full px-2 py-1.5 text-xs text-left bg-white border border-gray-200 rounded-lg cursor-pointer flex items-center gap-1.5"
+      >
+        {ARROW_STYLES.find(s => s.id === value)?.label || value}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg mt-1 shadow-lg">
+          {ARROW_STYLES.map(style => (
+            <button
+              key={style.id}
+              onClick={() => { onChange(style.id); setOpen(false); }}
+              className={"w-full px-2 py-1.5 text-xs text-left border-none cursor-pointer " + (value === style.id ? 'bg-blue-50' : '')}
+            >
+              {style.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
