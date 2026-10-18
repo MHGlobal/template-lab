@@ -112,6 +112,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   void start(bool virtualDisplay);
   void startFor(const std::wstring& serial,bool virtualDisplay,bool save,const std::wstring& overrideTarget=L"",int overrideResolution=-1,int overrideClipboard=-1);
   void command(const std::wstring& args);
+  winrt::fire_and_forget commandAsync(std::wstring args);
   void saveSettings();
   void refreshInstalledApps();
   winrt::fire_and_forget refreshInstalledAppsAsync(std::wstring serial,std::wstring previousPackage,uint64_t generation);
