@@ -102,7 +102,10 @@ std::wstring MainWindow::newMediaPath(const wchar_t* extension) const{
  swprintf_s(stamp,L"%04d%02d%02d-%02d%02d%02d-%03d-%lu",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond,t.wMilliseconds,GetCurrentProcessId());
  return recordingsPath()+L"\\RS-"+stamp+extension;
 }
-void MainWindow::status(const wchar_t* message){StatusText().Text(message);}
+void MainWindow::status(const wchar_t* message){
+ StatusText().Text(message);
+ Microsoft::UI::Xaml::Controls::ToolTipService::SetToolTip(StatusText(),box_value(hstring(message)));
+}
 std::wstring MainWindow::option(Controls::ComboBox const& combo) const{
  auto item=combo.SelectedItem();
  return item?std::wstring(unbox_value<hstring>(item).c_str()):L"";
@@ -140,7 +143,7 @@ void MainWindow::navigate(int page){
 }
 void MainWindow::updateResponsive(double width){
  HomeActionsPanel().Orientation(width<780?Controls::Orientation::Vertical:Controls::Orientation::Horizontal);
- AdvancedDrawer().Width((std::min)(500.0,(std::max)(310.0,width-16)));
+ // Overlay widths are updated at every window resize, not only at breakpoints.
  using Microsoft::UI::Xaml::Visibility;
  HeroVisual().Visibility(width<960?Visibility::Collapsed:Visibility::Visible);
  CurrentLocationText().Visibility(width<1020?Visibility::Collapsed:Visibility::Visible);
@@ -171,7 +174,10 @@ void MainWindow::updateResponsive(double width){
  Microsoft::UI::Xaml::Controls::Grid::SetColumn(SessionsStatCard(),narrow?0:1);
 }
 void MainWindow::Root_SizeChanged(IInspectable const&,SizeChangedEventArgs const& args){
- const bool narrow=args.NewSize().Width<800;
+ const double width=args.NewSize().Width;
+ AdvancedDrawer().Width((std::min)(500.0,(std::max)(180.0,width-16.0)));
+ WelcomeCard().Width((std::min)(630.0,(std::max)(180.0,width-44.0)));
+ const bool narrow=width<800;
  if(narrow==lastNarrow_ && (args.NewSize().Width<960)==lastHeroHidden_ && (args.NewSize().Width<1020)==lastBreadcrumbHidden_ && (args.NewSize().Width<760)==lastChipHidden_)return;
  lastNarrow_=narrow;
  lastHeroHidden_=args.NewSize().Width<960;
@@ -389,6 +395,12 @@ void MainWindow::updateSummary(){
  for(auto& s:sessions_)if(s.process.hProcess&&WaitForSingleObject(s.process.hProcess,0)==WAIT_TIMEOUT)++active;
  SessionCountText().Text(hstring(std::to_wstring(active)+L" sessão(ões) ativa(s)"));
  OnlineBadge().Text(authorized?L"Android conectado":L"A aguardar Android");
+ ConnectivityChip().Background(Microsoft::UI::Xaml::Media::SolidColorBrush(
+  authorized?winrt::Windows::UI::Color{255,19,47,38}:winrt::Windows::UI::Color{255,53,42,28}));
+ ConnectivityChip().BorderBrush(Microsoft::UI::Xaml::Media::SolidColorBrush(
+  authorized?winrt::Windows::UI::Color{255,45,111,79}:winrt::Windows::UI::Color{255,118,88,53}));
+ ConnectivityIcon().Foreground(Microsoft::UI::Xaml::Media::SolidColorBrush(
+  authorized?winrt::Windows::UI::Color{255,131,217,164}:winrt::Windows::UI::Color{255,236,194,125}));
  OnlineBadge().Foreground(Microsoft::UI::Xaml::Media::SolidColorBrush(
   authorized?winrt::Windows::UI::Color{255,142,229,177}:winrt::Windows::UI::Color{255,232,192,119}));
  std::wstring diagnostics=L"ADB: "+std::wstring(GetFileAttributesW(tools(L"adb.exe").c_str())!=INVALID_FILE_ATTRIBUTES?L"disponível":L"não encontrado");
@@ -399,7 +411,10 @@ void MainWindow::updateSummary(){
  for(size_t i=0;i<serials_.size();++i)diagnostics+=L"\n"+serials_[i]+L" — "+deviceStates_[i];
  DiagnosticsText().Text(hstring(diagnostics));
  HistoryText().Text(hstring(history_.empty()?std::wstring(L"Ainda não há sessões registadas."):history_));
+ DevicesEmptyState().Visibility(serials_.empty()?Visibility::Visible:Visibility::Collapsed);
+ DeviceGrid().Visibility(serials_.empty()?Visibility::Collapsed:Visibility::Visible);
  refreshSessionLists();
+ updateActionAvailability();
 }
 void MainWindow::refresh(){
  const auto previous=DevicesCombo().SelectedIndex();
@@ -465,6 +480,19 @@ void MainWindow::saveSessions(){
  }
  writeIni(path,L"resume",L"count",std::to_wstring(count));
 }
+void MainWindow::ListSelection_Changed(IInspectable const&,Controls::SelectionChangedEventArgs const&){
+ updateActionAvailability();
+}
+void MainWindow::updateActionAvailability(){
+ const bool hasSessions=!sessions_.empty();
+ const bool hasMedia=!recordings_.empty();
+ MirrorSessionsEmpty().Visibility(hasSessions?Visibility::Collapsed:Visibility::Visible);
+ VirtualSessionsEmpty().Visibility(hasSessions?Visibility::Collapsed:Visibility::Visible);
+ RecordingsEmpty().Visibility(hasMedia?Visibility::Collapsed:Visibility::Visible);
+ StopMirrorSelectedButton().IsEnabled(hasSessions&&MirrorSessionsList().SelectedIndex()>=0);
+ StopVirtualSelectedButton().IsEnabled(hasSessions&&VirtualSessionsList().SelectedIndex()>=0);
+ OpenRecordingButton().IsEnabled(hasMedia&&RecordingsList().SelectedIndex()>=0);
+}
 void MainWindow::refreshSessionLists(){
  auto mirror=MirrorSessionsList();
  auto virtuals=VirtualSessionsList();
@@ -479,6 +507,7 @@ void MainWindow::refreshSessionLists(){
  }
  if(mi>=0&&static_cast<size_t>(mi)<sessions_.size())mirror.SelectedIndex(mi);
  if(vi>=0&&static_cast<size_t>(vi)<sessions_.size())virtuals.SelectedIndex(vi);
+ updateActionAvailability();
 }
 void MainWindow::reapExitedSessions(){
  bool changed=false;
@@ -625,7 +654,7 @@ void MainWindow::refreshRecordings(){
  const auto search=recordingsPath()+L"\\*";
  WIN32_FIND_DATAW item{};
  HANDLE h=FindFirstFileW(search.c_str(),&item);
- if(h==INVALID_HANDLE_VALUE)return;
+ if(h==INVALID_HANDLE_VALUE){updateActionAvailability();return;}
  do{
   if((item.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)!=0)continue;
   std::wstring name(item.cFileName);
@@ -639,6 +668,7 @@ void MainWindow::refreshRecordings(){
  FindClose(h);
  std::sort(recordings_.rbegin(),recordings_.rend());
  for(const auto& name:recordings_)list.Items().Append(box_value(hstring(name)));
+ updateActionAvailability();
 }
 void MainWindow::RefreshRecordings_Click(IInspectable const&,RoutedEventArgs const&){
  refreshRecordings();
