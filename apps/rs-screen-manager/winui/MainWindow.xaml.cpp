@@ -309,32 +309,57 @@ std::wstring MainWindow::captureAdbOutput(const std::wstring& args,DWORD timeout
  return result;
 }
 void MainWindow::refreshInstalledApps(){
- auto serial=selected();
- auto previous=InstalledAppsCombo().SelectedIndex();
+ int previous=InstalledAppsCombo().SelectedIndex();
  auto previousPackage=(previous>=0&&static_cast<size_t>(previous)<appPackages_.size())?appPackages_[previous]:std::wstring();
- appPackages_.clear();InstalledAppsCombo().Items().Clear();
- if(serial.empty()){InstalledAppsHint().Text(L"Seleciona um Android autorizado na página Dispositivos.");return;}
+ const auto serial=selected();
+ ++appScanGeneration_;
+ if(serial.empty()){
+  appPackages_.clear();
+  InstalledAppsCombo().Items().Clear();
+  InstalledAppsCombo().IsEnabled(false);
+  InstalledAppsHint().Text(L"Seleciona um Android autorizado na página Dispositivos.");
+  return;
+ }
+ InstalledAppsHint().Text(L"A identificar aplicações instaladas no Android...");
+ InstalledAppsCombo().IsEnabled(false);
+ refreshInstalledAppsAsync(serial,previousPackage,appScanGeneration_);
+}
+winrt::fire_and_forget MainWindow::refreshInstalledAppsAsync(std::wstring serial,std::wstring previousPackage,uint64_t generation){
+ auto strong=get_strong();
+ auto dispatcher=DispatcherQueue();
+ co_await winrt::resume_background();
  auto output=captureAdbOutput(L"-s "+quote(serial)+L" shell pm list packages -3",8000);
  std::wistringstream stream(output);
  std::wstring line;
+ std::vector<std::wstring> packages;
  while(std::getline(stream,line)){
   if(!line.empty()&&line.back()==L'\r')line.pop_back();
   constexpr wchar_t prefix[]=L"package:";
   if(line.rfind(prefix,0)!=0)continue;
   auto pkg=line.substr(8);
-  if(pkg.empty()||pkg.size()>200)continue;
-  if(!std::all_of(pkg.begin(),pkg.end(),[](wchar_t c){return std::iswalnum(c)||c==L'.'||c==L'_';}))continue;
-  appPackages_.push_back(pkg);
+  if(!rs::display::validPackage(pkg))continue;
+  packages.push_back(pkg);
  }
- std::sort(appPackages_.begin(),appPackages_.end());
- appPackages_.erase(std::unique(appPackages_.begin(),appPackages_.end()),appPackages_.end());
- int preferred=-1;
- for(size_t i=0;i<appPackages_.size();++i){
-  InstalledAppsCombo().Items().Append(box_value(hstring(appPackages_[i])));
-  if(appPackages_[i]==previousPackage)preferred=static_cast<int>(i);
- }
- if(preferred>=0)InstalledAppsCombo().SelectedIndex(preferred);
- InstalledAppsHint().Text(appPackages_.empty()?L"Não foi possível listar apps instaladas. Verifica a ligação e a autorização ADB.":L"Escolhe o pacote da aplicação; a lista contém apps de terceiros instaladas.");
+ std::sort(packages.begin(),packages.end());
+ packages.erase(std::unique(packages.begin(),packages.end()),packages.end());
+ dispatcher.TryEnqueue([strong,serial=std::move(serial),previousPackage=std::move(previousPackage),
+                       generation,packages=std::move(packages)]() mutable{
+  auto* that=strong.get();
+  if(generation!=that->appScanGeneration_ || that->selected()!=serial)return;
+  that->appPackages_=std::move(packages);
+  auto combo=that->InstalledAppsCombo();
+  combo.Items().Clear();
+  int preferred=-1;
+  for(size_t i=0;i<that->appPackages_.size();++i){
+   combo.Items().Append(box_value(hstring(that->appPackages_[i])));
+   if(that->appPackages_[i]==previousPackage)preferred=static_cast<int>(i);
+  }
+  if(preferred>=0)combo.SelectedIndex(preferred);
+  combo.IsEnabled(!that->appPackages_.empty());
+  that->InstalledAppsHint().Text(that->appPackages_.empty()?
+   L"Não foi possível listar apps instaladas. Confirma a autorização Android e tenta novamente.":
+   L"Aplicações instaladas encontradas. A compatibilidade de abertura depende da aplicação; os nomes técnicos serão substituídos por nomes e ícones após validação dos metadados.");
+ });
 }
 void MainWindow::RefreshApps_Click(IInspectable const&,RoutedEventArgs const&){
  refreshInstalledApps();
