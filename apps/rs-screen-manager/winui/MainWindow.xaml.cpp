@@ -415,6 +415,8 @@ void MainWindow::updateSummary(){
  size_t authorized=0;
  for(auto& d:deviceStates_)if(d==L"device")++authorized;
  DeviceCountText().Text(hstring(std::to_wstring(authorized)+L" autorizado(s)"));
+ auto usb=selected();
+ HotspotUsbButton().IsEnabled(!hotspotBusy_ && !usb.empty() && usb.find(L':')==std::wstring::npos);
  DeviceSummaryText().Text(authorized?L"Dispositivo(s) autorizado(s), pronto(s) para abrir sessões.":L"Liga por USB e autoriza a depuração, ou emparelha por Wi-Fi.");
  size_t active=0;
  for(auto& s:sessions_)if(s.process.hProcess&&WaitForSingleObject(s.process.hProcess,0)==WAIT_TIMEOUT)++active;
@@ -766,7 +768,8 @@ void MainWindow::hotspotBusy(bool busy){
  HotspotProgress().Visibility(busy?Visibility::Visible:Visibility::Collapsed);
  HotspotProgress().IsActive(busy);
  HotspotScanButton().IsEnabled(!busy);
- HotspotUsbButton().IsEnabled(!busy);
+ auto usb=selected();
+ HotspotUsbButton().IsEnabled(!busy && !usb.empty() && usb.find(L':')==std::wstring::npos);
  HotspotConnectButton().IsEnabled(!busy);
 }
 void MainWindow::OpenWindowsWifi_Click(IInspectable const&,RoutedEventArgs const&){
