@@ -49,6 +49,12 @@ jobs:
           foreach ($icon in 'rs-screen-manager.ico','rs-screen-manager.png') {
             if (!(Test-Path "apps/rs-screen-manager/winui/assets/$icon")) { throw "Generated icon missing: $icon" }
           }
+      - name: Verify WinUI UI polish invariants
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python apps/rs-screen-manager/winui/tools/check_ui_polish.py
+          if ($LASTEXITCODE -ne 0) { throw 'WinUI UI polish regression gate failed' }
       - name: Compile Windows App SDK / C++ WinRT
         shell: pwsh
         run: |
