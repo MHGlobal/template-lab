@@ -1,6 +1,7 @@
 #pragma once
 #include "MainWindow.g.h"
 #include <vector>
+#include <set>
 #include <string>
 #include <utility>
 #include <windows.h>
@@ -57,6 +58,10 @@ namespace winrt::RSScreenManagerUI::implementation {
   void ClipboardAndroid_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void ClipboardMode_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
   void SaveAdvanced_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void AppSearch_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::TextChangedEventArgs const&);
+  void FavoriteFilter_Toggled(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void FavoriteApp_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void AppSelection_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
   void RefreshApps_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void LaunchMode_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
   void Resolution_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
@@ -68,6 +73,8 @@ namespace winrt::RSScreenManagerUI::implementation {
  private:
   std::vector<std::wstring> serials_;
   std::vector<std::wstring> appPackages_;
+  std::vector<std::wstring> allAppPackages_;
+  std::set<std::wstring> favoritePackages_;
   std::vector<std::wstring> hotspotGateways_;
   std::vector<std::wstring> savedWifiProfiles_;
   std::vector<std::wstring> savedWifiSSIDs_;
@@ -115,6 +122,8 @@ namespace winrt::RSScreenManagerUI::implementation {
   winrt::fire_and_forget commandAsync(std::wstring args);
   void saveSettings();
   void refreshInstalledApps();
+  void filterInstalledApps();
+  void updateAppFavoriteButton();
   winrt::fire_and_forget refreshInstalledAppsAsync(std::wstring serial,std::wstring previousPackage,uint64_t generation);
   std::wstring captureAdbOutput(const std::wstring& args,DWORD timeoutMs=8000);
   void updateLaunchInputs();
