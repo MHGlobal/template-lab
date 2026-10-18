@@ -1,6 +1,13 @@
-# RS Screen Manager — connect+ 0.3.1-alpha (WinUI 3 preview)
+# RS Screen Manager — connect+ 0.4.1-alpha (WinUI 3 preview)
 
 **Status: development preview, not v1.0.** Windows x64 app in native C++20/WinUI 3. The original Win32 manager is still included and has not been removed. The application stays agentless for core features; any future Android Companion must remain optional and require user permission.
+
+## v0.4.1-alpha verified source changes (device QA pending)
+- Offline application search and favorites, persisted in local settings; no fabricated app labels or icons.
+- Library searches/folders filtered by MP4/PNG and deletion confirmation; active MP4 recording cannot be deleted.
+- Android physical screenshot now performed asynchronously with timeout and file signature validation.
+- New unit-tested viewport coordinate mapping supports 0/90/180/270-degree rotation and excludes letterbox margins. The embedded renderer and genuine Android touch injection remain future dependencies.
+- Full implementation audit and remaining work are tracked in `STATUS_IMPLEMENTACAO.md`.
 
 ## Approved design implemented in the preview
 - Identity: **RS Screen Manager · connect+**, a proposed abstract geometric mark, main blue `#007BFF`, near-black `#090B10`; Gaming accent `#FF6B35`.
