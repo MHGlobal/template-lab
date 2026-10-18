@@ -773,7 +773,7 @@ void MainWindow::HotspotInterface_Changed(IInspectable const&,Controls::Selectio
  if(i<0||static_cast<size_t>(i)>=hotspotGateways_.size())return;
  auto gateway=hotspotGateways_[i];
  if(rs::hotspot::validIPv4(gateway)){
-  HotspotNetworkInfo().Text(L"Gateway Wi-Fi candidato: "+hstring(gateway)+L". Este IP pode pertencer ao hotspot, mas ainda não há prova de ADB autorizado.");
+  HotspotNetworkInfo().Text(hstring(L"Gateway Wi-Fi candidato: "+gateway+L". Este IP pode pertencer ao hotspot, mas ainda não há prova de ADB autorizado."));
   HotspotEndpointBox().Text(hstring(gateway+L":5555"));
  }else{
   HotspotNetworkInfo().Text(L"A interface selecionada não tem gateway IPv4 válido. Conecta o PC ao hotspot e atualiza a lista.");
