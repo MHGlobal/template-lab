@@ -15,6 +15,11 @@ int main(){
  assert(!validIPv4(L"192.168.43.1:5555"));
  assert(!validIPv4(L"192.168.43.01x"));
  assert(!validIPv4(L"1..2.3"));
+ auto saved=savedNearbyNetworks(); // WLAN may be unavailable in GitHub runner
+ for(const auto& entry:saved){
+  assert(!entry.ssid.empty());
+  assert(!entry.profile.empty());
+ }
  auto adapters=discover();  // may be empty on CI runner; must never crash
  for(const auto& net:adapters){
   assert(!net.name.empty());
