@@ -4,12 +4,16 @@ on:
     branches: [feature/rs-screen-manager, editor]
     paths:
       - 'apps/rs-screen-manager/winui/**'
+      - 'apps/rs-screen-manager/core/**'
+      - 'apps/rs-screen-manager/tests/**'
       - 'apps/rs-screen-manager/packaging/RS-Screen-Manager-WinUI.iss'
       - '.github/workflows/rs-screen-manager-winui.yml'
   pull_request:
     branches: [editor]
     paths:
       - 'apps/rs-screen-manager/winui/**'
+      - 'apps/rs-screen-manager/core/**'
+      - 'apps/rs-screen-manager/tests/**'
       - 'apps/rs-screen-manager/packaging/RS-Screen-Manager-WinUI.iss'
       - '.github/workflows/rs-screen-manager-winui.yml'
   workflow_dispatch:
@@ -94,6 +98,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Display policy test compilation failed' }
           & dist/virtual-display-policy-test.exe
           if ($LASTEXITCODE -ne 0) { throw 'Auto orientation/clipboard policy tests failed' }
+          cl.exe /nologo /utf-8 /std:c++20 /EHsc /W4 /O2 /Fe:dist/windows-hotspot-test.exe apps/rs-screen-manager/tests/windows_hotspot_test.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'Windows hotspot test build failed' }
+          & dist/windows-hotspot-test.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Windows hotspot networking tests failed' }
       - name: Bundle scrcpy 5.0.1 and ADB with pinned integrity hash
         shell: pwsh
         run: |
