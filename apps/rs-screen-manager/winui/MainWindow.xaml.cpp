@@ -398,7 +398,7 @@ void MainWindow::updateAppFavoriteButton(){
  bool hasApp=selectedIndex>=0 && static_cast<size_t>(selectedIndex)<appPackages_.size();
  FavoriteAppButton().IsEnabled(hasApp);
  if(hasApp){
-  bool isFavorite=favoritePackages_.contains(appPackages_[selectedIndex]);
+  bool isFavorite=favoritePackages_.find(appPackages_[selectedIndex])!=favoritePackages_.end();
   FavoriteAppButton().Content(box_value(hstring(isFavorite?L"Remover dos favoritos":L"Adicionar aos favoritos")));
  }else FavoriteAppButton().Content(box_value(hstring(L"Seleciona uma aplicação")));
 }
@@ -406,7 +406,7 @@ void MainWindow::FavoriteApp_Click(IInspectable const&,RoutedEventArgs const&){
  int i=InstalledAppsCombo().SelectedIndex();
  if(i<0||static_cast<size_t>(i)>=appPackages_.size())return;
  auto id=appPackages_[i];
- if(favoritePackages_.contains(id))favoritePackages_.erase(id);
+ if(favoritePackages_.find(id)!=favoritePackages_.end())favoritePackages_.erase(id);
  else favoritePackages_.insert(id);
  writeIni(settingsPath(),L"apps",L"favorites",rs::catalog::encodeFavorites(favoritePackages_));
  filterInstalledApps();
@@ -422,7 +422,7 @@ void MainWindow::filterInstalledApps(){
  int preferred=-1;
  for(size_t i=0;i<appPackages_.size();++i){
   const auto& pkg=appPackages_[i];
-  auto label=(favoritePackages_.contains(pkg)?L"★  ":L"")+pkg;
+  auto label=(favoritePackages_.find(pkg)!=favoritePackages_.end()?L"★  ":L"")+pkg;
   combo.Items().Append(box_value(hstring(label)));
   if(pkg==previous)preferred=static_cast<int>(i);
  }
