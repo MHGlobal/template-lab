@@ -442,7 +442,12 @@
                         <StackPanel Spacing="10">
                             <TextBlock Text="ESTADO DA FUNCIONALIDADE" Foreground="#FF6B35" FontWeight="SemiBold" FontSize="12"/>
                             <TextBlock Text="O motor de mapeamento dispõe de testes, mas ainda não controla toques reais no Android. O editor completo será disponibilizado após a integração e validação." TextWrapping="Wrap" Foreground="#D0DBEA"/>
-                            <Button Content="Abrir gestor nativo avançado" Click="Advanced_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Click="GamingAdvanced_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left">
+                                    <StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE713;" FontFamily="Segoe Fluent Icons"/><TextBlock Text="Opções avançadas Gaming"/></StackPanel>
+                                </Button>
+                                <Button Content="Espelhar com perfil Gaming" Click="GamingMirror_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -589,11 +594,22 @@
                     <StackPanel Spacing="18">
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Spacing="6">
-                                <TextBlock Text="Opções avançadas" FontSize="26" Foreground="White" FontWeight="SemiBold"/>
-                                <TextBlock Text="Controlo detalhado, sem complicar o ecrã principal." Foreground="#AFC1D8" FontSize="12" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="AdvancedPanelTitle" Text="Opções avançadas" FontSize="26" Foreground="White" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="AdvancedPanelSubtitle" Text="Controlo detalhado, sem complicar o ecrã principal." Foreground="#AFC1D8" FontSize="12" TextWrapping="Wrap"/>
                             </StackPanel>
                             <Button Grid.Column="1" Click="CloseAdvanced_Click" Style="{StaticResource QuietButton}" AutomationProperties.Name="Fechar opções avançadas" ToolTipService.ToolTip="Fechar painel avançado"><FontIcon Glyph="&#xE8BB;" FontFamily="Segoe Fluent Icons"/></Button>
                         </Grid>
+                        <StackPanel x:Name="GamingAdvancedSection" Visibility="Collapsed" Spacing="12">
+                            <Border Background="#241F1D" BorderBrush="#584134" BorderThickness="1" CornerRadius="10" Padding="14">
+                                <StackPanel Spacing="10">
+                                    <StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE7FC;" FontFamily="Segoe Fluent Icons" Foreground="#FF6B35" FontSize="18"/><TextBlock Text="PERFIL GAMING" Foreground="#FF936E" FontSize="12" FontWeight="SemiBold"/></StackPanel>
+                                    <TextBlock Text="Aplica uma predefinição de vídeo para reduzir ajustes repetidos. A taxa real depende do Android e da ligação." Foreground="#D7E3F0" FontSize="12" TextWrapping="Wrap"/>
+                                    <Button Content="Aplicar perfil 120 FPS / 24 Mbps (alvo)" Click="GamingPreset_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Stretch"/>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Text="O editor de multitoque e os comandos WASD/mira ainda precisam de integração ao protocolo Android. O gestor legado permanece opcional, mas não é a interface principal." Foreground="#C2D1E4" FontSize="12" TextWrapping="Wrap"/>
+                            <Button Content="Abrir ferramentas legadas (compatibilidade)" Click="Advanced_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Stretch"/>
+                        </StackPanel>
                         <Border BorderBrush="#334B65" BorderThickness="0,0,0,1" Padding="0,0,0,14">
                             <TextBlock Text="VÍDEO E FLUIDEZ" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
                         </Border>
