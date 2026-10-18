@@ -229,11 +229,99 @@ void MainWindow::WelcomeNext_Click(IInspectable const&,RoutedEventArgs const&){
   status(L"Configuração inicial concluída. Bem-vindo!");
  }
 }
+void MainWindow::AdvancedSettings_Click(IInspectable const&,RoutedEventArgs const&){
+ AdvancedLayer().Visibility(Visibility::Visible);
+}
+void MainWindow::CloseAdvanced_Click(IInspectable const&,RoutedEventArgs const&){
+ AdvancedLayer().Visibility(Visibility::Collapsed);
+}
+void MainWindow::SaveAdvanced_Click(IInspectable const&,RoutedEventArgs const&){
+ saveSettings();
+ AdvancedLayer().Visibility(Visibility::Collapsed);
+ status(L"Definições avançadas guardadas. As sessões abertas continuam com as opções originais.");
+}
+void MainWindow::LaunchMode_Changed(IInspectable const&,Controls::SelectionChangedEventArgs const&){
+ if(!loaded_)return;
+ updateLaunchInputs();
+ if(LaunchModeCombo().SelectedIndex()==1 && appPackages_.empty())refreshInstalledApps();
+}
+void MainWindow::Resolution_Changed(IInspectable const&,Controls::SelectionChangedEventArgs const&){
+ if(!loaded_)return;
+ OrientationWarning().Visibility(ResolutionCombo().SelectedIndex()==3?Visibility::Visible:Visibility::Collapsed);
+}
+void MainWindow::updateLaunchInputs(){
+ const int mode=LaunchModeCombo().SelectedIndex();
+ InstalledAppsPanel().Visibility(mode==1?Visibility::Visible:Visibility::Collapsed);
+ CustomLauncherHint().Visibility(mode==2?Visibility::Visible:Visibility::Collapsed);
+}
+std::wstring MainWindow::captureAdbOutput(const std::wstring& args,DWORD timeoutMs){
+ SECURITY_ATTRIBUTES sa{sizeof(sa),nullptr,TRUE};
+ HANDLE reader=nullptr,writer=nullptr;
+ if(!CreatePipe(&reader,&writer,&sa,0))return {};
+ SetHandleInformation(reader,HANDLE_FLAG_INHERIT,0);
+ PROCESS_INFORMATION pi{};
+ const bool started=process(tools(L"adb.exe"),args,pi,true,writer);
+ CloseHandle(writer);
+ if(!started){CloseHandle(reader);return {};}
+ if(WaitForSingleObject(pi.hProcess,timeoutMs)==WAIT_TIMEOUT){
+  TerminateProcess(pi.hProcess,1);
+  WaitForSingleObject(pi.hProcess,1500);
+ }
+ std::string out;out.reserve(8192);
+ char buf[2048];DWORD n=0;
+ while(ReadFile(reader,buf,sizeof(buf),&n,nullptr)&&n){
+  if(out.size()+n>262144)break;
+  out.append(buf,n);
+ }
+ CloseHandle(reader);
+ CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
+ return std::wstring(out.begin(),out.end());
+}
+void MainWindow::refreshInstalledApps(){
+ auto serial=selected();
+ auto previous=InstalledAppsCombo().SelectedIndex();
+ auto previousPackage=(previous>=0&&static_cast<size_t>(previous)<appPackages_.size())?appPackages_[previous]:std::wstring();
+ appPackages_.clear();InstalledAppsCombo().Items().Clear();
+ if(serial.empty()){InstalledAppsHint().Text(L"Seleciona um Android autorizado na página Dispositivos.");return;}
+ auto output=captureAdbOutput(L"-s "+quote(serial)+L" shell pm list packages -3",8000);
+ std::wistringstream stream(output);
+ std::wstring line;
+ while(std::getline(stream,line)){
+  if(!line.empty()&&line.back()==L'\r')line.pop_back();
+  constexpr wchar_t prefix[]=L"package:";
+  if(line.rfind(prefix,0)!=0)continue;
+  auto pkg=line.substr(8);
+  if(pkg.empty()||pkg.size()>200)continue;
+  if(!std::all_of(pkg.begin(),pkg.end(),[](wchar_t c){return std::iswalnum(c)||c==L'.'||c==L'_';}))continue;
+  appPackages_.push_back(pkg);
+ }
+ std::sort(appPackages_.begin(),appPackages_.end());
+ appPackages_.erase(std::unique(appPackages_.begin(),appPackages_.end()),appPackages_.end());
+ int preferred=-1;
+ for(size_t i=0;i<appPackages_.size();++i){
+  InstalledAppsCombo().Items().Append(box_value(hstring(appPackages_[i])));
+  if(appPackages_[i]==previousPackage)preferred=static_cast<int>(i);
+ }
+ if(preferred>=0)InstalledAppsCombo().SelectedIndex(preferred);
+ InstalledAppsHint().Text(appPackages_.empty()?L"Não foi possível listar apps instaladas. Verifica a ligação e a autorização ADB.":L"Escolhe o pacote da aplicação; a lista contém apps de terceiros instaladas.");
+}
+void MainWindow::RefreshApps_Click(IInspectable const&,RoutedEventArgs const&){
+ refreshInstalledApps();
+ status(appPackages_.empty()?L"Sem aplicações para mostrar. Confirma a ligação Android.":L"Lista de aplicações atualizada.");
+}
 void MainWindow::loadSettings(){
  const auto path=settingsPath();
  choose(FpsCombo(),ini(path,L"video",L"fps",L"60"));
  choose(BitrateCombo(),ini(path,L"video",L"bitrate",L"16"));
- choose(ResolutionCombo(),ini(path,L"video",L"resolution",L"1920x1080/320"));
+ auto res=ini(path,L"video",L"resolution",L"");
+ // Previous builds applied landscape by default; migrate them safely to auto.
+ ResolutionCombo().SelectedIndex(0);
+ if(res==L"Vertical · 1080×1920"||res==L"1080x1920/320")ResolutionCombo().SelectedIndex(1);
+ else if(res==L"Vertical leve · 720×1280"||res==L"720x1280/320")ResolutionCombo().SelectedIndex(2);
+ // Landscape is never migrated automatically; users must opt in explicitly.
+ LaunchModeCombo().SelectedIndex(std::clamp(GetPrivateProfileIntW(L"virtual",L"launch_mode",0,path.c_str()),0,2));
+ ClipboardModeCombo().SelectedIndex(std::clamp(GetPrivateProfileIntW(L"clipboard",L"mode",0,path.c_str()),0,2));
+ updateLaunchInputs();
  LauncherBox().Text(ini(path,L"video",L"launcher",L"org.fossify.home"));
  DuplicateAudio().IsOn(ini(path,L"video",L"audio_dup",L"0")==L"1");
  AutoRestoreSwitch().IsOn(ini(path,L"startup",L"auto_restore",L"1")==L"1");
@@ -246,6 +334,8 @@ void MainWindow::saveSettings(){
  writeIni(path,L"video",L"fps",option(FpsCombo()));
  writeIni(path,L"video",L"bitrate",option(BitrateCombo()));
  writeIni(path,L"video",L"resolution",option(ResolutionCombo()));
+ writeIni(path,L"virtual",L"launch_mode",std::to_wstring(LaunchModeCombo().SelectedIndex()));
+ writeIni(path,L"clipboard",L"mode",std::to_wstring(ClipboardModeCombo().SelectedIndex()));
  writeIni(path,L"video",L"launcher",std::wstring(LauncherBox().Text().c_str()));
  writeIni(path,L"video",L"audio_dup",DuplicateAudio().IsOn()?L"1":L"0");
  writeIni(path,L"startup",L"auto_restore",AutoRestoreSwitch().IsOn()?L"1":L"0");
@@ -319,6 +409,7 @@ void MainWindow::refresh(){
  if(found<0&&serials_.size())found=0;
  if(found>=0){DevicesCombo().SelectedIndex(found);DeviceGrid().SelectedIndex(found);}
  syncing_=false;
+ if(LaunchModeCombo().SelectedIndex()==1)refreshInstalledApps();
  updateSummary();
  if(wait==WAIT_TIMEOUT)status(L"ADB demorou a responder; verifica o dispositivo.");
  else if(serials_.empty())status(L"Nenhum Android encontrado. Abre Dispositivos para ajuda.");
@@ -327,13 +418,16 @@ void MainWindow::refresh(){
 void MainWindow::saveSessions(){
  const auto path=settingsPath();
  size_t count=0;
- for(auto& s:sessions_){
-  if(!s.process.hProcess||WaitForSingleObject(s.process.hProcess,0)!=WAIT_TIMEOUT)continue;
+ for(auto& session:sessions_){
+  if(!session.process.hProcess||WaitForSingleObject(session.process.hProcess,0)!=WAIT_TIMEOUT)continue;
   if(count>=16)break;
-  auto sk=L"serial"+std::to_wstring(count);
-  auto vk=L"virtual"+std::to_wstring(count);
-  writeIni(path,L"resume",sk.c_str(),s.serial);
-  writeIni(path,L"resume",vk.c_str(),s.virtualDisplay?L"1":L"0");
+  auto idx=std::to_wstring(count);
+  auto sk=L"serial"+idx;auto vk=L"virtual"+idx;auto tk=L"target"+idx;auto rk=L"resolution"+idx;auto ck=L"clipboard"+idx;
+  writeIni(path,L"resume",sk.c_str(),session.serial);
+  writeIni(path,L"resume",vk.c_str(),session.virtualDisplay?L"1":L"0");
+  writeIni(path,L"resume",tk.c_str(),session.appTarget);
+  writeIni(path,L"resume",rk.c_str(),std::to_wstring(session.resolutionIndex));
+  writeIni(path,L"resume",ck.c_str(),std::to_wstring(session.clipboardIndex));
   ++count;
  }
  writeIni(path,L"resume",L"count",std::to_wstring(count));
@@ -393,56 +487,80 @@ void MainWindow::stopAt(size_t i){
 void MainWindow::restoreSessions(){
  if(!AutoRestoreSwitch().IsOn())return;
  const auto path=settingsPath();
- int count=static_cast<int>(GetPrivateProfileIntW(L"resume",L"count",0,path.c_str()));
- count=std::clamp(count,0,16);
- std::vector<std::pair<std::wstring,bool>> requested;
+ int count=std::clamp(static_cast<int>(GetPrivateProfileIntW(L"resume",L"count",0,path.c_str())),0,16);
+ struct ResumeData{std::wstring serial;bool virtualDisplay;std::wstring target;int resolution;int clipboard;};
+ std::vector<ResumeData> requested;
  for(int i=0;i<count;++i){
-  auto sk=L"serial"+std::to_wstring(i);
-  auto vk=L"virtual"+std::to_wstring(i);
-  auto serial=ini(path,L"resume",sk.c_str());
-  if(!serial.empty())requested.push_back({serial,ini(path,L"resume",vk.c_str())==L"1"});
+  auto idx=std::to_wstring(i);
+  auto serial=ini(path,L"resume",(L"serial"+idx).c_str());
+  if(serial.empty())continue;
+  bool virt=ini(path,L"resume",(L"virtual"+idx).c_str())==L"1";
+  auto target=ini(path,L"resume",(L"target"+idx).c_str());
+  int res=GetPrivateProfileIntW(L"resume",(L"resolution"+idx).c_str(),0,path.c_str());
+  int clip=GetPrivateProfileIntW(L"resume",(L"clipboard"+idx).c_str(),0,path.c_str());
+  requested.push_back({serial,virt,target,std::clamp(res,0,3),std::clamp(clip,0,2)});
  }
- // ADB authorization is verified again for every recovered session. Never bypass Android prompts.
- for(auto const& r:requested){
+ // Always recheck Android ADB authorization before launching a saved session.
+ for(const auto& item:requested){
   bool allowed=false;
-  for(size_t i=0;i<serials_.size();++i)if(serials_[i]==r.first&&deviceStates_[i]==L"device")allowed=true;
-  if(allowed)startFor(r.first,r.second,false);
+  for(size_t i=0;i<serials_.size();++i)if(serials_[i]==item.serial&&deviceStates_[i]==L"device")allowed=true;
+  if(allowed)startFor(item.serial,item.virtualDisplay,false,item.target,item.resolution,item.clipboard);
  }
- if(!requested.empty()&&sessions_.empty())status(L"Sessões anteriores encontradas; liga e autoriza o dispositivo para as recuperar.");
+ if(!requested.empty()&&sessions_.empty())status(L"Há sessões guardadas. Liga e autoriza o Android para as recuperar.");
  if(!sessions_.empty())saveSessions();
 }
-void MainWindow::startFor(const std::wstring& serial,bool virtualDisplay,bool persist){
- const auto fps=option(FpsCombo()),bitrate=option(BitrateCombo()),resolution=option(ResolutionCombo());
- if(fps.empty()||bitrate.empty()||(virtualDisplay&&resolution.empty())){status(L"Seleciona definições de vídeo válidas.");return;}
- std::wstring args=L"--serial="+quote(serial)+L" --max-fps="+fps+L" --video-bit-rate="+bitrate+L"M --video-codec=h264 --keep-active";
+void MainWindow::startFor(const std::wstring& serial,bool virtualDisplay,bool persist,const std::wstring& overrideTarget,int overrideResolution,int overrideClipboard){
+ const auto fps=option(FpsCombo()),bitrate=option(BitrateCombo());
+ if(fps.empty()||bitrate.empty()){status(L"Seleciona um perfil de vídeo válido.");return;}
+ int resolution=std::clamp(overrideResolution>=0?overrideResolution:ResolutionCombo().SelectedIndex(),0,3);
+ int clipboard=std::clamp(overrideClipboard>=0?overrideClipboard:ClipboardModeCombo().SelectedIndex(),0,2);
+ std::wstring target;
  if(virtualDisplay){
-  args+=L" --new-display="+resolution+L" --flex-display";
-  const auto launcher=std::wstring(LauncherBox().Text().c_str());
-  if(!launcher.empty()){
-   if(!std::all_of(launcher.begin(),launcher.end(),[](wchar_t c){return std::iswalnum(c)||c==L'.'||c==L'_';})){
-    status(L"Pacote launcher inválido.");return;
-   }
-   args+=L" --start-app="+launcher;
+  if(overrideResolution>=0)target=overrideTarget;
+  else {
+   const int mode=LaunchModeCombo().SelectedIndex();
+   if(mode==1){
+    int index=InstalledAppsCombo().SelectedIndex();
+    if(index<0||static_cast<size_t>(index)>=appPackages_.size()){
+     status(L"Escolhe uma aplicação instalada antes de iniciar.");navigate(3);return;
+    }
+    target=appPackages_[index];
+   }else if(mode==2)target=std::wstring(LauncherBox().Text().c_str());
+  }
+  if(!target.empty()&&!std::all_of(target.begin(),target.end(),[](wchar_t c){return std::iswalnum(c)||c==L'.'||c==L'_';})){
+   status(L"O identificador Android contém caracteres inválidos.");return;
   }
  }
+ std::wstring args=L"--serial="+quote(serial)+L" --max-fps="+fps+L" --video-bit-rate="+bitrate+L"M --video-codec=h264 --keep-active";
+ if(virtualDisplay){
+  // Native portrait and app compatibility first. Never force landscape by default.
+  switch(resolution){
+   case 1:args+=L" --new-display=1080x1920/320";break;
+   case 2:args+=L" --new-display=720x1280/320";break;
+   case 3:args+=L" --new-display=1920x1080/320";break;
+   default:args+=L" --new-display";break;
+  }
+  if(!target.empty())args+=L" --start-app="+target;
+ }
+ // scrcpy owns Android↔Windows clipboard sync. PC preference disables automatic Android overwrite.
+ if(clipboard==1)args+=L" --no-clipboard-autosync";
  if(DuplicateAudio().IsOn())args+=L" --audio-source=playback --audio-dup";
  else args+=L" --audio-source=output";
  bool recording=virtualDisplay?RecordVirtualToggle().IsOn():RecordMirrorToggle().IsOn();
  std::wstring recordingFile;
- // Resumed sessions deliberately start without recording: avoid endless duplicate MP4 files on reconnect.
- if(!persist)recording=false;
+ if(!persist)recording=false; // restored session must never begin recording unexpectedly
  if(recording){
   recordingFile=newMediaPath(L".mp4");
   args+=L" --record="+quote(recordingFile);
  }
  PROCESS_INFORMATION pi{};
  if(!process(tools(L"scrcpy.exe"),args,pi,false)){status(L"scrcpy.exe não encontrado no pacote.");return;}
- sessions_.push_back(Session{pi,serial,virtualDisplay,recording,recordingFile});
+ sessions_.push_back(Session{pi,serial,virtualDisplay,recording,recordingFile,target,resolution,clipboard});
  history_+=(virtualDisplay?L"Ecrã virtual — ":L"Espelhamento — ")+serial+(recording?L" (a gravar MP4)":L"")+L"\n";
  if(persist)saveSessions();
  saveSettings();
  updateSummary();
- status(virtualDisplay?L"Ecrã virtual iniciado em janela independente.":L"Espelhamento iniciado em janela independente.");
+ status(virtualDisplay?L"Ecrã virtual iniciado; orientação automática salvo escolha manual.":L"Espelhamento iniciado. Ctrl+C/V funciona na janela Android.");
 }
 void MainWindow::start(bool virtualDisplay){
  const auto serial=selected();
