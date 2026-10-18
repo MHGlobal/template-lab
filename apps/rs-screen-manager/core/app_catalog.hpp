@@ -34,7 +34,7 @@ inline std::vector<std::wstring> filterPackages(
  const auto term=lowercase(text);
  std::vector<std::wstring> out;
  for(const auto& id:packages) {
-  if(onlyFavorites && !favorites.find(id)!=favorites.end())continue;
+  if(onlyFavorites && favorites.find(id)==favorites.end())continue;
   if(!term.empty() && lowercase(id).find(term)==std::wstring::npos)continue;
   out.push_back(id);
  }
