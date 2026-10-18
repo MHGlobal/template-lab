@@ -61,6 +61,9 @@ namespace winrt::RSScreenManagerUI::implementation {
    bool virtualDisplay=false;
    bool recording=false;
    std::wstring recordingFile;
+   std::wstring appTarget;
+   int resolutionIndex=0;
+   int clipboardIndex=0;
   };
   std::vector<Session> sessions_;
   Microsoft::UI::Xaml::DispatcherTimer maintenanceTimer_{nullptr};
@@ -78,7 +81,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   void updateResponsive(double width);
   void refresh();
   void start(bool virtualDisplay);
-  void startFor(const std::wstring& serial,bool virtualDisplay,bool save);
+  void startFor(const std::wstring& serial,bool virtualDisplay,bool save,const std::wstring& overrideTarget=L"",int overrideResolution=-1,int overrideClipboard=-1);
   void command(const std::wstring& args);
   void saveSettings();
   void refreshInstalledApps();
