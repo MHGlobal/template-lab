@@ -45,6 +45,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   void Disconnect_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Advanced_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void ApplyProfile_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  winrt::fire_and_forget screenshotAsync(std::wstring serial,std::wstring outputFile);
   void Screenshot_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void RefreshRecordings_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void OpenSelectedRecording_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -81,6 +82,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   std::vector<GUID> savedWifiInterfaceIds_;
   bool hotspotBusy_=false;
   bool refreshBusy_=false;
+  bool screenshotBusy_=false;
   uint64_t appScanGeneration_=0;
   bool pendingInitialRestore_=false;
   bool pendingNetworkReconnect_=false;
