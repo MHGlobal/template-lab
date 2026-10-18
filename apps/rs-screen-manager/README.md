@@ -1,4 +1,4 @@
-# RS Screen Manager — connect+ 0.3.0-alpha (WinUI 3 preview)
+# RS Screen Manager — connect+ 0.3.1-alpha (WinUI 3 preview)
 
 **Status: development preview, not v1.0.** Windows x64 app in native C++20/WinUI 3. The original Win32 manager is still included and has not been removed. The application stays agentless for core features; any future Android Companion must remain optional and require user permission.
 
@@ -19,6 +19,16 @@
 - Auto-resume saves the original virtual-display package, orientation and clipboard policy per session; it never bypasses Android permission.
 - ADB installed-app listing uses a bounded temporary output file to avoid a stdout pipe deadlock.
 - CI tests for orientation and clipboard policy in `tests/virtual_display_policy_test.cpp`.
+
+## v0.3.1-alpha targeted UI polish (design contract)
+- Preserves full **Liquid Glass** on the dashboard while using lower-cost `PerformanceCard` surfaces in mirroring, virtual-display and Gaming routes.
+- Eliminates ambiguous selected-item actions: terminate-selected and open-recording are disabled until a valid list item is selected.
+- Adds explicit first-use/empty states for disconnected devices, session lists and recordings, with clear next actions.
+- Makes the header connection badge semantically accurate: green when at least one Android is ADB-authorized; amber when none is.
+- Fits onboarding and advanced settings panels inside the available window width instead of fixing a desktop-only width.
+- Introduces consistent 44-DIP minimum height for primary and secondary buttons and Fluent icons instead of text glyphs in library/diagnostics actions.
+- Provides a shared `DESIGN.md` with immutable approved brand and functional constraints.
+- CI includes a WinUI XML/event/state/style regression gate; **passing CI does not prove pixel-perfect runtime appearance**.
 
 ## Functionality available in this preview
 - ADB device discovery of `device`, `unauthorized` and `offline`, with state surfaced to the user.
