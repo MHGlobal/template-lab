@@ -84,6 +84,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Touch mapping test build failed' }
           & dist/game-mapping-test.exe
           if ($LASTEXITCODE -ne 0) { throw 'Touch mapping tests failed' }
+          cl.exe /nologo /utf-8 /std:c++20 /EHsc /W4 /O2 /Fe:dist/virtual-display-policy-test.exe apps/rs-screen-manager/tests/virtual_display_policy_test.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'Display policy test compilation failed' }
+          & dist/virtual-display-policy-test.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Auto orientation/clipboard policy tests failed' }
       - name: Bundle scrcpy 5.0.1 and ADB with pinned integrity hash
         shell: pwsh
         run: |
