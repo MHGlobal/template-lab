@@ -2,7 +2,7 @@
 
 **Referência:** PLANO_MESTRE_IMPLEMENTACAO_V1.md; branch `feature/rs-screen-manager`.  
 **Data:** 18/10/2026.  
-**Versão de integração:** v0.4.0-alpha (hotspot e melhorias de arquitetura).
+**Versão de integração:** v0.4.1-alpha (catálogo, biblioteca e captura assíncrona).
 
 Este documento distingue implementação no código de testes com equipamento real. Não substitui o plano mestre.
 
@@ -12,13 +12,13 @@ Este documento distingue implementação no código de testes com equipamento re
 | 01 Core/async | Parcial | ADB devices, packages, pair/connect/disconnect agora não bloqueiam UI durante a espera; falta SessionCoordinator independente, state machine e migração de MainWindow |
 | 02 UI/UX | Parcial | Dashboard connect+, estados, drawer integrado Gaming; faltam shell de navegação definitiva, revisão visual real e editor Gaming funcional |
 | 03 Hotspot Android | Implementado no código, teste físico pendente | WLAN adapters/SSID/gateway, conectar perfil Wi-Fi guardado, abrir Definições, USB autorizado → ADB TCP/IP, conectar/confirmar ADB via rede; verificar com Android 15 e hotspot real |
-| 04 Apps/orientação | Parcial | Pacotes listados off UI, start-app e retrato automático; faltam nomes/ícones reais, launchability, transform e suporte dinâmico por app |
+| 04 Apps/orientação | Parcial | Pacotes consultados em segundo plano, pesquisa offline e favoritos persistentes; política de retrato automático e transformação/letterbox do viewport testada em módulo independente (ainda não ligada ao renderizador); faltam nomes/ícones reais, launchability e suporte dinâmico por app |
 | 05 Render embebido | Não implementado | Vídeo ainda abre em janela externa do scrcpy. Precisa de decoder, presenter e controlo de canais nativos |
 | 06 Clipboard/áudio | Parcial | Clipboard scrcpy para sessões novas e opções de áudio; faltam alteração instantânea por sessão e gestão de áudio |
 | 07 Gaming | Parcial | Mapper core testado, preset de vídeo e drawer coerente; falta touch transport real, RawInput, gamepad, editor sobre vídeo e perfis |
-| 08 Multimédia | Parcial | MP4, PNG físico e listagem; faltam screenshot virtual, thumbnails e biblioteca avançada |
+| 08 Multimédia | Parcial | MP4, screenshot PNG físico agora assíncrono com validação de assinatura, biblioteca com pesquisa/filtro de MP4/PNG e exclusão confirmada; faltam captura virtual, thumbnails reais e metadados avançados |
 | 09 PT/EN/A11y | Parcial | Português e controlo de UI básico; faltam recursos PT/EN, leitor de ecrã, testes DPI/acessibilidade |
-| 10 Diagnósticos/QA | Parcial | CI WinUI + fallback + hotspot policies; faltam testes físicos e telemetria real |
+| 10 Diagnósticos/QA | Parcial | CI WinUI + fallback + hotspot, catálogo Android e transforms de orientação; faltam testes físicos, renderizador e telemetria real |
 | 11 Distribuição | Parcial | GitHub Actions cria setup e ZIP; instalação/update devem ser validados em Windows real |
 
 ## Evidência por implementar
@@ -36,3 +36,10 @@ Este documento distingue implementação no código de testes com equipamento re
 5. Avançar etapa a etapa até todos os acceptance gates do plano mestre passarem.
 
 **Ainda não é versão 1.0. Nenhuma etapa incompleta deve ser vendida como pronta.**
+
+## Incremento v0.4.1-alpha
+- Catálogo de apps pesquisável, com favoritas guardadas localmente. Nomes de pacote permanecem técnicos; não inventar labels/ícones.
+- Biblioteca filtrável por nome/MP4/PNG; eliminação só após confirmação, gravações ativas não são eliminadas.
+- Captura de ecrã físico via ADB corre fora da UI, possui timeout de 15 s e valida a assinatura PNG antes de registar o ficheiro.
+- Módulo de transformação de coordenadas (0°, 90°, 180°, 270°) preserva proporção, rejeita toques em margens de letterbox e possui testes de contrato; **ainda não está ligado a streaming embebido/TouchTransport**.
+- Estes incrementos não resolvem por si só multitoque Gaming, renderização integrada ou hot-switch de clipboard.
