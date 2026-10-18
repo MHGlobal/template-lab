@@ -143,7 +143,7 @@ void MainWindow::navigate(int page){
  for(size_t i=0;i<tabs.size();++i)tabs[i].Style(i==static_cast<size_t>(group)?active:idle);
 }
 void MainWindow::updateResponsive(double width){
- HomeActionsPanel().Orientation(width<780?Controls::Orientation::Vertical:Controls::Orientation::Horizontal);
+ HomeActionsPanel().Orientation(width<1260?Controls::Orientation::Vertical:Controls::Orientation::Horizontal);
  // Overlay widths are updated at every window resize, not only at breakpoints.
  using Microsoft::UI::Xaml::Visibility;
  HeroVisual().Visibility(width<960?Visibility::Collapsed:Visibility::Visible);
@@ -188,6 +188,14 @@ void MainWindow::Root_SizeChanged(IInspectable const&,SizeChangedEventArgs const
 }
 void MainWindow::Home_Click(IInspectable const&,RoutedEventArgs const&){navigate(0);}
 void MainWindow::Devices_Click(IInspectable const&,RoutedEventArgs const&){navigate(1);}
+void MainWindow::HotspotPage_Click(IInspectable const&,RoutedEventArgs const&){
+ navigate(1);
+ HotspotConnectButton().StartBringIntoView();
+ if(hotspotGateways_.empty()&&!hotspotBusy_){
+  hotspotBusy(true);
+  hotspotScanAsync();
+ }
+}
 void MainWindow::MirrorPage_Click(IInspectable const&,RoutedEventArgs const&){navigate(2);}
 void MainWindow::VirtualPage_Click(IInspectable const&,RoutedEventArgs const&){navigate(3);}
 void MainWindow::Gaming_Click(IInspectable const&,RoutedEventArgs const&){navigate(4);}
