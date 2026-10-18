@@ -138,6 +138,8 @@ void MainWindow::navigate(int page){
  for(size_t i=0;i<tabs.size();++i)tabs[i].Style(i==static_cast<size_t>(group)?active:idle);
 }
 void MainWindow::updateResponsive(double width){
+ HomeActionsPanel().Orientation(width<780?Controls::Orientation::Vertical:Controls::Orientation::Horizontal);
+ AdvancedDrawer().Width((std::min)(500.0,(std::max)(310.0,width-16)));
  using Microsoft::UI::Xaml::Visibility;
  HeroVisual().Visibility(width<960?Visibility::Collapsed:Visibility::Visible);
  CurrentLocationText().Visibility(width<1020?Visibility::Collapsed:Visibility::Visible);
@@ -227,6 +229,30 @@ void MainWindow::WelcomeNext_Click(IInspectable const&,RoutedEventArgs const&){
   WelcomeOverlay().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
   writeIni(settingsPath(),L"onboarding",L"completed",L"1");
   status(L"Configuração inicial concluída. Bem-vindo!");
+ }
+}
+void MainWindow::ClipboardPC_Click(IInspectable const&,RoutedEventArgs const&){
+ ClipboardModeCombo().SelectedIndex(1);
+ saveSettings();
+ status(L"Clipboard: preferência PC guardada. Abrir uma nova sessão aplica o modo.");
+}
+void MainWindow::ClipboardAndroid_Click(IInspectable const&,RoutedEventArgs const&){
+ ClipboardModeCombo().SelectedIndex(2);
+ saveSettings();
+ status(L"Clipboard: preferência Android guardada. Abrir uma nova sessão aplica o modo.");
+}
+void MainWindow::ClipboardMode_Changed(IInspectable const&,Controls::SelectionChangedEventArgs const&){
+ if(!loaded_)return;
+ const int mode=ClipboardModeCombo().SelectedIndex();
+ if(mode==1){
+  ActiveClipboardStatus().Text(L"Preferir PC: cópia automática Android → Windows desligada. Ctrl+V no scrcpy cola do PC.");
+  ClipboardHint().Text(L"Evita substituir a cópia do computador. Nas novas sessões, usa Ctrl+V no scrcpy para enviar texto PC → Android.");
+ }else if(mode==2){
+  ActiveClipboardStatus().Text(L"Preferir Android: ao copiar no Android, o scrcpy atualiza o clipboard do computador.");
+  ClipboardHint().Text(L"Copiar no Android sincroniza com Windows. Ctrl+V no Android continua disponível; esta preferência não bloqueia o PC.");
+ }else{
+  ActiveClipboardStatus().Text(L"Automático: cópias Android vão para o PC e Ctrl+V no scrcpy cola do Windows.");
+  ClipboardHint().Text(L"Sincronização nativa scrcpy. Quando o ecrã Android tem o foco, utiliza Ctrl+C e Ctrl+V.");
  }
 }
 void MainWindow::AdvancedSettings_Click(IInspectable const&,RoutedEventArgs const&){
@@ -319,8 +345,8 @@ void MainWindow::loadSettings(){
  if(res==L"Vertical · 1080×1920"||res==L"1080x1920/320")ResolutionCombo().SelectedIndex(1);
  else if(res==L"Vertical leve · 720×1280"||res==L"720x1280/320")ResolutionCombo().SelectedIndex(2);
  // Landscape is never migrated automatically; users must opt in explicitly.
- LaunchModeCombo().SelectedIndex(std::clamp(GetPrivateProfileIntW(L"virtual",L"launch_mode",0,path.c_str()),0,2));
- ClipboardModeCombo().SelectedIndex(std::clamp(GetPrivateProfileIntW(L"clipboard",L"mode",0,path.c_str()),0,2));
+ LaunchModeCombo().SelectedIndex(std::clamp(static_cast<int>(GetPrivateProfileIntW(L"virtual",L"launch_mode",0,path.c_str())),0,2));
+ ClipboardModeCombo().SelectedIndex(std::clamp(static_cast<int>(GetPrivateProfileIntW(L"clipboard",L"mode",0,path.c_str())),0,2));
  updateLaunchInputs();
  LauncherBox().Text(ini(path,L"video",L"launcher",L"org.fossify.home"));
  DuplicateAudio().IsOn(ini(path,L"video",L"audio_dup",L"0")==L"1");
