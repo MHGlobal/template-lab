@@ -202,18 +202,9 @@ void MainWindow::Root_Loaded(IInspectable const&,RoutedEventArgs const&){
  loaded_=true;
  navigate(0);
  loadSettings();
- if(AutoRestoreSwitch().IsOn()){
-  const auto ep=ini(settingsPath(),L"wireless",L"endpoint");
-  if(valid(ep)){
-   PROCESS_INFORMATION pi{};
-   if(process(tools(L"adb.exe"),L"connect "+ep,pi,false)){
-    WaitForSingleObject(pi.hProcess,8000);
-    CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
-   }
-  }
- }
+ pendingInitialRestore_=true;
+ pendingNetworkReconnect_=AutoRestoreSwitch().IsOn();
  refresh();
- restoreSessions();
  refreshRecordings();
  maintenanceTimer_=Microsoft::UI::Xaml::DispatcherTimer();
  maintenanceTimer_.Interval(std::chrono::seconds(3));
@@ -418,23 +409,32 @@ void MainWindow::updateSummary(){
  updateActionAvailability();
 }
 void MainWindow::refresh(){
+ if(refreshBusy_){status(L"A atualização dos dispositivos já está em curso.");return;}
+ refreshBusy_=true;
+ std::wstring endpoint;
+ if(pendingNetworkReconnect_){
+  pendingNetworkReconnect_=false;
+  auto saved=ini(settingsPath(),L"wireless",L"endpoint");
+  if(valid(saved))endpoint=saved;
+ }
+ status(L"A verificar dispositivos Android em segundo plano...");
+ refreshAsync(std::move(endpoint));
+}
+winrt::fire_and_forget MainWindow::refreshAsync(std::wstring endpoint){
+ auto strong=get_strong();
+ auto dispatcher=DispatcherQueue();
+ co_await winrt::resume_background();
+ if(!endpoint.empty())captureAdbOutput(L"connect "+endpoint,7500);
+ auto output=captureAdbOutput(L"devices -l",9500);
+ dispatcher.TryEnqueue([strong,output=std::move(output)]{
+  auto* that=strong.get();
+  that->refreshBusy_=false;
+  that->applyDeviceOutput(output);
+ });
+}
+void MainWindow::applyDeviceOutput(const std::wstring& output){
  const auto previous=DevicesCombo().SelectedIndex();
  std::wstring selectedSerial=previous>=0&&static_cast<size_t>(previous)<serials_.size()?serials_[previous]:L"";
- SECURITY_ATTRIBUTES sa{sizeof(sa),nullptr,TRUE};
- HANDLE reader{},writer{};
- if(!CreatePipe(&reader,&writer,&sa,0)){status(L"Falha ao consultar ADB.");return;}
- SetHandleInformation(reader,HANDLE_FLAG_INHERIT,0);
- PROCESS_INFORMATION pi{};
- bool ok=process(tools(L"adb.exe"),L"devices -l",pi,true,writer);
- CloseHandle(writer);
- if(!ok){CloseHandle(reader);status(L"adb.exe não encontrado no pacote.");updateSummary();return;}
- DWORD wait=WaitForSingleObject(pi.hProcess,8000);
- if(wait==WAIT_TIMEOUT){TerminateProcess(pi.hProcess,1);WaitForSingleObject(pi.hProcess,2000);}
- std::string bytes;
- char block[2048];DWORD read=0;
- while(ReadFile(reader,block,sizeof(block),&read,nullptr)&&read)bytes.append(block,read);
- CloseHandle(reader);CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
- std::wstring output(bytes.begin(),bytes.end());
  std::wistringstream stream(output);
  std::wstring line;
  syncing_=true;
@@ -460,7 +460,12 @@ void MainWindow::refresh(){
  syncing_=false;
  if(LaunchModeCombo().SelectedIndex()==1)refreshInstalledApps();
  updateSummary();
- if(wait==WAIT_TIMEOUT)status(L"ADB demorou a responder; verifica o dispositivo.");
+ if(pendingInitialRestore_){
+  bool authorized=false;
+  for(const auto& st:deviceStates_)if(st==L"device"){authorized=true;break;}
+  if(authorized){pendingInitialRestore_=false;restoreSessions();}
+ }
+ if(output.empty())status(L"O ADB não respondeu ou não foi encontrado. Confirma a ligação e volta a tentar.");
  else if(serials_.empty())status(L"Nenhum Android encontrado. Abre Dispositivos para ajuda.");
  else status(L"Lista de dispositivos atualizada.");
 }
