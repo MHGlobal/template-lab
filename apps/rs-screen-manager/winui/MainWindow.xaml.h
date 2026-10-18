@@ -52,6 +52,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   void Resolution_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
   void SaveSettings_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void DeviceSelection_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
+  void ListSelection_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
   void GridSelection_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
 
  private:
@@ -95,6 +96,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   void stopAt(size_t index);
   void reapExitedSessions();
   void refreshSessionLists();
+  void updateActionAvailability();
   void refreshRecordings();
   std::wstring recordingsPath() const;
   std::wstring newMediaPath(const wchar_t* extension) const;
