@@ -1,5 +1,5 @@
 #define MyAppName "RS Screen Manager"
-#define MyAppVersion "0.3.0-alpha"
+#define MyAppVersion "0.3.1-alpha"
 #define MyAppPublisher "MHGlobal"
 [Setup]
 AppId={{D51ECA51-3813-457A-9ED6-1BB84EE05B3B}
