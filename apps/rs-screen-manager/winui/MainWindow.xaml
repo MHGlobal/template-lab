@@ -130,24 +130,25 @@
             <ScrollViewer x:Name="HomePanel">
                 <StackPanel MaxWidth="1210" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="20">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Visão geral" Foreground="#F5F8FF" FontSize="32" FontWeight="SemiBold"/>
-                        <TextBlock Text="Tudo o que precisas para ligar, espelhar e gerir o Android, sem distrações." Foreground="#A9B7CA" FontSize="14" TextWrapping="Wrap"/>
+                        <TextBlock Text="O teu Android, sob controlo." Foreground="#F5F8FF" FontSize="30" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        <TextBlock Text="Começa por ligar o telemóvel. Depois escolhe espelhar o ecrã ou abrir uma aplicação num ecrã virtual." Foreground="#A9B7CA" FontSize="14" TextWrapping="Wrap"/>
                     </StackPanel>
                     <Border Style="{StaticResource GlassCard}">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
                             <StackPanel Spacing="14">
                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                     <FontIcon Glyph="&#xE8A0;" FontFamily="Segoe Fluent Icons" Foreground="#80BAFF" FontSize="16"/>
-                                    <TextBlock Text="AÇÃO PRINCIPAL" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="11" CharacterSpacing="95" VerticalAlignment="Center"/>
+                                    <TextBlock Text="PASSO 1 · LIGAR / PASSO 2 · ESCOLHER" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="11" CharacterSpacing="65" VerticalAlignment="Center"/>
                                 </StackPanel>
-                                <TextBlock Text="Um segundo ecrã para o teu Android." Foreground="White" FontWeight="SemiBold" FontSize="24" TextWrapping="Wrap"/>
-                                <TextBlock Text="Cria um espaço independente, escolhe resolução e launcher, e mantém o ecrã principal disponível." Foreground="#B1BFD1" FontSize="13" TextWrapping="Wrap" MaxWidth="610"/>
+                                <TextBlock Text="O que queres fazer agora?" Foreground="White" FontWeight="SemiBold" FontSize="24" TextWrapping="Wrap"/>
+                                <TextBlock Text="Um ecrã virtual abre uma aplicação sem ocupar o ecrã principal do Android. Espelhamento mostra o que já está no telemóvel." Foreground="#B1BFD1" FontSize="13" TextWrapping="Wrap" MaxWidth="610"/>
                                 <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <Button Click="VirtualPage_Click" Style="{StaticResource BlueButton}" AutomationProperties.Name="Criar ecrã virtual">
-                                        <StackPanel Orientation="Horizontal" Spacing="9"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="15"/><TextBlock Text="Criar ecrã virtual"/></StackPanel>
+                                    <Button Click="Devices_Click" Style="{StaticResource BlueButton}" AutomationProperties.Name="Ligar ou escolher telemóvel"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE772;" FontFamily="Segoe Fluent Icons"/><TextBlock Text="1 · Ligar Android"/></StackPanel></Button>
+                                    <Button Click="VirtualPage_Click" Style="{StaticResource QuietButton}" AutomationProperties.Name="Criar ecrã virtual">
+                                        <StackPanel Orientation="Horizontal" Spacing="9"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="15"/><TextBlock Text="2 · Ecrã virtual"/></StackPanel>
                                     </Button>
                                     <Button Click="MirrorPage_Click" Style="{StaticResource QuietButton}" AutomationProperties.Name="Abrir espelhamento">
-                                        <StackPanel Orientation="Horizontal" Spacing="9"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A7;" FontSize="15"/><TextBlock Text="Espelhar telemóvel"/></StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="9"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8A7;" FontSize="15"/><TextBlock Text="2 · Espelhar"/></StackPanel>
                                     </Button>
                                 </StackPanel>
                             </StackPanel>
@@ -279,8 +280,8 @@
                     <TextBlock Text="Abre o ecrã físico do Android numa janela scrcpy independente, com controlo do rato e teclado." Foreground="#A9B7CA" TextWrapping="Wrap"/>
                     <Border Style="{StaticResource GlassCard}">
                         <StackPanel Spacing="12">
-                            <TextBlock Text="SESSÃO DE ESPELHAMENTO" Foreground="#80BAFF" FontSize="11" CharacterSpacing="90" FontWeight="SemiBold"/>
-                            <TextBlock Text="Usa o dispositivo selecionado na página Dispositivos. Ajusta a qualidade na página Definições." Foreground="#BECBE0" TextWrapping="Wrap"/>
+                            <TextBlock Text="ESPELHAR O TELEMÓVEL" Foreground="#80BAFF" FontSize="11" CharacterSpacing="90" FontWeight="SemiBold"/>
+                            <TextBlock Text="Seleciona o Android em Dispositivos. O espelhamento mantém a orientação original do telemóvel." Foreground="#BECBE0" TextWrapping="Wrap"/>
                             <ToggleSwitch x:Name="RecordMirrorToggle" Header="Gravar esta sessão em MP4" IsOn="False"/>
                             <TextBlock Text="A gravação será guardada localmente. Para finalizar o MP4 sem corromper, termina a sessão pelo gestor." Foreground="#9DAFC6" FontSize="12" TextWrapping="Wrap"/>
                             <StackPanel Orientation="Horizontal" Spacing="10">
@@ -311,19 +312,39 @@
 
             <ScrollViewer x:Name="VirtualPanel" Visibility="Collapsed">
                 <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
-                    <TextBlock Text="Ecrãs virtuais" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
-                    <TextBlock Text="Cria um ecrã Android independente sem substituir o ecrã físico. A compatibilidade depende do dispositivo." Foreground="#A9B7CA" TextWrapping="Wrap"/>
+                    <TextBlock Text="Criar ecrã virtual" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <TextBlock Text="Escolhe o conteúdo e abre-o num ecrã independente. A aplicação mantém a orientação adequada sempre que possível." Foreground="#A9B7CA" TextWrapping="Wrap"/>
                     <Border Style="{StaticResource GlassCard}">
                         <StackPanel Spacing="14">
-                            <TextBlock Text="NOVA SESSÃO VIRTUAL" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
-                            <TextBlock Text="Seleciona primeiro um dispositivo autorizado na página Dispositivos." Foreground="#BECBE0"/>
-                            <TextBlock Text="Resolução / densidade" Foreground="#D8E3EF"/>
-                            <ComboBox x:Name="ResolutionCombo" SelectedIndex="1" HorizontalAlignment="Stretch">
-                                <x:String>1080x1920/320</x:String>
-                                <x:String>1920x1080/320</x:String>
-                                <x:String>720x1280/320</x:String>
+                            <TextBlock Text="1 · CONTEÚDO DO ECRÃ" Foreground="#80BAFF" FontSize="11" FontWeight="SemiBold" CharacterSpacing="75"/>
+                            <TextBlock Text="O que pretendes abrir?" Foreground="#EAF2FF" FontSize="15" FontWeight="SemiBold"/>
+                            <ComboBox x:Name="LaunchModeCombo" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="LaunchMode_Changed" AutomationProperties.Name="Escolher launcher ou aplicação">
+                                <x:String>Launcher do Android (se disponível)</x:String>
+                                <x:String>Aplicação instalada no telemóvel</x:String>
+                                <x:String>Launcher personalizado (avançado)</x:String>
                             </ComboBox>
-                            <TextBox x:Name="LauncherBox" Header="Pacote launcher virtual" Text="org.fossify.home" PlaceholderText="org.fossify.home"/>
+                            <StackPanel x:Name="InstalledAppsPanel" Visibility="Collapsed" Spacing="8">
+                                <TextBlock Text="Seleciona a aplicação instalada" Foreground="#DBE8FA" FontSize="13"/>
+                                <ComboBox x:Name="InstalledAppsCombo" HorizontalAlignment="Stretch" PlaceholderText="Escolher aplicação" AutomationProperties.Name="Aplicações instaladas"/>
+                                <Button Click="RefreshApps_Click" HorizontalAlignment="Left" Style="{StaticResource QuietButton}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE72C;"/><TextBlock Text="Atualizar aplicações"/></StackPanel>
+                                </Button>
+                                <TextBlock x:Name="InstalledAppsHint" Text="Liga e autoriza o Android para ver as aplicações." Foreground="#96AFCB" FontSize="12" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <TextBlock x:Name="CustomLauncherHint" Text="O pacote personalizado encontra-se no painel Avançadas." Foreground="#9CB3CE" FontSize="12" Visibility="Collapsed"/>
+                            <TextBlock Text="2 · ORIENTAÇÃO E TAMANHO" Foreground="#80BAFF" FontSize="11" FontWeight="SemiBold" CharacterSpacing="75"/>
+                            <TextBlock Text="Orientação automática é recomendada; apps apenas verticais não devem ser forçadas a landscape." Foreground="#B4C5DA" FontSize="12" TextWrapping="Wrap"/>
+                            <ComboBox x:Name="ResolutionCombo" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="Resolution_Changed" AutomationProperties.Name="Orientação e resolução">
+                                <x:String>Automático · usar dimensões do Android</x:String>
+                                <x:String>Vertical · 1080×1920</x:String>
+                                <x:String>Vertical leve · 720×1280</x:String>
+                                <x:String>Horizontal · 1920×1080 (forçar)</x:String>
+                            </ComboBox>
+                            <TextBlock x:Name="OrientationWarning" Text="A resolução horizontal fixa pode provocar barras laterais ou incompatibilidade em apps verticais. Usa Automático para evitar isso." Foreground="#F1B98F" FontSize="12" TextWrapping="Wrap" Visibility="Collapsed"/>
+                            <Button Click="AdvancedSettings_Click" HorizontalAlignment="Left" Style="{StaticResource QuietButton}" AutomationProperties.Name="Abrir opções avançadas">
+                                <StackPanel Orientation="Horizontal" Spacing="9"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE713;"/><TextBlock Text="Opções avançadas"/></StackPanel>
+                            </Button>
+                            <TextBlock Text="3 · INICIAR" Foreground="#80BAFF" FontSize="11" FontWeight="SemiBold" CharacterSpacing="75"/>
                             <ToggleSwitch x:Name="RecordVirtualToggle" Header="Gravar este ecrã virtual em MP4" IsOn="False"/>
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <Button Click="Virtual_Click" Style="{StaticResource BlueButton}"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE710;" FontFamily="Segoe Fluent Icons" FontSize="15"/><TextBlock Text="Criar ecrã virtual"/></StackPanel></Button>
@@ -412,37 +433,39 @@
             </ScrollViewer>
 
             <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed">
-                <StackPanel MaxWidth="1050" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
+                <StackPanel MaxWidth="980" HorizontalAlignment="Stretch" Padding="32,24,32,56" Spacing="18">
                     <TextBlock Text="Definições" Foreground="White" FontSize="30" FontWeight="SemiBold"/>
+                    <TextBlock Text="As opções essenciais estão aqui. Para afinar o vídeo, launcher e parâmetros técnicos, abre o painel avançado." Foreground="#9EADC2" TextWrapping="Wrap"/>
                     <Border Style="{StaticResource GlassCard}">
-                        <StackPanel Spacing="13">
-                            <TextBlock Text="VÍDEO E ÁUDIO" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
-                            <TextBlock Text="FPS pretendidos" Foreground="#DDE7F4"/>
-                            <ComboBox x:Name="FpsCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                <x:String>60</x:String><x:String>30</x:String><x:String>90</x:String><x:String>120</x:String>
+                        <StackPanel Spacing="16">
+                            <TextBlock Text="CONEXÃO E CONTINUIDADE" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <ToggleSwitch x:Name="AutoRestoreSwitch" IsOn="True" Header="Reconectar automaticamente dispositivos autorizados"/>
+                            <TextBlock Text="O Android precisa de continuar autorizado. Não são contornadas permissões." Foreground="#AFC0D7" FontSize="12" TextWrapping="Wrap"/>
+                            <ToggleSwitch x:Name="DuplicateAudio" Header="Duplicar áudio para Windows e Android"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="14">
+                            <TextBlock Text="ÁREA DE TRANSFERÊNCIA" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Text="Quando o ecrã Android tem o foco, utiliza Ctrl+C e Ctrl+V normalmente no scrcpy. Escolhe como o clipboard deverá sincronizar nas sessões iniciadas a seguir." Foreground="#AFC0D7" FontSize="12" TextWrapping="Wrap"/>
+                            <ComboBox x:Name="ClipboardModeCombo" SelectedIndex="0" HorizontalAlignment="Stretch" AutomationProperties.Name="Origem de clipboard">
+                                <x:String>Automático · Android ↔ Computador</x:String>
+                                <x:String>Preferir computador · sem cópia automática do Android</x:String>
+                                <x:String>Preferir Android · atualizar clipboard do computador</x:String>
                             </ComboBox>
-                            <TextBlock Text="Bitrate (Mbps)" Foreground="#DDE7F4"/>
-                            <ComboBox x:Name="BitrateCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                <x:String>16</x:String><x:String>8</x:String><x:String>24</x:String>
-                            </ComboBox>
-                            <ToggleSwitch x:Name="DuplicateAudio" Header="Duplicar áudio para Android e Windows"/>
+                            <TextBlock x:Name="ClipboardHint" Text="O scrcpy transfere texto do Android para o Windows quando muda no telemóvel; Ctrl+V cola o clipboard do Windows no Android. As alterações ao modo aplicam-se a novas sessões." Foreground="#AABBD2" FontSize="12" TextWrapping="Wrap"/>
+                            <Button Content="Guardar modo de clipboard" Click="SaveSettings_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource GlassCard}">
                         <StackPanel Spacing="12">
-                            <TextBlock Text="ARRANQUE E RECUPERAÇÃO" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
-                            <ToggleSwitch x:Name="AutoRestoreSwitch" IsOn="True" Header="Reconectar e recuperar automaticamente a última sessão autorizada"/>
-                            <TextBlock Text="O restauro depende de o Android estar ligado e com autorização ADB. Nunca força acesso não autorizado." Foreground="#B5C4D8" TextWrapping="Wrap" FontSize="12"/>
-                            <Button Content="Guardar definições" Click="SaveSettings_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left"/>
+                            <TextBlock Text="DESEMPENHO E PERSONALIZAÇÃO" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Text="FPS, bitrate e launcher manual estão separados das operações diárias." Foreground="#AFC0D7" FontSize="12"/>
+                            <Button Click="AdvancedSettings_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE713;" FontFamily="Segoe Fluent Icons"/><TextBlock Text="Abrir painel avançado"/></StackPanel></Button>
+                            <TextBlock Text="Liquid Glass integral no dashboard · efeitos reduzidos em vídeo e Gaming · connect+" Foreground="#9DB0C7" FontSize="12" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
-                    <Border Style="{StaticResource GlassCard}">
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="APARÊNCIA" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
-                            <TextBlock Text="Tema escuro · #090B10 | Azul principal · #007BFF | Gaming · #FF6B35" Foreground="#CFD9E9" TextWrapping="Wrap"/>
-                            <TextBlock Text="O dashboard usa Glass destacado; as áreas de vídeo e Gaming reduzem efeitos para preservar o FPS." Foreground="#AABAD0" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Border>
+                    <Button Content="Guardar definições" Click="SaveSettings_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left"/>
                 </StackPanel>
             </ScrollViewer>
 
@@ -492,6 +515,37 @@
             </Grid>
         </Border>
         <!-- Guided first-run flow: intentionally sits above content but never disappears from XAML. -->
+                <!-- Dedicated advanced settings drawer; controls are preserved but no longer clutter daily workflows. -->
+        <Grid x:Name="AdvancedLayer" Grid.RowSpan="4" Background="#C9090B10" Visibility="Collapsed">
+            <Border x:Name="AdvancedDrawer" HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="500" BorderBrush="#344E6C" BorderThickness="1,0,0,0" Background="#111B2A" Padding="26,28">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="18">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Opções avançadas" FontSize="26" Foreground="White" FontWeight="SemiBold"/>
+                                <TextBlock Text="Controlo detalhado, sem complicar o ecrã principal." Foreground="#AFC1D8" FontSize="12" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Click="CloseAdvanced_Click" Style="{StaticResource QuietButton}" AutomationProperties.Name="Fechar opções avançadas" ToolTipService.ToolTip="Fechar painel avançado"><FontIcon Glyph="&#xE8BB;" FontFamily="Segoe Fluent Icons"/></Button>
+                        </Grid>
+                        <Border BorderBrush="#334B65" BorderThickness="0,0,0,1" Padding="0,0,0,14">
+                            <TextBlock Text="VÍDEO E FLUIDEZ" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                        </Border>
+                        <TextBlock Text="FPS de referência" Foreground="#DFE8F7"/>
+                        <ComboBox x:Name="FpsCombo" SelectedIndex="0" HorizontalAlignment="Stretch"><x:String>60</x:String><x:String>30</x:String><x:String>90</x:String><x:String>120</x:String></ComboBox>
+                        <TextBlock Text="Taxa de vídeo (Mbps)" Foreground="#DFE8F7"/>
+                        <ComboBox x:Name="BitrateCombo" SelectedIndex="0" HorizontalAlignment="Stretch"><x:String>16</x:String><x:String>8</x:String><x:String>24</x:String></ComboBox>
+                        <TextBlock Text="LAUNCHER PERSONALIZADO" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                        <TextBox x:Name="LauncherBox" Header="Identificador do pacote Android" Text="org.fossify.home" PlaceholderText="ex.: org.fossify.home"/>
+                        <TextBlock Text="Usa esta opção apenas se escolheres «Launcher personalizado» ao criar um ecrã virtual." Foreground="#9EADC7" FontSize="12" TextWrapping="Wrap"/>
+                        <TextBlock Text="ORIENTAÇÃO" Foreground="#80BAFF" FontSize="12" FontWeight="SemiBold"/>
+                        <TextBlock Text="Automático inicia com a orientação atual do Android sem impor landscape; resoluções fixas são uma escolha manual. Nem todas as apps permitem rotação ou ecrã virtual." Foreground="#B8C8DE" TextWrapping="Wrap" FontSize="12"/>
+                        <TextBlock Text="SEGURANÇA" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                        <TextBlock Text="O Companion é opcional. ADB exige permissão do dispositivo; não existe acesso root implícito." Foreground="#B8C8DE" FontSize="12" TextWrapping="Wrap"/>
+                        <Button Content="Guardar definições avançadas" Click="SaveAdvanced_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
         <Grid x:Name="WelcomeOverlay" Grid.RowSpan="4" Background="#F0090B10" Visibility="Collapsed">
             <Border Width="630" MaxWidth="630" VerticalAlignment="Center" HorizontalAlignment="Center" Background="#162437" BorderBrush="#486686" BorderThickness="1" CornerRadius="16" Padding="35">
                 <StackPanel Spacing="19">
