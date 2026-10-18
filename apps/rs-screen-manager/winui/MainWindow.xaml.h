@@ -65,6 +65,9 @@ namespace winrt::RSScreenManagerUI::implementation {
   std::vector<std::wstring> appPackages_;
   std::vector<std::wstring> hotspotGateways_;
   bool hotspotBusy_=false;
+  bool refreshBusy_=false;
+  bool pendingInitialRestore_=false;
+  bool pendingNetworkReconnect_=false;
   std::vector<std::wstring> deviceStates_;
   struct Session {
    PROCESS_INFORMATION process{};
@@ -91,6 +94,8 @@ namespace winrt::RSScreenManagerUI::implementation {
   void navigate(int page);
   void updateResponsive(double width);
   void refresh();
+  winrt::fire_and_forget refreshAsync(std::wstring endpoint);
+  void applyDeviceOutput(const std::wstring& output);
   winrt::fire_and_forget hotspotScanAsync();
   winrt::fire_and_forget hotspotAdbAsync(std::wstring arguments,std::wstring endpoint,bool tcpip);
   void hotspotBusy(bool busy);
