@@ -17,7 +17,8 @@ int main(){
  assert(!validIPv4(L"1..2.3"));
  auto adapters=discover();  // may be empty on CI runner; must never crash
  for(const auto& net:adapters){
-  assert(net.index!=0 || !net.connected || net.name.size()>=0);
+  assert(!net.name.empty());
+  if(!net.ssid.empty())assert(net.connected);
   assert(net.gateway.empty() || validIPv4(net.gateway));
  }
  return 0;
