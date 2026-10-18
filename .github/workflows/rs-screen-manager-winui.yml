@@ -106,6 +106,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Android app catalog test build failed' }
           & dist/app-catalog-test.exe
           if ($LASTEXITCODE -ne 0) { throw 'App catalog search and favorites tests failed' }
+          cl.exe /nologo /utf-8 /std:c++20 /EHsc /W4 /O2 /Fe:dist/viewport-transform-test.exe apps/rs-screen-manager/tests/viewport_transform_test.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'Viewport transform test compilation failed' }
+          & dist/viewport-transform-test.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Letterbox/orientation coordinate tests failed' }
       - name: Bundle scrcpy 5.0.1 and ADB with pinned integrity hash
         shell: pwsh
         run: |
