@@ -692,10 +692,39 @@ void MainWindow::start(bool virtualDisplay){
  startFor(serial,virtualDisplay,true);
 }
 void MainWindow::command(const std::wstring& args){
- PROCESS_INFORMATION pi{};
- if(!process(tools(L"adb.exe"),args,pi,false)){status(L"Não foi possível executar ADB.");return;}
- CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
- status(L"Comando ADB enviado. Atualiza os dispositivos após concluir.");
+ status(L"A executar comando ADB autorizado em segundo plano...");
+ commandAsync(args);
+}
+winrt::fire_and_forget MainWindow::commandAsync(std::wstring args){
+ auto strong=get_strong();
+ auto dispatcher=DispatcherQueue();
+ const bool pairing=args.rfind(L"pair ",0)==0;
+ const bool joining=args.rfind(L"connect ",0)==0;
+ const bool leaving=args.rfind(L"disconnect ",0)==0;
+ co_await winrt::resume_background();
+ auto output=captureAdbOutput(args,12000);
+ auto lower=output;
+ std::transform(lower.begin(),lower.end(),lower.begin(),[](wchar_t ch){return static_cast<wchar_t>(std::towlower(ch));});
+ bool success=false;
+ if(pairing)success=lower.find(L"successfully paired")!=std::wstring::npos;
+ else if(joining)success=lower.find(L"connected to")!=std::wstring::npos || lower.find(L"already connected")!=std::wstring::npos;
+ else if(leaving)success=lower.find(L"disconnected")!=std::wstring::npos;
+ dispatcher.TryEnqueue([strong,pairing,joining,leaving,success]{
+  auto* that=strong.get();
+  if(success){
+   if(pairing){
+    that->PairCodeBox().Text(L""); // never retain the temporary pairing PIN
+    that->status(L"Emparelhamento ADB confirmado. Usa o IP:porta de ligação do Android (pode diferir do emparelhamento).");
+   }else if(joining)that->status(L"ADB confirmou a ligação; a verificar autorização e dispositivo...");
+   else if(leaving)that->status(L"ADB confirmou a desconexão da rede.");
+   if(joining||leaving)that->refresh();
+  }else{
+   that->status(pairing?L"Emparelhamento não confirmado. Confirma PIN e endereço de emparelhamento do Android.":
+    joining?L"ADB não confirmou ligação. Verifica IP:porta, rede e autorização.":
+    leaving?L"ADB não confirmou a desconexão. Verifica a ligação.":
+    L"O comando ADB falhou ou não respondeu.");
+  }
+ });
 }
 void MainWindow::Refresh_Click(IInspectable const&,RoutedEventArgs const&){refresh();}
 void MainWindow::Mirror_Click(IInspectable const&,RoutedEventArgs const&){start(false);}
