@@ -29,6 +29,11 @@ namespace winrt::RSScreenManagerUI::implementation {
   void Mirror_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Virtual_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Stop_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void OpenWindowsWifi_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void ScanHotspot_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void HotspotInterface_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
+  void EnableUsbTcpip_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void ConnectHotspot_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Pair_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Connect_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Disconnect_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -58,6 +63,8 @@ namespace winrt::RSScreenManagerUI::implementation {
  private:
   std::vector<std::wstring> serials_;
   std::vector<std::wstring> appPackages_;
+  std::vector<std::wstring> hotspotGateways_;
+  bool hotspotBusy_=false;
   std::vector<std::wstring> deviceStates_;
   struct Session {
    PROCESS_INFORMATION process{};
@@ -84,6 +91,9 @@ namespace winrt::RSScreenManagerUI::implementation {
   void navigate(int page);
   void updateResponsive(double width);
   void refresh();
+  winrt::fire_and_forget hotspotScanAsync();
+  winrt::fire_and_forget hotspotAdbAsync(std::wstring arguments,std::wstring endpoint,bool tcpip);
+  void hotspotBusy(bool busy);
   void start(bool virtualDisplay);
   void startFor(const std::wstring& serial,bool virtualDisplay,bool save,const std::wstring& overrideTarget=L"",int overrideResolution=-1,int overrideClipboard=-1);
   void command(const std::wstring& args);
