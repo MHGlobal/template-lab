@@ -34,12 +34,12 @@ inline std::vector<std::wstring> filterPackages(
  const auto term=lowercase(text);
  std::vector<std::wstring> out;
  for(const auto& id:packages) {
-  if(onlyFavorites && !favorites.contains(id))continue;
+  if(onlyFavorites && !favorites.find(id)!=favorites.end())continue;
   if(!term.empty() && lowercase(id).find(term)==std::wstring::npos)continue;
   out.push_back(id);
  }
  std::stable_sort(out.begin(),out.end(),[&](const auto& a,const auto& b){
-  const bool fa=favorites.contains(a),fb=favorites.contains(b);
+  const bool fa=favorites.find(a)!=favorites.end(),fb=favorites.find(b)!=favorites.end();
   return fa!=fb?fa:a<b;
  });
  return out;
