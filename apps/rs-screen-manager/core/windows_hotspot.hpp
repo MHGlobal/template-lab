@@ -97,6 +97,52 @@ inline std::map<ULONG,std::wstring> connectedSSIDs() {
  WlanCloseHandle(wlan,nullptr);
  return result;
 }
+struct SavedNetwork {
+ std::wstring ssid;
+ std::wstring profile;
+ GUID interfaceGuid{};
+};
+inline std::vector<SavedNetwork> savedNearbyNetworks(){
+ std::vector<SavedNetwork> out;
+ HANDLE wlan=nullptr;DWORD negotiated=0;
+ if(WlanOpenHandle(2,nullptr,&negotiated,&wlan)!=ERROR_SUCCESS)return out;
+ PWLAN_INTERFACE_INFO_LIST interfaces=nullptr;
+ if(WlanEnumInterfaces(wlan,nullptr,&interfaces)==ERROR_SUCCESS && interfaces){
+  for(DWORD i=0;i<interfaces->dwNumberOfItems;++i){
+   auto& iface=interfaces->InterfaceInfo[i];
+   PWLAN_AVAILABLE_NETWORK_LIST networks=nullptr;
+   if(WlanGetAvailableNetworkList(wlan,&iface.InterfaceGuid,0,nullptr,&networks)!=ERROR_SUCCESS||!networks)continue;
+   for(DWORD j=0;j<networks->dwNumberOfItems;++j){
+    auto& n=networks->Network[j];
+    if(!(n.dwFlags&WLAN_AVAILABLE_NETWORK_HAS_PROFILE)||!n.bNetworkConnectable)continue;
+    auto ssid=decodeSSID(n.dot11Ssid);
+    if(ssid.empty()||!n.strProfileName[0])continue;
+    auto duplicate=std::find_if(out.begin(),out.end(),[&](const SavedNetwork& v){
+     return v.ssid==ssid&&v.profile==n.strProfileName&&
+            IsEqualGUID(v.interfaceGuid,iface.InterfaceGuid);
+    });
+    if(duplicate==out.end())out.push_back(SavedNetwork{ssid,n.strProfileName,iface.InterfaceGuid});
+   }
+   WlanFreeMemory(networks);
+  }
+ }
+ if(interfaces)WlanFreeMemory(interfaces);
+ WlanCloseHandle(wlan,nullptr);
+ return out;
+}
+inline DWORD requestSavedConnection(const SavedNetwork& chosen){
+ if(chosen.profile.empty())return ERROR_INVALID_PARAMETER;
+ HANDLE wlan=nullptr;DWORD version=0;
+ DWORD err=WlanOpenHandle(2,nullptr,&version,&wlan);
+ if(err!=ERROR_SUCCESS)return err;
+ WLAN_CONNECTION_PARAMETERS params{};
+ params.wlanConnectionMode=wlan_connection_mode_profile;
+ params.strProfile=chosen.profile.c_str();
+ params.dot11BssType=dot11_BSS_type_any;
+ err=WlanConnect(wlan,&chosen.interfaceGuid,&params,nullptr);
+ WlanCloseHandle(wlan,nullptr);
+ return err; // accepted by Windows ≠ authenticated/connected
+}
 inline std::vector<InterfaceInfo> discover() {
  auto ssids=connectedSSIDs();
  ULONG bytes=16384;
