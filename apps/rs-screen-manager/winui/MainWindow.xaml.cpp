@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
 #include "../core/virtual_display_policy.hpp"
+#include "../core/windows_hotspot.hpp"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
 #endif
@@ -721,6 +722,119 @@ void MainWindow::Screenshot_Click(IInspectable const&,RoutedEventArgs const&){
  }
  history_+=L"Screenshot: "+file+L"\n";refreshRecordings();updateSummary();
  status(L"Screenshot do ecrã físico guardado na pasta Recordings.");
+}
+void MainWindow::hotspotBusy(bool busy){
+ hotspotBusy_=busy;
+ HotspotProgress().Visibility(busy?Visibility::Visible:Visibility::Collapsed);
+ HotspotProgress().IsActive(busy);
+ HotspotScanButton().IsEnabled(!busy);
+ HotspotUsbButton().IsEnabled(!busy);
+ HotspotConnectButton().IsEnabled(!busy);
+}
+void MainWindow::OpenWindowsWifi_Click(IInspectable const&,RoutedEventArgs const&){
+ auto r=reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",L"ms-settings:network-wifi",nullptr,nullptr,SW_SHOWNORMAL));
+ if(r<=32)status(L"Não foi possível abrir as definições Wi-Fi. Abre Definições > Rede e Internet > Wi-Fi.");
+}
+void MainWindow::ScanHotspot_Click(IInspectable const&,RoutedEventArgs const&){
+ if(hotspotBusy_)return;
+ hotspotBusy(true);
+ HotspotResult().Text(L"A identificar as redes Wi-Fi e o endereço de gateway local...");
+ hotspotScanAsync();
+}
+winrt::fire_and_forget MainWindow::hotspotScanAsync(){
+ auto strong=get_strong();
+ auto dispatcher=DispatcherQueue();
+ co_await winrt::resume_background();
+ auto interfaces=rs::hotspot::discover();
+ dispatcher.TryEnqueue([strong,interfaces=std::move(interfaces)]() mutable{
+  auto* that=strong.get();
+  that->hotspotGateways_.clear();
+  auto combo=that->HotspotInterfaceCombo();
+  combo.Items().Clear();
+  for(const auto& net:interfaces){
+   std::wstring label=net.name;
+   if(!net.ssid.empty())label+=L" — "+net.ssid;
+   label+=net.connected?L" · conectada":L" · sem ligação";
+   combo.Items().Append(box_value(hstring(label)));
+   that->hotspotGateways_.push_back(net.connected?net.gateway:L"");
+  }
+  if(!interfaces.empty()){
+   combo.SelectedIndex(0);
+   that->HotspotResult().Text(L"Interfaces Wi-Fi identificadas. Confirma que o SSID é o hotspot do Android e que o ADB está autorizado antes de conectar.");
+  }else{
+   that->HotspotNetworkInfo().Text(L"Nenhum adaptador Wi-Fi detetado. Verifica se o PC tem Wi-Fi ativado; pode ser necessário um adaptador USB Wi-Fi.");
+   that->HotspotResult().Text(L"Não foi encontrada nenhuma interface Wi-Fi. Abre as definições Windows e liga-te ao hotspot primeiro.");
+  }
+  that->hotspotBusy(false);
+ });
+}
+void MainWindow::HotspotInterface_Changed(IInspectable const&,Controls::SelectionChangedEventArgs const&){
+ int32_t i=HotspotInterfaceCombo().SelectedIndex();
+ if(i<0||static_cast<size_t>(i)>=hotspotGateways_.size())return;
+ auto gateway=hotspotGateways_[i];
+ if(rs::hotspot::validIPv4(gateway)){
+  HotspotNetworkInfo().Text(L"Gateway Wi-Fi candidato: "+hstring(gateway)+L". Este IP pode pertencer ao hotspot, mas ainda não há prova de ADB autorizado.");
+  HotspotEndpointBox().Text(hstring(gateway+L":5555"));
+ }else{
+  HotspotNetworkInfo().Text(L"A interface selecionada não tem gateway IPv4 válido. Conecta o PC ao hotspot e atualiza a lista.");
+ }
+}
+void MainWindow::EnableUsbTcpip_Click(IInspectable const&,RoutedEventArgs const&){
+ if(hotspotBusy_)return;
+ const auto serial=selected();
+ if(serial.empty()){status(L"Seleciona primeiro um Android USB autorizado.");navigate(1);return;}
+ if(serial.find(L':')!=std::wstring::npos){
+  status(L"Seleciona uma ligação USB autorizada, não uma conexão ADB de rede.");return;
+ }
+ hotspotBusy(true);
+ HotspotResult().Text(L"A ativar ADB TCP/IP no dispositivo USB autorizado...");
+ hotspotAdbAsync(L"-s "+quote(serial)+L" tcpip 5555",L"",true);
+}
+void MainWindow::ConnectHotspot_Click(IInspectable const&,RoutedEventArgs const&){
+ if(hotspotBusy_)return;
+ auto endpoint=std::wstring(HotspotEndpointBox().Text().c_str());
+ auto colon=endpoint.rfind(L':');
+ if(colon==std::wstring::npos||!rs::hotspot::validIPv4(endpoint.substr(0,colon))){
+  status(L"Indica o endereço IPv4 válido do Android e a porta ADB, por exemplo 192.168.43.1:5555.");return;
+ }
+ auto port=endpoint.substr(colon+1);
+ if(port.empty()||port.size()>5||!std::all_of(port.begin(),port.end(),[](wchar_t v){return v>=L'0'&&v<=L'9';})){
+  status(L"A porta ADB precisa de ser um número entre 1 e 65535.");return;
+ }
+ unsigned long number=std::stoul(port);
+ if(number==0||number>65535){status(L"A porta ADB deve estar entre 1 e 65535.");return;}
+ hotspotBusy(true);
+ HotspotResult().Text(L"A conectar ao endereço informado. A ligação só fica pronta após autorização ADB.");
+ hotspotAdbAsync(L"connect "+endpoint,endpoint,false);
+}
+winrt::fire_and_forget MainWindow::hotspotAdbAsync(std::wstring args,std::wstring endpoint,bool tcpip){
+ auto strong=get_strong();
+ auto dispatcher=DispatcherQueue();
+ co_await winrt::resume_background();
+ auto output=captureAdbOutput(args,10000);
+ bool passed=false;
+ std::wstring followup;
+ if(tcpip){
+  passed=output.find(L"restarting in TCP mode")!=std::wstring::npos;
+  followup=passed?L"ADB TCP/IP ativado via USB. Confirma o IP do hotspot, retira o cabo se necessário e usa «Conectar ao Android pela rede».":L"ADB não confirmou TCP/IP. Verifica a autorização USB e tenta novamente.";
+ }else{
+  bool connected=(output.find(L"connected to")!=std::wstring::npos||output.find(L"already connected")!=std::wstring::npos);
+  if(connected){
+   auto devices=captureAdbOutput(L"devices",6000);
+   passed=devices.find(endpoint+L"\tdevice")!=std::wstring::npos ||
+          devices.find(endpoint+L" device")!=std::wstring::npos;
+  }
+  followup=passed?L"ADB de rede autorizado. O Android está pronto para abrir sessões. Atualiza Dispositivos para selecioná-lo.":
+   L"O PC pode estar ligado ao hotspot, mas o ADB não está autorizado. Confirma a porta, a Depuração sem fios ou ativa TCP/IP primeiro com USB.";
+ }
+ dispatcher.TryEnqueue([strong,followup=std::move(followup),passed,tcpip]{
+  auto* that=strong.get();
+  that->HotspotResult().Text(hstring(followup));
+  that->hotspotBusy(false);
+  that->status(passed?(tcpip?L"ADB TCP/IP confirmado.":L"ADB autorizado pelo hotspot.") :
+    L"ADB não confirmou a autorização. Consulta o assistente do hotspot.");
+  if(passed&&!tcpip)that->refresh();
+ });
 }
 void MainWindow::Pair_Click(IInspectable const&,RoutedEventArgs const&){
  const auto ep=std::wstring(EndpointBox().Text().c_str());
