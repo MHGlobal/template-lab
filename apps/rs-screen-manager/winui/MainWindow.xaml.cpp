@@ -199,6 +199,28 @@ void MainWindow::HotspotPage_Click(IInspectable const&,RoutedEventArgs const&){
 void MainWindow::MirrorPage_Click(IInspectable const&,RoutedEventArgs const&){navigate(2);}
 void MainWindow::VirtualPage_Click(IInspectable const&,RoutedEventArgs const&){navigate(3);}
 void MainWindow::Gaming_Click(IInspectable const&,RoutedEventArgs const&){navigate(4);}
+void MainWindow::GamingAdvanced_Click(IInspectable const&,RoutedEventArgs const&){
+ AdvancedPanelTitle().Text(L"Gaming · opções avançadas");
+ AdvancedPanelSubtitle().Text(L"Mesmo design connect+, com controlo real dos perfis de vídeo e acesso opcional ao gestor legado.");
+ GamingAdvancedSection().Visibility(Visibility::Visible);
+ AdvancedLayer().Visibility(Visibility::Visible);
+}
+void MainWindow::GamingPreset_Click(IInspectable const&,RoutedEventArgs const&){
+ ProfileCombo().SelectedIndex(3);
+ FpsCombo().SelectedIndex(3);
+ BitrateCombo().SelectedIndex(2);
+ ProfileSummaryText().Text(L"Gaming: alvo de 120 FPS e 24 Mbps, se suportado.");
+ saveSettings();
+ status(L"Perfil Gaming aplicado às próximas sessões: 120 FPS/24 Mbps como alvos, sem garantia de suporte.");
+}
+void MainWindow::GamingMirror_Click(IInspectable const&,RoutedEventArgs const&){
+ ProfileCombo().SelectedIndex(3);
+ FpsCombo().SelectedIndex(3);
+ BitrateCombo().SelectedIndex(2);
+ saveSettings();
+ start(false);
+ status(L"Espelhamento com perfil Gaming iniciado. O mapeamento táctil ainda não está integrado.");
+}
 void MainWindow::Mapper_Click(IInspectable const&,RoutedEventArgs const&){navigate(5);}
 void MainWindow::Profiles_Click(IInspectable const&,RoutedEventArgs const&){navigate(6);}
 void MainWindow::Diagnostics_Click(IInspectable const&,RoutedEventArgs const&){navigate(7);}
@@ -263,6 +285,9 @@ void MainWindow::ClipboardMode_Changed(IInspectable const&,Controls::SelectionCh
  }
 }
 void MainWindow::AdvancedSettings_Click(IInspectable const&,RoutedEventArgs const&){
+ AdvancedPanelTitle().Text(L"Opções avançadas");
+ AdvancedPanelSubtitle().Text(L"Controlo detalhado, sem complicar o ecrã principal.");
+ GamingAdvancedSection().Visibility(Visibility::Collapsed);
  AdvancedLayer().Visibility(Visibility::Visible);
 }
 void MainWindow::CloseAdvanced_Click(IInspectable const&,RoutedEventArgs const&){
