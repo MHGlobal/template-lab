@@ -304,6 +304,10 @@
                                     <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE72C;" FontFamily="Segoe Fluent Icons"/><TextBlock Text="Verificar ligação"/></StackPanel>
                                 </Button>
                             </StackPanel>
+                            <TextBlock Text="REDES DE HOTSPOT COM PERFIL JÁ GUARDADO NO WINDOWS" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="11"/>
+                            <ComboBox x:Name="HotspotSavedNetworksCombo" Header="Redes Wi-Fi conhecidas nas proximidades" PlaceholderText="Clica em Verificar ligação" HorizontalAlignment="Stretch" AutomationProperties.Name="Rede Wi-Fi gravada para conexão"/>
+                            <Button x:Name="JoinSavedHotspotButton" Content="Conectar à rede Wi-Fi selecionada" Click="JoinSavedHotspot_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" IsEnabled="False"/>
+                            <TextBlock Text="Só são apresentadas aqui redes próximas já guardadas no Windows. Para a primeira ligação a um novo hotspot, usa as Definições Wi-Fi do Windows para introduzir a palavra-passe com segurança." FontSize="12" Foreground="#A9BCD4" TextWrapping="Wrap"/>
                             <ComboBox x:Name="HotspotInterfaceCombo" Header="Interface Wi-Fi conectada" PlaceholderText="Verificar primeiro a ligação" HorizontalAlignment="Stretch" SelectionChanged="HotspotInterface_Changed" AutomationProperties.Name="Escolher interface conectada ao hotspot"/>
                             <TextBlock x:Name="HotspotNetworkInfo" Text="Ainda não foi verificada nenhuma interface. Um gateway identificado é apenas um endereço candidato — não prova que o Android tem ADB ativo." Foreground="#A9BCD4" TextWrapping="Wrap" FontSize="12"/>
                             <Border Background="#102236" BorderBrush="#315477" BorderThickness="1" CornerRadius="10" Padding="15">
