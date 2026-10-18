@@ -555,6 +555,8 @@
                             <TextBlock x:Name="HistoryText" Text="Ainda não há sessões registadas." Foreground="#D0DBEB" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                             <TextBlock Text="Gravações MP4 e screenshots ficam em %LOCALAPPDATA%\\RS Screen Manager\\Recordings. A catalogação e pesquisa avançada ainda não estão disponíveis." Foreground="#9BAEC7" TextWrapping="Wrap" FontSize="12"/>
                             <TextBlock Text="FICHEIROS GUARDADOS" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBox x:Name="MediaSearchBox" Header="Pesquisar na biblioteca" PlaceholderText="Pesquisar pelo nome do ficheiro" TextChanged="MediaSearch_Changed" HorizontalAlignment="Stretch" AutomationProperties.Name="Pesquisar vídeos e imagens"/>
+                            <ComboBox x:Name="MediaTypeCombo" Header="Tipo de ficheiro" HorizontalAlignment="Stretch" SelectedIndex="0" SelectionChanged="MediaType_Changed"><x:String>Todos os ficheiros</x:String><x:String>Vídeos MP4</x:String><x:String>Imagens PNG</x:String></ComboBox>
                             <TextBlock x:Name="RecordingsEmpty" Text="Ainda não há ficheiros. Ativa a gravação numa sessão ou tira uma captura de ecrã." Foreground="#B7C8DC" FontSize="13" TextWrapping="Wrap"/>
                             <ListView x:Name="RecordingsList" MaxHeight="260" SelectionMode="Single" HorizontalAlignment="Stretch" SelectionChanged="ListSelection_Changed" AutomationProperties.Name="Gravações e capturas guardadas"/>
                             <StackPanel Orientation="Horizontal" Spacing="10">
@@ -563,6 +565,7 @@
                                 </Button>
                                 <Button Click="RefreshRecordings_Click" Style="{StaticResource QuietButton}" AutomationProperties.Name="Atualizar biblioteca"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="15"/><TextBlock Text="Atualizar"/></StackPanel></Button>
                                 <Button Content="Abrir pasta" Click="OpenRecordings_Click" Style="{StaticResource QuietButton}"/>
+                                <Button x:Name="DeleteRecordingButton" Content="Eliminar selecionado" Click="DeleteRecording_Click" Style="{StaticResource QuietButton}" IsEnabled="False" AutomationProperties.Name="Eliminar ficheiro selecionado com confirmação"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
