@@ -595,6 +595,7 @@ void MainWindow::updateActionAvailability(){
  StopMirrorSelectedButton().IsEnabled(hasSessions&&MirrorSessionsList().SelectedIndex()>=0);
  StopVirtualSelectedButton().IsEnabled(hasSessions&&VirtualSessionsList().SelectedIndex()>=0);
  OpenRecordingButton().IsEnabled(hasMedia&&RecordingsList().SelectedIndex()>=0);
+ DeleteRecordingButton().IsEnabled(hasMedia&&RecordingsList().SelectedIndex()>=0);
 }
 void MainWindow::refreshSessionLists(){
  auto mirror=MirrorSessionsList();
@@ -780,27 +781,83 @@ void MainWindow::StopVirtualSelected_Click(IInspectable const&,RoutedEventArgs c
  stopAt(static_cast<size_t>(i));
 }
 void MainWindow::refreshRecordings(){
- recordings_.clear();
- auto list=RecordingsList();
- list.Items().Clear();
+ allRecordings_.clear();
  const auto search=recordingsPath()+L"\\*";
  WIN32_FIND_DATAW item{};
  HANDLE h=FindFirstFileW(search.c_str(),&item);
- if(h==INVALID_HANDLE_VALUE){updateActionAvailability();return;}
- do{
-  if((item.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)!=0)continue;
-  std::wstring name(item.cFileName);
-  auto dot=name.find_last_of(L'.');
-  if(dot==std::wstring::npos)continue;
-  auto extension=name.substr(dot);
-  std::transform(extension.begin(),extension.end(),extension.begin(),[](wchar_t c){return static_cast<wchar_t>(std::towlower(c));});
-  if(extension!=L".mp4"&&extension!=L".png")continue;
+ if(h!=INVALID_HANDLE_VALUE){
+  do{
+   if((item.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)!=0)continue;
+   std::wstring name(item.cFileName);
+   auto dot=name.find_last_of(L'.');
+   if(dot==std::wstring::npos)continue;
+   auto extension=name.substr(dot);
+   std::transform(extension.begin(),extension.end(),extension.begin(),[](wchar_t c){return static_cast<wchar_t>(std::towlower(c));});
+   if(extension!=L".mp4"&&extension!=L".png")continue;
+   allRecordings_.push_back(name);
+  }while(FindNextFileW(h,&item)&&allRecordings_.size()<500);
+  FindClose(h);
+ }
+ std::sort(allRecordings_.rbegin(),allRecordings_.rend());
+ filterRecordings();
+}
+void MainWindow::filterRecordings(){
+ int old=RecordingsList().SelectedIndex();
+ std::wstring previous=(old>=0&&static_cast<size_t>(old)<recordings_.size())?recordings_[old]:L"";
+ recordings_.clear();
+ auto query=std::wstring(MediaSearchBox().Text().c_str());
+ std::transform(query.begin(),query.end(),query.begin(),[](wchar_t c){return static_cast<wchar_t>(std::towlower(c));});
+ int type=MediaTypeCombo().SelectedIndex();
+ for(const auto& name:allRecordings_){
+  auto lower=name;
+  std::transform(lower.begin(),lower.end(),lower.begin(),[](wchar_t c){return static_cast<wchar_t>(std::towlower(c));});
+  if((type==1 && !(lower.size()>=4&&lower.substr(lower.size()-4)==L".mp4"))||(type==2 && !(lower.size()>=4&&lower.substr(lower.size()-4)==L".png")))continue;
+  if(!query.empty()&&lower.find(query)==std::wstring::npos)continue;
   recordings_.push_back(name);
- }while(FindNextFileW(h,&item)&&recordings_.size()<500);
- FindClose(h);
- std::sort(recordings_.rbegin(),recordings_.rend());
- for(const auto& name:recordings_)list.Items().Append(box_value(hstring(name)));
+ }
+ auto list=RecordingsList();
+ list.Items().Clear();
+ for(size_t i=0;i<recordings_.size();++i){
+  list.Items().Append(box_value(hstring(recordings_[i])));
+  if(recordings_[i]==previous)list.SelectedIndex(static_cast<int>(i));
+ }
  updateActionAvailability();
+}
+void MainWindow::MediaSearch_Changed(IInspectable const&,Controls::TextChangedEventArgs const&){
+ if(loaded_)filterRecordings();
+}
+void MainWindow::MediaType_Changed(IInspectable const&,Controls::SelectionChangedEventArgs const&){
+ if(loaded_)filterRecordings();
+}
+void MainWindow::DeleteRecording_Click(IInspectable const&,RoutedEventArgs const&){
+ int index=RecordingsList().SelectedIndex();
+ if(index<0||static_cast<size_t>(index)>=recordings_.size())return;
+ deleteRecordingAsync(recordings_[index]);
+}
+winrt::fire_and_forget MainWindow::deleteRecordingAsync(std::wstring name){
+ auto strong=get_strong();
+ if(name.empty()||name==L"."||name==L".."||name.find_first_of(L"\\/")!=std::wstring::npos){
+  status(L"Nome de ficheiro inválido.");co_return;
+ }
+ const auto full=recordingsPath()+L"\\"+name;
+ for(const auto& sess:sessions_){
+  if(sess.recording && sess.recordingFile==full){
+   status(L"Termina a gravação desta sessão antes de eliminar o ficheiro.");co_return;
+  }
+ }
+ Controls::ContentDialog dialog;
+ dialog.XamlRoot(RootGrid().XamlRoot());
+ dialog.Title(box_value(hstring(L"Eliminar ficheiro permanentemente?")));
+ dialog.Content(box_value(hstring(L"O ficheiro "+name+L" será eliminado do computador. Esta ação não pode ser desfeita.")));
+ dialog.PrimaryButtonText(L"Eliminar");
+ dialog.CloseButtonText(L"Cancelar");
+ dialog.DefaultButton(Controls::ContentDialogButton::Close);
+ auto result=co_await dialog.ShowAsync();
+ if(result!=Controls::ContentDialogResult::Primary)co_return;
+ if(DeleteFileW(full.c_str())){
+  refreshRecordings();
+  status(L"Ficheiro eliminado da biblioteca.");
+ }else status(L"Não foi possível eliminar o ficheiro. Verifica se está aberto ou protegido.");
 }
 void MainWindow::RefreshRecordings_Click(IInspectable const&,RoutedEventArgs const&){
  refreshRecordings();
