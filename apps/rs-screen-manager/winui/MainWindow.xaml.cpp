@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
 #include "../core/virtual_display_policy.hpp"
+#include "../core/app_catalog.hpp"
 #include "../core/windows_hotspot.hpp"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
@@ -349,6 +350,7 @@ void MainWindow::refreshInstalledApps(){
  ++appScanGeneration_;
  if(serial.empty()){
   appPackages_.clear();
+  allAppPackages_.clear();
   InstalledAppsCombo().Items().Clear();
   InstalledAppsCombo().IsEnabled(false);
   InstalledAppsHint().Text(L"Seleciona um Android autorizado na página Dispositivos.");
@@ -363,37 +365,70 @@ winrt::fire_and_forget MainWindow::refreshInstalledAppsAsync(std::wstring serial
  auto dispatcher=DispatcherQueue();
  co_await winrt::resume_background();
  auto output=captureAdbOutput(L"-s "+quote(serial)+L" shell pm list packages -3",8000);
- std::wistringstream stream(output);
- std::wstring line;
- std::vector<std::wstring> packages;
- while(std::getline(stream,line)){
-  if(!line.empty()&&line.back()==L'\r')line.pop_back();
-  constexpr wchar_t prefix[]=L"package:";
-  if(line.rfind(prefix,0)!=0)continue;
-  auto pkg=line.substr(8);
-  if(!rs::display::validPackage(pkg))continue;
-  packages.push_back(pkg);
- }
- std::sort(packages.begin(),packages.end());
- packages.erase(std::unique(packages.begin(),packages.end()),packages.end());
+ auto packages=rs::catalog::parsePackages(output);
  dispatcher.TryEnqueue([strong,serial=std::move(serial),previousPackage=std::move(previousPackage),
                        generation,packages=std::move(packages)]() mutable{
   auto* that=strong.get();
   if(generation!=that->appScanGeneration_ || that->selected()!=serial)return;
-  that->appPackages_=std::move(packages);
-  auto combo=that->InstalledAppsCombo();
-  combo.Items().Clear();
-  int preferred=-1;
-  for(size_t i=0;i<that->appPackages_.size();++i){
-   combo.Items().Append(box_value(hstring(that->appPackages_[i])));
-   if(that->appPackages_[i]==previousPackage)preferred=static_cast<int>(i);
+  that->allAppPackages_=std::move(packages);
+  that->filterInstalledApps();
+  if(!previousPackage.empty()){
+   auto found=std::find(that->appPackages_.begin(),that->appPackages_.end(),previousPackage);
+   if(found!=that->appPackages_.end())
+    that->InstalledAppsCombo().SelectedIndex(static_cast<int>(found-that->appPackages_.begin()));
   }
-  if(preferred>=0)combo.SelectedIndex(preferred);
-  combo.IsEnabled(!that->appPackages_.empty());
-  that->InstalledAppsHint().Text(that->appPackages_.empty()?
+  that->InstalledAppsHint().Text(that->allAppPackages_.empty()?
    L"Não foi possível listar apps instaladas. Confirma a autorização Android e tenta novamente.":
-   L"Aplicações instaladas encontradas. A compatibilidade de abertura depende da aplicação; os nomes técnicos serão substituídos por nomes e ícones após validação dos metadados.");
+   L"Catálogo offline do dispositivo. A abertura de cada app depende da compatibilidade Android; nomes técnicos são usados até se obterem metadados reais.");
  });
+}
+void MainWindow::AppSearch_Changed(IInspectable const&,Controls::TextChangedEventArgs const&){
+ if(!loaded_)return;
+ filterInstalledApps();
+}
+void MainWindow::FavoriteFilter_Toggled(IInspectable const&,RoutedEventArgs const&){
+ if(!loaded_)return;
+ filterInstalledApps();
+}
+void MainWindow::AppSelection_Changed(IInspectable const&,Controls::SelectionChangedEventArgs const&){
+ updateAppFavoriteButton();
+}
+void MainWindow::updateAppFavoriteButton(){
+ int selectedIndex=InstalledAppsCombo().SelectedIndex();
+ bool hasApp=selectedIndex>=0 && static_cast<size_t>(selectedIndex)<appPackages_.size();
+ FavoriteAppButton().IsEnabled(hasApp);
+ if(hasApp){
+  bool isFavorite=favoritePackages_.contains(appPackages_[selectedIndex]);
+  FavoriteAppButton().Content(box_value(hstring(isFavorite?L"Remover dos favoritos":L"Adicionar aos favoritos")));
+ }else FavoriteAppButton().Content(box_value(hstring(L"Seleciona uma aplicação")));
+}
+void MainWindow::FavoriteApp_Click(IInspectable const&,RoutedEventArgs const&){
+ int i=InstalledAppsCombo().SelectedIndex();
+ if(i<0||static_cast<size_t>(i)>=appPackages_.size())return;
+ auto id=appPackages_[i];
+ if(favoritePackages_.contains(id))favoritePackages_.erase(id);
+ else favoritePackages_.insert(id);
+ writeIni(settingsPath(),L"apps",L"favorites",rs::catalog::encodeFavorites(favoritePackages_));
+ filterInstalledApps();
+ status(L"Preferência de aplicação guardada neste computador.");
+}
+void MainWindow::filterInstalledApps(){
+ auto combo=InstalledAppsCombo();
+ int old=combo.SelectedIndex();
+ std::wstring previous=(old>=0&&static_cast<size_t>(old)<appPackages_.size())?appPackages_[old]:L"";
+ appPackages_=rs::catalog::filterPackages(allAppPackages_,
+  std::wstring(AppSearchBox().Text().c_str()),favoritePackages_,OnlyFavoriteAppsSwitch().IsOn());
+ combo.Items().Clear();
+ int preferred=-1;
+ for(size_t i=0;i<appPackages_.size();++i){
+  const auto& pkg=appPackages_[i];
+  auto label=(favoritePackages_.contains(pkg)?L"★  ":L"")+pkg;
+  combo.Items().Append(box_value(hstring(label)));
+  if(pkg==previous)preferred=static_cast<int>(i);
+ }
+ if(preferred>=0)combo.SelectedIndex(preferred);
+ combo.IsEnabled(!appPackages_.empty());
+ updateAppFavoriteButton();
 }
 void MainWindow::RefreshApps_Click(IInspectable const&,RoutedEventArgs const&){
  refreshInstalledApps();
@@ -401,6 +436,7 @@ void MainWindow::RefreshApps_Click(IInspectable const&,RoutedEventArgs const&){
 }
 void MainWindow::loadSettings(){
  const auto path=settingsPath();
+ favoritePackages_=rs::catalog::decodeFavorites(ini(path,L"apps",L"favorites"));
  choose(FpsCombo(),ini(path,L"video",L"fps",L"60"));
  choose(BitrateCombo(),ini(path,L"video",L"bitrate",L"16"));
  auto res=ini(path,L"video",L"resolution",L"");
