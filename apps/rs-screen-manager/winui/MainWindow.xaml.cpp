@@ -281,27 +281,33 @@ void MainWindow::updateLaunchInputs(){
  CustomLauncherHint().Visibility(mode==2?Visibility::Visible:Visibility::Collapsed);
 }
 std::wstring MainWindow::captureAdbOutput(const std::wstring& args,DWORD timeoutMs){
+ // A temporary file prevents the UI deadlocking when adb prints more than a pipe buffer.
+ wchar_t dir[MAX_PATH]{};wchar_t temp[MAX_PATH]{};
+ if(!GetTempPathW(MAX_PATH,dir)||!GetTempFileNameW(dir,L"RSM",0,temp))return {};
  SECURITY_ATTRIBUTES sa{sizeof(sa),nullptr,TRUE};
- HANDLE reader=nullptr,writer=nullptr;
- if(!CreatePipe(&reader,&writer,&sa,0))return {};
- SetHandleInformation(reader,HANDLE_FLAG_INHERIT,0);
+ HANDLE file=CreateFileW(temp,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,
+  &sa,CREATE_ALWAYS,FILE_ATTRIBUTE_TEMPORARY,nullptr);
+ if(file==INVALID_HANDLE_VALUE){DeleteFileW(temp);return {};}
  PROCESS_INFORMATION pi{};
- const bool started=process(tools(L"adb.exe"),args,pi,true,writer);
- CloseHandle(writer);
- if(!started){CloseHandle(reader);return {};}
+ if(!process(tools(L"adb.exe"),args,pi,true,file)){
+  CloseHandle(file);DeleteFileW(temp);return {};
+ }
  if(WaitForSingleObject(pi.hProcess,timeoutMs)==WAIT_TIMEOUT){
   TerminateProcess(pi.hProcess,1);
   WaitForSingleObject(pi.hProcess,1500);
  }
- std::string out;out.reserve(8192);
- char buf[2048];DWORD n=0;
- while(ReadFile(reader,buf,sizeof(buf),&n,nullptr)&&n){
-  if(out.size()+n>262144)break;
-  out.append(buf,n);
- }
- CloseHandle(reader);
  CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
- return std::wstring(out.begin(),out.end());
+ LARGE_INTEGER len{};
+ std::wstring result;
+ if(GetFileSizeEx(file,&len)&&len.QuadPart>0&&len.QuadPart<=262144){
+  SetFilePointer(file,0,nullptr,FILE_BEGIN);
+  std::string bytes(static_cast<size_t>(len.QuadPart),'\0');
+  DWORD got=0;
+  if(ReadFile(file,bytes.data(),static_cast<DWORD>(bytes.size()),&got,nullptr))
+   result.assign(bytes.begin(),bytes.begin()+static_cast<std::ptrdiff_t>(got));
+ }
+ CloseHandle(file);DeleteFileW(temp);
+ return result;
 }
 void MainWindow::refreshInstalledApps(){
  auto serial=selected();
