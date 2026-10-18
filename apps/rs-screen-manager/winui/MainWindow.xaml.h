@@ -47,6 +47,10 @@ namespace winrt::RSScreenManagerUI::implementation {
   void ApplyProfile_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   winrt::fire_and_forget screenshotAsync(std::wstring serial,std::wstring outputFile);
   void Screenshot_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void MediaSearch_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::TextChangedEventArgs const&);
+  void MediaType_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
+  void DeleteRecording_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  winrt::fire_and_forget deleteRecordingAsync(std::wstring file);
   void RefreshRecordings_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void OpenSelectedRecording_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void OpenRecordings_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -101,6 +105,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   Microsoft::UI::Xaml::DispatcherTimer maintenanceTimer_{nullptr};
   std::wstring history_;
   std::vector<std::wstring> recordings_;
+  std::vector<std::wstring> allRecordings_;
   bool loaded_=false;
   bool lastNarrow_=false;
   bool lastHeroHidden_=false;
@@ -136,6 +141,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   void refreshSessionLists();
   void updateActionAvailability();
   void refreshRecordings();
+  void filterRecordings();
   std::wstring recordingsPath() const;
   std::wstring newMediaPath(const wchar_t* extension) const;
   void restoreSessions();
