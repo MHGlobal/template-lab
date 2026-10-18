@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
+#include "../core/virtual_display_policy.hpp"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
 #endif
@@ -559,23 +560,18 @@ void MainWindow::startFor(const std::wstring& serial,bool virtualDisplay,bool pe
     target=appPackages_[index];
    }else if(mode==2)target=std::wstring(LauncherBox().Text().c_str());
   }
-  if(!target.empty()&&!std::all_of(target.begin(),target.end(),[](wchar_t c){return std::iswalnum(c)||c==L'.'||c==L'_';})){
+  if(!target.empty()&&!rs::display::validPackage(target)){
    status(L"O identificador Android contém caracteres inválidos.");return;
   }
  }
  std::wstring args=L"--serial="+quote(serial)+L" --max-fps="+fps+L" --video-bit-rate="+bitrate+L"M --video-codec=h264 --keep-active";
  if(virtualDisplay){
-  // Native portrait and app compatibility first. Never force landscape by default.
-  switch(resolution){
-   case 1:args+=L" --new-display=1080x1920/320";break;
-   case 2:args+=L" --new-display=720x1280/320";break;
-   case 3:args+=L" --new-display=1920x1080/320";break;
-   default:args+=L" --new-display";break;
-  }
+  // Auto mode uses Android native dimensions; never force landscape implicitly.
+  args+=rs::display::virtualDisplayArgs(resolution);
   if(!target.empty())args+=L" --start-app="+target;
  }
  // scrcpy owns Android↔Windows clipboard sync. PC preference disables automatic Android overwrite.
- if(clipboard==1)args+=L" --no-clipboard-autosync";
+ args+=rs::display::clipboardArgs(clipboard);
  if(DuplicateAudio().IsOn())args+=L" --audio-source=playback --audio-dup";
  else args+=L" --audio-source=output";
  bool recording=virtualDisplay?RecordVirtualToggle().IsOn():RecordMirrorToggle().IsOn();
