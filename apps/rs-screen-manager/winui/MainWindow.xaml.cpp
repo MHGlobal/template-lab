@@ -819,41 +819,62 @@ void MainWindow::OpenRecordings_Click(IInspectable const&,RoutedEventArgs const&
  if(result<=32)status(L"Não foi possível abrir a pasta de gravações.");
 }
 void MainWindow::Screenshot_Click(IInspectable const&,RoutedEventArgs const&){
+ if(screenshotBusy_){status(L"Já há uma captura em curso.");return;}
  const auto serial=selected();
  if(serial.empty()){status(L"Seleciona primeiro um Android autorizado.");navigate(1);return;}
- const auto file=newMediaPath(L".png");
- HANDLE out=CreateFileW(file.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
- if(out==INVALID_HANDLE_VALUE){status(L"Não foi possível criar a imagem na pasta de gravações.");return;}
- SECURITY_ATTRIBUTES sa{sizeof(sa),nullptr,TRUE};HANDLE reader{},writer{};
- if(!CreatePipe(&reader,&writer,&sa,0)){CloseHandle(out);DeleteFileW(file.c_str());status(L"Erro ao preparar a captura.");return;}
- SetHandleInformation(reader,HANDLE_FLAG_INHERIT,0);
- PROCESS_INFORMATION pi{};
- const auto cmd=L"-s "+quote(serial)+L" exec-out screencap -p";
- if(!process(tools(L"adb.exe"),cmd,pi,true,writer)){
-  CloseHandle(writer);CloseHandle(reader);CloseHandle(out);DeleteFileW(file.c_str());
-  status(L"Não foi possível iniciar a captura ADB.");return;
- }
- CloseHandle(writer);
- char block[16384];DWORD got=0,written=0;
- size_t total=0;bool success=true;unsigned char signature[8]{};size_t sigCount=0;
- while(ReadFile(reader,block,sizeof(block),&got,nullptr)&&got){
-  for(DWORD i=0;i<got&&sigCount<8;++i)signature[sigCount++]=static_cast<unsigned char>(block[i]);
-  total+=got;
-  if(total>64ull*1024ull*1024ull||!WriteFile(out,block,got,&written,nullptr)||written!=got){success=false;break;}
- }
- CloseHandle(reader);
- if(!success)TerminateProcess(pi.hProcess,1);
- WaitForSingleObject(pi.hProcess,5000);
- DWORD exitCode=1;GetExitCodeProcess(pi.hProcess,&exitCode);
- CloseHandle(pi.hThread);CloseHandle(pi.hProcess);CloseHandle(out);
- constexpr unsigned char png[8]={137,80,78,71,13,10,26,10};
- if(!success||exitCode!=0||total<8||!std::equal(std::begin(signature),std::end(signature),std::begin(png))){
-  DeleteFileW(file.c_str());
-  status(L"A captura falhou; confirma que o dispositivo está autorizado e desbloqueado.");return;
- }
- history_+=L"Screenshot: "+file+L"\n";refreshRecordings();updateSummary();
- status(L"Screenshot do ecrã físico guardado na pasta Recordings.");
+ screenshotBusy_=true;
+ ScreenshotButton().IsEnabled(false);
+ status(L"A capturar o ecrã físico do Android em segundo plano...");
+ screenshotAsync(serial,newMediaPath(L".png"));
 }
+winrt::fire_and_forget MainWindow::screenshotAsync(std::wstring serial,std::wstring file){
+ auto strong=get_strong();
+ auto dispatcher=DispatcherQueue();
+ co_await winrt::resume_background();
+ SECURITY_ATTRIBUTES sa{sizeof(sa),nullptr,TRUE};
+ HANDLE out=CreateFileW(file.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ,&sa,
+                         CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+ bool success=false;
+ if(out!=INVALID_HANDLE_VALUE){
+  PROCESS_INFORMATION pi{};
+  auto args=L"-s "+quote(serial)+L" exec-out screencap -p";
+  if(process(tools(L"adb.exe"),args,pi,true,out)){
+   DWORD waiting=WaitForSingleObject(pi.hProcess,15000);
+   if(waiting==WAIT_TIMEOUT){
+    TerminateProcess(pi.hProcess,1);
+    WaitForSingleObject(pi.hProcess,2000);
+   }
+   DWORD exitCode=1;
+   GetExitCodeProcess(pi.hProcess,&exitCode);
+   CloseHandle(pi.hThread);
+   CloseHandle(pi.hProcess);
+   LARGE_INTEGER length{};
+   unsigned char signature[8]{};
+   DWORD read=0;
+   constexpr unsigned char png[8]={137,80,78,71,13,10,26,10};
+   if(waiting==WAIT_OBJECT_0 && exitCode==0 &&
+      GetFileSizeEx(out,&length) && length.QuadPart>=8 && length.QuadPart<=64ll*1024*1024){
+    SetFilePointer(out,0,nullptr,FILE_BEGIN);
+    success=ReadFile(out,signature,sizeof(signature),&read,nullptr)&&read==8 &&
+            std::equal(std::begin(signature),std::end(signature),std::begin(png));
+   }
+  }
+  CloseHandle(out);
+ }
+ if(!success)DeleteFileW(file.c_str());
+ dispatcher.TryEnqueue([strong,success,file=std::move(file)]{
+  auto* that=strong.get();
+  that->screenshotBusy_=false;
+  that->ScreenshotButton().IsEnabled(true);
+  if(success){
+   that->history_+=L"Screenshot: "+file+L"\n";
+   that->refreshRecordings();
+   that->updateSummary();
+   that->status(L"Screenshot PNG validado e guardado na biblioteca.");
+  }else that->status(L"A captura falhou ou excedeu o tempo. Confirma que o Android está autorizado e desbloqueado.");
+ });
+}
+
 void MainWindow::hotspotBusy(bool busy){
  hotspotBusy_=busy;
  HotspotProgress().Visibility(busy?Visibility::Visible:Visibility::Collapsed);
