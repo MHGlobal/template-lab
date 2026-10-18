@@ -285,6 +285,41 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel Spacing="14">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <FontIcon Glyph="&#xE701;" FontFamily="Segoe Fluent Icons" FontSize="20" Foreground="#70B5FF"/>
+                                <TextBlock Text="HOTSPOT DO TELEMÓVEL" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Text="Liga o computador ao ponto de acesso criado pelo Android. Não é necessário ter Internet: é necessária uma ligação local e autorização ADB." Foreground="#D9E6F5" TextWrapping="Wrap"/>
+                            <TextBlock Text="1. Ativa o Hotspot pessoal no Android. 2. No computador, liga-te à rede Wi-Fi criada. 3. Verifica a ligação abaixo." Foreground="#B5C7DD" FontSize="13" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Click="OpenWindowsWifi_Click" Style="{StaticResource QuietButton}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE701;" FontFamily="Segoe Fluent Icons"/><TextBlock Text="Abrir Wi-Fi do Windows"/></StackPanel>
+                                </Button>
+                                <Button x:Name="HotspotScanButton" Click="ScanHotspot_Click" Style="{StaticResource QuietButton}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE72C;" FontFamily="Segoe Fluent Icons"/><TextBlock Text="Verificar ligação"/></StackPanel>
+                                </Button>
+                            </StackPanel>
+                            <ComboBox x:Name="HotspotInterfaceCombo" Header="Interface Wi-Fi conectada" PlaceholderText="Verificar primeiro a ligação" HorizontalAlignment="Stretch" SelectionChanged="HotspotInterface_Changed" AutomationProperties.Name="Escolher interface conectada ao hotspot"/>
+                            <TextBlock x:Name="HotspotNetworkInfo" Text="Ainda não foi verificada nenhuma interface. Um gateway identificado é apenas um endereço candidato — não prova que o Android tem ADB ativo." Foreground="#A9BCD4" TextWrapping="Wrap" FontSize="12"/>
+                            <Border Background="#102236" BorderBrush="#315477" BorderThickness="1" CornerRadius="10" Padding="15">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="AUTORIZAÇÃO ADB · ESCOLHE O MÉTODO" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="11" CharacterSpacing="70"/>
+                                    <TextBlock Text="Com cabo USB: seleciona um Android autorizado e ativa ADB TCP/IP no próprio dispositivo. Depois podes retirar o cabo e ligar ao endereço da rede." Foreground="#BDCEE2" TextWrapping="Wrap" FontSize="12"/>
+                                    <Button x:Name="HotspotUsbButton" Click="EnableUsbTcpip_Click" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Content="Ativar ADB TCP/IP no Android USB selecionado"/>
+                                    <TextBlock Text="Sem cabo: a Depuração sem fios do Android deve estar ativa e suportar este modo. Usa o emparelhamento por PIN acima antes de conectar." Foreground="#BDCEE2" TextWrapping="Wrap" FontSize="12"/>
+                                </StackPanel>
+                            </Border>
+                            <TextBox x:Name="HotspotEndpointBox" Header="IP do Android e porta ADB" PlaceholderText="Confirma o IP do telefone:5555" Description="O gateway Wi-Fi pode pertencer ao telemóvel, mas só a autorização ADB confirma o acesso."/>
+                            <Button x:Name="HotspotConnectButton" Click="ConnectHotspot_Click" Style="{StaticResource BlueButton}" HorizontalAlignment="Left">
+                                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE753;" FontFamily="Segoe Fluent Icons"/><TextBlock Text="Conectar ao Android pela rede"/></StackPanel>
+                            </Button>
+                            <ProgressRing x:Name="HotspotProgress" IsActive="False" Visibility="Collapsed" HorizontalAlignment="Left" Width="22" Height="22" AutomationProperties.Name="Operação de ligação em curso"/>
+                            <TextBlock x:Name="HotspotResult" Text="Estado: à espera de verificar a rede e a autorização." Foreground="#D7E6F7" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite"/>
+                            <TextBlock Text="O Windows pode estar ligado ao hotspot sem que a Depuração sem fios funcione neste Android. Nesse caso, utiliza USB autorizado ou uma rede Wi-Fi comum. A aplicação não contorna permissões." Foreground="#E5B98B" FontSize="12" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
 
