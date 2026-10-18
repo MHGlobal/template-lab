@@ -395,7 +395,7 @@
                                 <TextBlock Text="Seleciona a aplicação instalada" Foreground="#DBE8FA" FontSize="13"/>
                                 <TextBox x:Name="AppSearchBox" Header="Pesquisar aplicações" PlaceholderText="Pesquisa por identificador da aplicação" TextChanged="AppSearch_Changed" HorizontalAlignment="Stretch" AutomationProperties.Name="Pesquisar aplicações do Android"/>
                                 <ToggleSwitch x:Name="OnlyFavoriteAppsSwitch" Header="Mostrar apenas favoritas" Toggled="FavoriteFilter_Toggled" IsOn="False"/>
-                                <ComboBox x:Name="InstalledAppsCombo" HorizontalAlignment="Stretch" PlaceholderText="Escolher aplicação" AutomationProperties.Name="Aplicações instaladas"/>
+                                <ComboBox x:Name="InstalledAppsCombo" HorizontalAlignment="Stretch" PlaceholderText="Escolher aplicação" SelectionChanged="AppSelection_Changed" AutomationProperties.Name="Aplicações instaladas"/>
                                 <Button x:Name="FavoriteAppButton" Content="Adicionar aos favoritos" Click="FavoriteApp_Click" IsEnabled="False" Style="{StaticResource QuietButton}" HorizontalAlignment="Left"/>
                                 <Button Click="RefreshApps_Click" HorizontalAlignment="Left" Style="{StaticResource QuietButton}">
                                     <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE72C;"/><TextBlock Text="Atualizar aplicações"/></StackPanel>
