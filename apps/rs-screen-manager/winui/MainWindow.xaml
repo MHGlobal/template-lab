@@ -142,7 +142,7 @@
                                 </StackPanel>
                                 <TextBlock Text="O que queres fazer agora?" Foreground="White" FontWeight="SemiBold" FontSize="24" TextWrapping="Wrap"/>
                                 <TextBlock Text="Um ecrã virtual abre uma aplicação sem ocupar o ecrã principal do Android. Espelhamento mostra o que já está no telemóvel." Foreground="#B1BFD1" FontSize="13" TextWrapping="Wrap" MaxWidth="610"/>
-                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                <StackPanel x:Name="HomeActionsPanel" Orientation="Horizontal" Spacing="10">
                                     <Button Click="Devices_Click" Style="{StaticResource BlueButton}" AutomationProperties.Name="Ligar ou escolher telemóvel"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE772;" FontFamily="Segoe Fluent Icons"/><TextBlock Text="1 · Ligar Android"/></StackPanel></Button>
                                     <Button Click="VirtualPage_Click" Style="{StaticResource QuietButton}" AutomationProperties.Name="Criar ecrã virtual">
                                         <StackPanel Orientation="Horizontal" Spacing="9"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="15"/><TextBlock Text="2 · Ecrã virtual"/></StackPanel>
@@ -282,6 +282,17 @@
                         <StackPanel Spacing="12">
                             <TextBlock Text="ESPELHAR O TELEMÓVEL" Foreground="#80BAFF" FontSize="11" CharacterSpacing="90" FontWeight="SemiBold"/>
                             <TextBlock Text="Seleciona o Android em Dispositivos. O espelhamento mantém a orientação original do telemóvel." Foreground="#BECBE0" TextWrapping="Wrap"/>
+                            <Border Background="#10263B" BorderBrush="#305276" BorderThickness="1" CornerRadius="9" Padding="15,13">
+                                <StackPanel Spacing="9">
+                                    <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE8F0;" FontFamily="Segoe Fluent Icons" Foreground="#73B7FF" FontSize="18"/><TextBlock Text="Clipboard entre computador e Android" Foreground="#E3F0FE" FontWeight="SemiBold" FontSize="14"/></StackPanel>
+                                    <TextBlock x:Name="ActiveClipboardStatus" Text="Automático: copia do Android para o PC; Ctrl+V no ecrã Android cola o conteúdo do computador." Foreground="#B7C9DE" FontSize="12" TextWrapping="Wrap"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="9">
+                                        <Button Content="Preferir PC" Click="ClipboardPC_Click" Style="{StaticResource QuietButton}" ToolTipService.ToolTip="Impede que cópias do Android substituam o clipboard do PC em novas sessões"/>
+                                        <Button Content="Preferir Android" Click="ClipboardAndroid_Click" Style="{StaticResource QuietButton}" ToolTipService.ToolTip="Sincronização de cópias Android para Windows em novas sessões"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Ctrl+C e Ctrl+V funcionam quando a janela scrcpy tem o foco. A mudança de política só entra em vigor nas novas sessões; não reinicia as que já estão abertas." Foreground="#98ACC6" FontSize="12" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
                             <ToggleSwitch x:Name="RecordMirrorToggle" Header="Gravar esta sessão em MP4" IsOn="False"/>
                             <TextBlock Text="A gravação será guardada localmente. Para finalizar o MP4 sem corromper, termina a sessão pelo gestor." Foreground="#9DAFC6" FontSize="12" TextWrapping="Wrap"/>
                             <StackPanel Orientation="Horizontal" Spacing="10">
@@ -448,7 +459,7 @@
                         <StackPanel Spacing="14">
                             <TextBlock Text="ÁREA DE TRANSFERÊNCIA" Foreground="#80BAFF" FontWeight="SemiBold" FontSize="12"/>
                             <TextBlock Text="Quando o ecrã Android tem o foco, utiliza Ctrl+C e Ctrl+V normalmente no scrcpy. Escolhe como o clipboard deverá sincronizar nas sessões iniciadas a seguir." Foreground="#AFC0D7" FontSize="12" TextWrapping="Wrap"/>
-                            <ComboBox x:Name="ClipboardModeCombo" SelectedIndex="0" HorizontalAlignment="Stretch" AutomationProperties.Name="Origem de clipboard">
+                            <ComboBox x:Name="ClipboardModeCombo" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="ClipboardMode_Changed" AutomationProperties.Name="Origem de clipboard">
                                 <x:String>Automático · Android ↔ Computador</x:String>
                                 <x:String>Preferir computador · sem cópia automática do Android</x:String>
                                 <x:String>Preferir Android · atualizar clipboard do computador</x:String>
