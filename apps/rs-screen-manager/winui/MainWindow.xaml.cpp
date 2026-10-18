@@ -12,6 +12,7 @@
 #include <chrono>
 #include <iterator>
 #include <cstddef>
+#include <thread>
 #include <shellapi.h>
 #pragma comment(lib,"shell32.lib")
 
@@ -793,6 +794,7 @@ void MainWindow::hotspotBusy(bool busy){
  HotspotProgress().Visibility(busy?Visibility::Visible:Visibility::Collapsed);
  HotspotProgress().IsActive(busy);
  HotspotScanButton().IsEnabled(!busy);
+ JoinSavedHotspotButton().IsEnabled(!busy && HotspotSavedNetworksCombo().SelectedIndex()>=0);
  auto usb=selected();
  HotspotUsbButton().IsEnabled(!busy && !usb.empty() && usb.find(L':')==std::wstring::npos);
  HotspotConnectButton().IsEnabled(!busy);
@@ -812,9 +814,22 @@ winrt::fire_and_forget MainWindow::hotspotScanAsync(){
  auto dispatcher=DispatcherQueue();
  co_await winrt::resume_background();
  auto interfaces=rs::hotspot::discover();
- dispatcher.TryEnqueue([strong,interfaces=std::move(interfaces)]() mutable{
+ auto saved=rs::hotspot::savedNearbyNetworks();
+ dispatcher.TryEnqueue([strong,interfaces=std::move(interfaces),saved=std::move(saved)]() mutable{
   auto* that=strong.get();
   that->hotspotGateways_.clear();
+  that->savedWifiProfiles_.clear();
+  that->savedWifiSSIDs_.clear();
+  that->savedWifiInterfaceIds_.clear();
+  auto savedCombo=that->HotspotSavedNetworksCombo();
+  savedCombo.Items().Clear();
+  for(const auto& net:saved){
+   savedCombo.Items().Append(box_value(hstring(net.ssid+L" · guardada")));
+   that->savedWifiProfiles_.push_back(net.profile);
+   that->savedWifiSSIDs_.push_back(net.ssid);
+   that->savedWifiInterfaceIds_.push_back(net.interfaceGuid);
+  }
+  if(!saved.empty())savedCombo.SelectedIndex(0);
   auto combo=that->HotspotInterfaceCombo();
   combo.Items().Clear();
   for(const auto& net:interfaces){
@@ -844,6 +859,50 @@ void MainWindow::HotspotInterface_Changed(IInspectable const&,Controls::Selectio
  }else{
   HotspotNetworkInfo().Text(L"A interface selecionada não tem gateway IPv4 válido. Conecta o PC ao hotspot e atualiza a lista.");
  }
+}
+void MainWindow::JoinSavedHotspot_Click(IInspectable const&,RoutedEventArgs const&){
+ if(hotspotBusy_)return;
+ int i=HotspotSavedNetworksCombo().SelectedIndex();
+ if(i<0||static_cast<size_t>(i)>=savedWifiProfiles_.size()){
+  status(L"Escolhe primeiro uma rede Wi-Fi que já esteja guardada no Windows.");return;
+ }
+ hotspotBusy(true);
+ HotspotResult().Text(L"O Windows está a conectar à rede guardada. Vou confirmar o SSID após o pedido.");
+ savedWifiConnectAsync(savedWifiProfiles_[i],savedWifiSSIDs_[i],savedWifiInterfaceIds_[i]);
+}
+winrt::fire_and_forget MainWindow::savedWifiConnectAsync(std::wstring profile,std::wstring ssid,GUID interfaceGuid){
+ auto strong=get_strong();
+ auto dispatcher=DispatcherQueue();
+ co_await winrt::resume_background();
+ rs::hotspot::SavedNetwork chosen{ssid,profile,interfaceGuid};
+ DWORD rc=rs::hotspot::requestSavedConnection(chosen);
+ bool connected=false;
+ if(rc==ERROR_SUCCESS){
+  NET_LUID luid{};NET_IFINDEX index=0;
+  if(ConvertInterfaceGuidToLuid(&interfaceGuid,&luid)==NO_ERROR&&
+     ConvertInterfaceLuidToIndex(&luid,&index)==NO_ERROR){
+   for(int n=0;n<12;++n){
+    auto current=rs::hotspot::connectedSSIDs();
+    auto found=current.find(index);
+    if(found!=current.end()&&found->second==ssid){connected=true;break;}
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+   }
+  }
+ }
+ dispatcher.TryEnqueue([strong,connected,rc,ssid=std::move(ssid)]{
+  auto* that=strong.get();
+  that->hotspotBusy(false);
+  if(connected){
+   that->HotspotResult().Text(hstring(L"Windows conectado a "+ssid+
+      L". ADB ainda não está autorizado automaticamente: continua no passo USB TCP/IP ou Emparelhamento e depois conecta por IP."));
+   that->status(L"Rede Wi-Fi conectada. Ainda é preciso verificar autorização ADB.");
+  }else{
+   that->HotspotResult().Text(hstring(rc!=ERROR_SUCCESS?
+    L"O Windows recusou o pedido de ligação ao perfil Wi-Fi. Usa as Definições do Windows ou verifica o hotspot.":
+    L"A ligação Wi-Fi não foi confirmada neste adaptador. Verifica SSID/senha e o hotspot; usa as Definições do Windows para uma primeira ligação."));
+   that->status(L"Conexão Wi-Fi não confirmada; nenhuma sessão ADB foi iniciada.");
+  }
+ });
 }
 void MainWindow::EnableUsbTcpip_Click(IInspectable const&,RoutedEventArgs const&){
  if(hotspotBusy_)return;
