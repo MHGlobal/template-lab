@@ -66,6 +66,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   std::vector<std::wstring> hotspotGateways_;
   bool hotspotBusy_=false;
   bool refreshBusy_=false;
+  uint64_t appScanGeneration_=0;
   bool pendingInitialRestore_=false;
   bool pendingNetworkReconnect_=false;
   std::vector<std::wstring> deviceStates_;
@@ -104,6 +105,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   void command(const std::wstring& args);
   void saveSettings();
   void refreshInstalledApps();
+  winrt::fire_and_forget refreshInstalledAppsAsync(std::wstring serial,std::wstring previousPackage,uint64_t generation);
   std::wstring captureAdbOutput(const std::wstring& args,DWORD timeoutMs=8000);
   void updateLaunchInputs();
   void loadSettings();
