@@ -34,6 +34,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   void Virtual_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void Stop_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void OpenWindowsWifi_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+  void JoinSavedHotspot_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void ScanHotspot_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
   void HotspotInterface_Changed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
   void EnableUsbTcpip_Click(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -68,6 +69,9 @@ namespace winrt::RSScreenManagerUI::implementation {
   std::vector<std::wstring> serials_;
   std::vector<std::wstring> appPackages_;
   std::vector<std::wstring> hotspotGateways_;
+  std::vector<std::wstring> savedWifiProfiles_;
+  std::vector<std::wstring> savedWifiSSIDs_;
+  std::vector<GUID> savedWifiInterfaceIds_;
   bool hotspotBusy_=false;
   bool refreshBusy_=false;
   uint64_t appScanGeneration_=0;
@@ -102,6 +106,7 @@ namespace winrt::RSScreenManagerUI::implementation {
   winrt::fire_and_forget refreshAsync(std::wstring endpoint);
   void applyDeviceOutput(const std::wstring& output);
   winrt::fire_and_forget hotspotScanAsync();
+  winrt::fire_and_forget savedWifiConnectAsync(std::wstring profile,std::wstring ssid,GUID interfaceGuid);
   winrt::fire_and_forget hotspotAdbAsync(std::wstring arguments,std::wstring endpoint,bool tcpip);
   void hotspotBusy(bool busy);
   void start(bool virtualDisplay);
