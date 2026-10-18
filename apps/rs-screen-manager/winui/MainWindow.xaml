@@ -354,7 +354,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <Button Click="Mirror_Click" Style="{StaticResource BlueButton}"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE768;" FontFamily="Segoe Fluent Icons" FontSize="15"/><TextBlock Text="Iniciar espelhamento"/></StackPanel></Button>
                                 <Button Click="Stop_Click" Style="{StaticResource QuietButton}"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE71A;" FontFamily="Segoe Fluent Icons" FontSize="14"/><TextBlock Text="Terminar última sessão"/></StackPanel></Button>
-                                <Button Click="Screenshot_Click" Style="{StaticResource QuietButton}"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE722;" FontFamily="Segoe Fluent Icons" FontSize="14"/><TextBlock Text="Capturar imagem"/></StackPanel></Button>
+                                <Button x:Name="ScreenshotButton" Click="Screenshot_Click" Style="{StaticResource QuietButton}"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon Glyph="&#xE722;" FontFamily="Segoe Fluent Icons" FontSize="14"/><TextBlock Text="Capturar imagem"/></StackPanel></Button>
                             </StackPanel>
                         </StackPanel>
                     </Border>
