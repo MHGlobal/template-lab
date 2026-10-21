@@ -1,201 +1,223 @@
-name: RS Storage 4.7.2 ARM64 Public Runner
-
-# Runner-only workflow. Private RS Storage source remains in MHGlobal/RS-Storage.
-# The public repository never receives private application source.
+# Runner only. Product source remains private; checkout and verify one immutable SHA.
+name: RS Storage HTTPS ARM64 Public Runner
 on:
   workflow_dispatch:
   push:
-    branches: [ rs-storage-v47-actions ]
-    paths:
-      - '.github/workflows/rs-storage-v47-public-runner.yml'
-
+    branches: [rs-storage-v47-actions]
+    paths: ['.github/workflows/rs-storage-v47-public-runner.yml']
+env:
+  RS_STORAGE_SOURCE_SHA: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
 permissions:
   contents: read
-
 concurrency:
-  group: rs-storage-v47-public-runner
+  group: rs-storage-https-public
   cancel-in-progress: true
-
 jobs:
-  build-v472:
+  emulator:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 25
     steps:
-      - name: Checkout public runner repository
-        uses: actions/checkout@v4
-
-      - name: Checkout private RS-Storage source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: release/v4.7.1-unified-loop
+          ref: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
-          path: private-src
           persist-credentials: false
-
-      - name: Materialize verified private RS Storage 4.7.1 base and 4.7.2 improvement
+      - name: Verify pinned private product revision
         shell: bash
-        run: |
-          set -euo pipefail
-          python3 private-src/scripts/materialize_v471_final.py private-src | tee materialize-v471.txt
-          grep -q 'RS_STORAGE_V471_FINAL_MATERIALIZED' materialize-v471.txt
-          grep -q 'RS_FILE_E2E_CLI=npm-test' materialize-v471.txt
-          python3 private-src/scripts/apply_v472_fileop_isolation.py private-src/source/current-v4.3.0 | tee materialize-v472.txt
-          grep -q 'RS_STORAGE_V472_FILEOPS_ISOLATION_APPLIED' materialize-v472.txt
-          git -C private-src diff --check
-
-      - name: Validate private RS Storage 4.7.2 source
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "RS_STORAGE_COMMIT=$(git -C private-src rev-parse HEAD)" >> "$GITHUB_ENV"
-          grep -q 'versionCode = 92' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
-          grep -q 'versionName = "4.7.2"' private-src/source/current-v4.3.0/rsapp/build.gradle.kts
-          test -s private-src/tests/e2e/rsfile-v471-e2e.mjs
-          test -x private-src/scripts/run_v471_e2e.sh
-          test -s private-src/scripts/audit_v472_release.py
-          test -s private-src/scripts/validate_embedded_rsfile_js.py
-
+        run: test "$(git rev-parse HEAD)" = "a72d2a9aafd4b489ed3161b20dff76baf06fe6d7"
       - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
+        with: {distribution: temurin, java-version: '17'}
       - uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK, NDK and CMake
-        shell: bash
+        with: {packages: ''}
+      - name: Public SDK for standalone TLS probe
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Enable KVM for the hosted emulator
         run: |
-          set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
-
-      - name: Run 4.7.2 source and embedded-runtime gates
-        shell: bash
-        run: |
-          set -euo pipefail
-          ROOT="$GITHUB_WORKSPACE/private-src/source/current-v4.3.0"
-          python3 private-src/scripts/audit_v472_release.py "$ROOT"
-          python3 private-src/scripts/validate_embedded_rsfile_js.py "$ROOT" --out /tmp/rsfile-v472-js
-          node --check "$ROOT/rsapp/src/main/assets/rs-ai/app.js"
-          python3 private-src/scripts/validate_rsia_runtime_js.py "$ROOT"
-          python3 private-src/scripts/validate_rsia_ui.py "$ROOT"
-
-      - name: Run RS FILE Chromium E2E runtime gate via npm test
-        shell: bash
-        working-directory: private-src/tests/e2e
-        run: |
-          set -euo pipefail
-          npm ci --no-audit --no-fund
-          npx playwright install --with-deps chromium
-          npm test | tee "$GITHUB_WORKSPACE/rsfile-e2e.txt"
-          grep -q 'E2E_PASS=36' "$GITHUB_WORKSPACE/rsfile-e2e.txt"
-
-      - name: Build Dynamic UI
-        shell: bash
-        working-directory: private-src/source/current-v4.3.0/dynamic-ui
-        run: |
-          set -euo pipefail
-          npm ci --no-audit --no-fund
-          npm run build
-          test -s dist/app.js
-          test -s dist/style.css
-          rm -rf ../rsapp/src/main/assets/rs-dynamic
-          mkdir -p ../rsapp/src/main/assets/rs-dynamic
-          cp -a dist/. ../rsapp/src/main/assets/rs-dynamic/
-
-      - name: Clone and patch pinned llama.cpp
-        shell: bash
-        run: |
-          set -euo pipefail
-          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git llama.cpp
-          git -C llama.cpp checkout 8ef78e644f559db4e8716b59bf76b8e11619337d
-          python3 private-src/scripts/apply_llama_rs_compat.py llama.cpp
-          python3 private-src/scripts/apply_v434_load_progress.py llama.cpp
-          python3 private-src/scripts/apply_v450_llama_runtime.py llama.cpp
-          rm -rf llama.cpp/examples/llama.android/rsapp
-          cp -R private-src/source/current-v4.3.0/rsapp llama.cpp/examples/llama.android/rsapp
-          grep -q 'include(":rsapp")' llama.cpp/examples/llama.android/settings.gradle.kts || printf '\ninclude(":rsapp")\n' >> llama.cpp/examples/llama.android/settings.gradle.kts
-          chmod +x llama.cpp/examples/llama.android/gradlew
-          cat >> llama.cpp/examples/llama.android/gradle.properties <<'GP'
-          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
-          org.gradle.workers.max=2
-          org.gradle.parallel=false
-          kotlin.compiler.execution.strategy=in-process
-          GP
-
-      - name: Run JVM tests and compile Kotlin Java
-        shell: bash
-        working-directory: llama.cpp/examples/llama.android
-        run: |
-          set -euo pipefail
-          ./gradlew :rsapp:testDebugUnitTest :rsapp:compileDebugKotlin :rsapp:compileDebugJavaWithJavac --stacktrace --no-daemon
-          test -d rsapp/build/test-results/testDebugUnitTest
-          grep -R 'tests="' rsapp/build/test-results/testDebugUnitTest | tee "$GITHUB_WORKSPACE/junit-results.txt"
-          grep -R 'RsFileOperationQueueTest' rsapp/build/test-results/testDebugUnitTest >/dev/null
-
-      - name: Assemble RS Storage 4.7.2 ARM64 APK
-        shell: bash
-        working-directory: llama.cpp/examples/llama.android
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.13113456
-        run: |
-          set -euo pipefail
-          ./gradlew :rsapp:assembleDebug --stacktrace --no-daemon
-
-      - name: Validate packaged APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="llama.cpp/examples/llama.android/rsapp/build/outputs/apk/debug/rsapp-debug.apk"
-          OUT="RS-Storage-v4.7.2-arm64.apk"
-          test -s "$APK"
-          test "$(stat -c '%s' "$APK")" -gt 30000000
-          unzip -t "$APK" >/dev/null
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
-          grep -q "versionCode='92'" apk-badging.txt
-          grep -q "versionName='4.7.2'" apk-badging.txt
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libai-chat.so'
-          ABIS="$(unzip -l "$APK" | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u | xargs)"
-          test "$ABIS" = "arm64-v8a"
-          unzip -l "$APK" | grep -q 'assets/rs-ai/app.js'
-          unzip -l "$APK" | grep -q 'assets/rs-dynamic/'
-          unzip -p "$APK" assets/rs-ai/app.js | grep -q 'RS IA 4.7.2'
-          unzip -p "$APK" assets/rs-ai/app.js | grep -q '/api/ai/agent'
-          unzip -p "$APK" assets/rs-ai/app.js | grep -q '/api/ai/stop'
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
-          cp "$APK" "$OUT"
-          sha256sum "$OUT" | tee SHA256SUMS.txt
-          stat -c '%s' "$OUT" | tee APK_SIZE_BYTES.txt
-          printf 'version=4.7.2\nversionCode=92\nabi=arm64-v8a\nrs_storage_commit=%s\nrs_file_e2e=36\nfileop_queue=2x8\nfileop_preflight=cancellable\n' "$RS_STORAGE_COMMIT" | tee BUILD_REPORT.txt
-
-      - name: Re-run critical RS FILE gate after packaging via npm test
-        shell: bash
-        working-directory: private-src/tests/e2e
-        run: |
-          set -euo pipefail
-          npm test | tee "$GITHUB_WORKSPACE/rsfile-e2e-postbuild.txt"
-          grep -q 'E2E_PASS=36' "$GITHUB_WORKSPACE/rsfile-e2e-postbuild.txt"
-
-      - name: Upload RS Storage 4.7.2 APK
-        uses: actions/upload-artifact@v4
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: AndroidKeyStore and TLS integration on emulator
+        uses: reactivecircus/android-emulator-runner@v2
         with:
-          name: RS-Storage-v4.7.2-ARM64
+          api-level: 35
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/rs_https_emulator_gate.sh
+  powershell:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          persist-credentials: false
+      - name: Verify pinned private product revision
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "a72d2a9aafd4b489ed3161b20dff76baf06fe6d7"
+      - name: Parse Windows HTTPS scripts
+        shell: pwsh
+        run: |
+          foreach ($file in @('build_android_https.ps1','install_android_https_ca.ps1','check_android_https.ps1')) {
+            $tokens=$null; $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD "scripts/$file"),[ref]$tokens,[ref]$errors) | Out-Null
+            if ($errors.Count) { $errors | ForEach-Object { Write-Error $_ }; throw "PowerShell parsing failed: $file" }
+            Write-Host "PASS $file"
+          }
+      - name: Validate Windows CA enrollment without interactive trust-store writes
+        shell: pwsh
+        run: ./tests/https/TestWindowsCa.ps1
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          persist-credentials: false
+      - name: Verify pinned private product revision
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "a72d2a9aafd4b489ed3161b20dff76baf06fe6d7"
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '17'}
+      - name: Live contracts, audio and existing RS IA/file regressions
+        run: |
+          python -m py_compile scripts/prepare_android_https_runtime.py
+          python scripts/test_android_https.py
+          python -m pip install -r requirements-live.txt
+          python -m unittest discover -s tests -p 'test_rs_live_worker.py' -v
+          node scripts/rs_live_audio_test.mjs
+          python scripts/sync_rs_dynamic_assets.py --check
+          python scripts/validate_rsia_runtime_js.py
+          python scripts/validate_rsia_ui.py
+          node source/current-v4.3.0/audit/inline-syntax.test.mjs
+          node source/current-v4.3.0/audit/upload-queue.test.mjs
+      - name: Live browser fixture (no physical microphone/model claim)
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+          node scripts/rs_live_browser_gate.mjs
+          node scripts/rs_file_embedding_search_browser_gate.mjs
+      - uses: actions/upload-artifact@v4
+        id: archive
+        continue-on-error: true
+        if: always()
+        with:
+          name: rs-https-contracts
+          path: evidence/live-incremental-fixture/
+      - name: Report optional evidence archive status
+        if: always()
+        run: |
+          echo 'Contract and browser checks are reported above. Evidence upload: ${{ steps.archive.outcome }}. An upload failure does not mean these checks passed or failed; inspect their individual outcomes.' >> "$GITHUB_STEP_SUMMARY"
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GITHUB_SHA: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: MHGlobal/RS-Storage
+          ref: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
+          token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+          persist-credentials: false
+      - name: Verify pinned private product revision
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "a72d2a9aafd4b489ed3161b20dff76baf06fe6d7"
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.14.3'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: ''}
+      - name: Toolchain and exact source pins (no model download)
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;29.0.13113456' 'cmake;3.31.6'
+          python scripts/prepare_android_https_runtime.py --runtime-root "$RUNNER_TEMP/rs-runtime" --sdk "$ANDROID_HOME"
+          echo "RS_STORAGE_WORKSPACE_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          echo "RS_STORAGE_GRADLE_BUILD_ROOT=$RUNNER_TEMP/rs-build" >> "$GITHUB_ENV"
+          echo "RS_STORAGE_JNI_LIBS=$RUNNER_TEMP/rs-runtime/jniLibs" >> "$GITHUB_ENV"
+      - name: JVM and gateway gates before APK
+        run: |
+          set -euo pipefail
+          gradle -p "$RUNNER_TEMP/rs-runtime/llama/examples/llama.android" -I "$GITHUB_WORKSPACE/scripts/rs_live_local.gradle" :rsapp:testDebugUnitTest --no-daemon --max-workers=2 --console=plain
+          python scripts/rs_live_api_gate.py --output "$GITHUB_WORKSPACE/delivery-ci/api"
+      - name: Build unsigned ARM64 candidate (independent of signing)
+        run: |
+          gradle -p "$RUNNER_TEMP/rs-runtime/llama/examples/llama.android" -I "$GITHUB_WORKSPACE/scripts/rs_live_local.gradle" :rsapp:assembleRelease --no-daemon --max-workers=2 --console=plain
+      - name: Strict native dependency and APK gate
+        run: |
+          set -euo pipefail
+          mkdir -p delivery-ci
+          cp "$RUNNER_TEMP/rs-build/rsapp/outputs/apk/release/"*unsigned.apk delivery-ci/rs-storage-v4714-unsigned.apk
+          python scripts/rs_live_apk_gate.py delivery-ci/rs-storage-v4714-unsigned.apk \
+            --readelf "$ANDROID_HOME/ndk/29.0.13113456/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" \
+            --aapt "$ANDROID_HOME/build-tools/36.0.0/aapt" --output delivery-ci/packaging.json
+      - name: Sign only with the established release key when configured
+        env:
+          RS_ANDROID_KEYSTORE_B64: ${{ secrets.RS_ANDROID_KEYSTORE_B64 }}
+          RS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.RS_ANDROID_KEYSTORE_PASSWORD }}
+          RS_ANDROID_KEY_ALIAS: ${{ secrets.RS_ANDROID_KEY_ALIAS }}
+          RS_ANDROID_KEY_PASSWORD: ${{ secrets.RS_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RS_ANDROID_KEYSTORE_B64:-}" ] || [ -z "${RS_ANDROID_KEYSTORE_PASSWORD:-}" ] || [ -z "${RS_ANDROID_KEY_ALIAS:-}" ] || [ -z "${RS_ANDROID_KEY_PASSWORD:-}" ]; then
+            printf '{"status":"UNSIGNED","reason":"ORIGINAL_SIGNING_KEY_NOT_CONFIGURED","installable_update":false}\n' > delivery-ci/signing.json
+          else
+            keyfile="$(mktemp "${RUNNER_TEMP}/rs-https-keystore.XXXXXXXX")"
+            trap 'rm -f "$keyfile"' EXIT
+            chmod 600 "$keyfile"
+            printf '%s' "$RS_ANDROID_KEYSTORE_B64" | base64 --decode > "$keyfile"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks "$keyfile" --ks-key-alias "$RS_ANDROID_KEY_ALIAS" \
+              --ks-pass env:RS_ANDROID_KEYSTORE_PASSWORD --key-pass env:RS_ANDROID_KEY_PASSWORD \
+              --out delivery-ci/RS-Storage-v4.7.14-HTTPS-arm64-signed.apk delivery-ci/rs-storage-v4714-unsigned.apk
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs delivery-ci/RS-Storage-v4.7.14-HTTPS-arm64-signed.apk > delivery-ci/apk-signature.txt
+            python - <<'PY'
+          import hashlib,json,pathlib,re
+          apk=pathlib.Path('delivery-ci/RS-Storage-v4.7.14-HTTPS-arm64-signed.apk')
+          text=pathlib.Path('delivery-ci/apk-signature.txt').read_text()
+          matches=set(re.findall(r'certificate SHA-256 digest:\s*([0-9a-f]{64})',text,re.I))
+          expected='fbbb9cb52f03e29a6ba94724c19a091e668b0879c64d00d26df208b63e8e964b'
+          if {x.lower() for x in matches}!={expected}:
+              apk.unlink()
+              raise SystemExit('ORIGINAL_SIGNER_MISMATCH: signed candidate removed; no alternate key is allowed')
+          pathlib.Path('delivery-ci/signing.json').write_text(json.dumps(dict(status='SIGNED_ORIGINAL_KEY',sha256=hashlib.sha256(apk.read_bytes()).hexdigest(),signer_sha256=expected,physical='NOT_TESTED'),indent=2))
+          PY
+          fi
+      - name: Record exact scope and physical blockers
+        if: always()
+        run: |
+          mkdir -p delivery-ci
+          python - <<'PY'
+          import json,os,pathlib
+          signing_path=pathlib.Path('delivery-ci/signing.json')
+          signing=json.loads(signing_path.read_text()) if signing_path.exists() else dict(status='NOT_REACHED')
+          print(json.dumps(dict(signing=signing),indent=2))
+          pathlib.Path('delivery-ci/physical.json').write_text(json.dumps(dict(commit=os.environ['RS_STORAGE_SOURCE_SHA'],adb='BLOCKED_NO_DEVICE_ON_HOSTED_RUNNER',real_asr='BLOCKED_REAL_ANDROID_PROBE_PENDING',real_llm='NOT_TESTED',real_tts='BLOCKED_NO_COMPATIBLE_RUNTIME_ASSETS',embeddings='NOT_TESTED',signing=signing,release='BLOCKED'),indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        id: archive
+        continue-on-error: true
+        if: always()
+        with:
+          name: rs-https-arm64-evidence-a72d2a9aafd4
           path: |
-            RS-Storage-v4.7.2-arm64.apk
-            SHA256SUMS.txt
-            APK_SIZE_BYTES.txt
-            BUILD_REPORT.txt
-            apk-badging.txt
-            apksigner.txt
-            materialize-v471.txt
-            materialize-v472.txt
-            rsfile-e2e.txt
-            rsfile-e2e-postbuild.txt
-            junit-results.txt
-          if-no-files-found: error
-          retention-days: 30
+            delivery-ci/
+            ${{ runner.temp }}/rs-build/rsapp/test-results/testDebugUnitTest/
+
+          retention-days: 7
+      - name: Report candidate archive status
+        if: always()
+        run: |
+          echo 'APK archive: ${{ steps.archive.outcome }}. If storage quota blocks upload, no downloadable APK is delivered by this run. Physical rollout remains pending.' >> "$GITHUB_STEP_SUMMARY"
