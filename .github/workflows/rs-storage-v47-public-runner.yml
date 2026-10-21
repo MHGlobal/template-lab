@@ -13,7 +13,29 @@ concurrency:
   group: rs-storage-https-public
   cancel-in-progress: true
 jobs:
+  access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify private-source token and pinned commit without exposing credentials
+        env:
+          RS_STORAGE_READ_TOKEN: ${{ secrets.RS_STORAGE_READ_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os,urllib.request,urllib.error
+          token=os.environ.get('RS_STORAGE_READ_TOKEN','')
+          if not token:
+              raise SystemExit('BLOCKED: configure RS_STORAGE_READ_TOKEN with Contents read access to MHGlobal/RS-Storage')
+          url='https://api.github.com/repos/MHGlobal/RS-Storage/git/commits/'+os.environ['RS_STORAGE_SOURCE_SHA']
+          req=urllib.request.Request(url,headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'})
+          try:
+              with urllib.request.urlopen(req,timeout=30) as response:
+                  print('Private source access: HTTP',response.status)
+          except urllib.error.HTTPError as error:
+              raise SystemExit('BLOCKED: private-source API returned HTTP '+str(error.code)+'. Renew/access-scope RS_STORAGE_READ_TOKEN; no private source will be published.')
+          PY
   emulator:
+    needs: access
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -47,6 +69,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash scripts/rs_https_emulator_gate.sh
   powershell:
+    needs: access
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -72,6 +95,7 @@ jobs:
         shell: pwsh
         run: ./tests/https/TestWindowsCa.ps1
   contracts:
+    needs: access
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -120,10 +144,9 @@ jobs:
         run: |
           echo 'Contract and browser checks are reported above. Evidence upload: ${{ steps.archive.outcome }}. An upload failure does not mean these checks passed or failed; inspect their individual outcomes.' >> "$GITHUB_STEP_SUMMARY"
   android:
+    needs: access
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    env:
-      GITHUB_SHA: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
     steps:
       - uses: actions/checkout@v4
         with:
