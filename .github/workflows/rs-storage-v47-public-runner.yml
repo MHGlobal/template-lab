@@ -6,7 +6,7 @@ on:
     branches: [rs-storage-v47-actions]
     paths: ['.github/workflows/rs-storage-v47-public-runner.yml']
 env:
-  RS_STORAGE_SOURCE_SHA: c19bfa30f84642a933a267b24471336b37d162d6
+  RS_STORAGE_SOURCE_SHA: 3a1b09b578f7fc4f724f1e6c84527417881017a0
 permissions:
   contents: read
 concurrency:
@@ -42,12 +42,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: c19bfa30f84642a933a267b24471336b37d162d6
+          ref: 3a1b09b578f7fc4f724f1e6c84527417881017a0
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           persist-credentials: false
       - name: Verify pinned private product revision
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "c19bfa30f84642a933a267b24471336b37d162d6"
+        run: test "$(git rev-parse HEAD)" = "3a1b09b578f7fc4f724f1e6c84527417881017a0"
       - uses: actions/setup-java@v5
         with: {distribution: temurin, java-version: '17'}
       - uses: android-actions/setup-android@v3
@@ -76,12 +76,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: c19bfa30f84642a933a267b24471336b37d162d6
+          ref: 3a1b09b578f7fc4f724f1e6c84527417881017a0
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           persist-credentials: false
       - name: Verify pinned private product revision
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "c19bfa30f84642a933a267b24471336b37d162d6"
+        run: test "$(git rev-parse HEAD)" = "3a1b09b578f7fc4f724f1e6c84527417881017a0"
       - name: Parse Windows HTTPS scripts
         shell: pwsh
         run: |
@@ -91,6 +91,9 @@ jobs:
             if ($errors.Count) { $errors | ForEach-Object { Write-Error $_ }; throw "PowerShell parsing failed: $file" }
             Write-Host "PASS $file"
           }
+      - name: Detached worktree build preflight regression
+        shell: pwsh
+        run: ./tests/https/TestBuildPreflight.ps1
       - name: Validate Windows CA enrollment without interactive trust-store writes
         shell: pwsh
         run: ./tests/https/TestWindowsCa.ps1
@@ -102,12 +105,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: c19bfa30f84642a933a267b24471336b37d162d6
+          ref: 3a1b09b578f7fc4f724f1e6c84527417881017a0
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           persist-credentials: false
       - name: Verify pinned private product revision
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "c19bfa30f84642a933a267b24471336b37d162d6"
+        run: test "$(git rev-parse HEAD)" = "3a1b09b578f7fc4f724f1e6c84527417881017a0"
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - uses: actions/setup-node@v4
@@ -151,12 +154,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: c19bfa30f84642a933a267b24471336b37d162d6
+          ref: 3a1b09b578f7fc4f724f1e6c84527417881017a0
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           persist-credentials: false
       - name: Verify pinned private product revision
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "c19bfa30f84642a933a267b24471336b37d162d6"
+        run: test "$(git rev-parse HEAD)" = "3a1b09b578f7fc4f724f1e6c84527417881017a0"
       - uses: actions/setup-java@v5
         with: {distribution: temurin, java-version: '17'}
       - uses: gradle/actions/setup-gradle@v4
@@ -234,7 +237,7 @@ jobs:
         continue-on-error: true
         if: always()
         with:
-          name: rs-https-arm64-evidence-c19bfa30f846
+          name: rs-https-arm64-evidence-3a1b09b578f7
           path: |
             delivery-ci/
             ${{ runner.temp }}/rs-build/rsapp/test-results/testDebugUnitTest/
