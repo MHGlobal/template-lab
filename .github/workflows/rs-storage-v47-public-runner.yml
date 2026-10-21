@@ -6,7 +6,7 @@ on:
     branches: [rs-storage-v47-actions]
     paths: ['.github/workflows/rs-storage-v47-public-runner.yml']
 env:
-  RS_STORAGE_SOURCE_SHA: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
+  RS_STORAGE_SOURCE_SHA: c19bfa30f84642a933a267b24471336b37d162d6
 permissions:
   contents: read
 concurrency:
@@ -42,12 +42,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
+          ref: c19bfa30f84642a933a267b24471336b37d162d6
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           persist-credentials: false
       - name: Verify pinned private product revision
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "a72d2a9aafd4b489ed3161b20dff76baf06fe6d7"
+        run: test "$(git rev-parse HEAD)" = "c19bfa30f84642a933a267b24471336b37d162d6"
       - uses: actions/setup-java@v5
         with: {distribution: temurin, java-version: '17'}
       - uses: android-actions/setup-android@v3
@@ -76,12 +76,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
+          ref: c19bfa30f84642a933a267b24471336b37d162d6
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           persist-credentials: false
       - name: Verify pinned private product revision
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "a72d2a9aafd4b489ed3161b20dff76baf06fe6d7"
+        run: test "$(git rev-parse HEAD)" = "c19bfa30f84642a933a267b24471336b37d162d6"
       - name: Parse Windows HTTPS scripts
         shell: pwsh
         run: |
@@ -102,12 +102,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
+          ref: c19bfa30f84642a933a267b24471336b37d162d6
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           persist-credentials: false
       - name: Verify pinned private product revision
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "a72d2a9aafd4b489ed3161b20dff76baf06fe6d7"
+        run: test "$(git rev-parse HEAD)" = "c19bfa30f84642a933a267b24471336b37d162d6"
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - uses: actions/setup-node@v4
@@ -151,12 +151,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MHGlobal/RS-Storage
-          ref: a72d2a9aafd4b489ed3161b20dff76baf06fe6d7
+          ref: c19bfa30f84642a933a267b24471336b37d162d6
           token: ${{ secrets.RS_STORAGE_READ_TOKEN }}
           persist-credentials: false
       - name: Verify pinned private product revision
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "a72d2a9aafd4b489ed3161b20dff76baf06fe6d7"
+        run: test "$(git rev-parse HEAD)" = "c19bfa30f84642a933a267b24471336b37d162d6"
       - uses: actions/setup-java@v5
         with: {distribution: temurin, java-version: '17'}
       - uses: gradle/actions/setup-gradle@v4
@@ -234,7 +234,7 @@ jobs:
         continue-on-error: true
         if: always()
         with:
-          name: rs-https-arm64-evidence-a72d2a9aafd4
+          name: rs-https-arm64-evidence-c19bfa30f846
           path: |
             delivery-ci/
             ${{ runner.temp }}/rs-build/rsapp/test-results/testDebugUnitTest/
