@@ -1,0 +1,60 @@
+name: Ponto Animado - Render de episodio 2D
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_url:
+        description: HTTPS URL de ZIP com assets/ e episodes/EP001/audio/
+        required: true
+        type: string
+      bundle_sha256:
+        description: SHA256 do ZIP
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install free tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-dejavu-core
+          python -m pip install --disable-pip-version-check Pillow
+      - name: Fetch verify and unpack episode bundle
+        env:
+          BUNDLE_URL: ${{ inputs.bundle_url }}
+          BUNDLE_SHA256: ${{ inputs.bundle_sha256 }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --output /tmp/episode.zip "$BUNDLE_URL"
+          echo "$BUNDLE_SHA256  /tmp/episode.zip" | sha256sum -c -
+          mkdir -p studio/ponto-animado
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          root=Path("studio/ponto-animado").resolve()
+          with zipfile.ZipFile("/tmp/episode.zip") as z:
+              for info in z.infolist():
+                  target=(root/info.filename).resolve()
+                  if not target.is_relative_to(root):
+                      raise SystemExit("unsafe zip path")
+              z.extractall(root)
+          PY
+      - name: Render and validate MP4
+        run: |
+          set -euo pipefail
+          python studio/ponto-animado/scripts/render_episode.py
+          test -s studio/ponto-animado/episodes/EP001/video/ponto_animado_ep001.mp4
+          ffprobe -v error -show_entries format=duration:stream=codec_name,width,height -of json studio/ponto-animado/episodes/EP001/video/ponto_animado_ep001.mp4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ponto-animado-ep001-mp4
+          path: studio/ponto-animado/episodes/EP001/video/*.mp4
+          retention-days: 30
+          if-no-files-found: error
