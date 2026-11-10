@@ -1,0 +1,2 @@
+Pillow>=9,<12
+# Requires system FFmpeg
