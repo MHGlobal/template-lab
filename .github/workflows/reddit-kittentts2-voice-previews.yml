@@ -35,6 +35,10 @@ jobs:
           python -m pip install --no-cache-dir 'torch==2.13.0+cpu' --index-url https://download.pytorch.org/whl/cpu
           python -m pip install --no-cache-dir 'numpy>=1.26' 'soundfile>=0.12' 'certifi>=2024.7.4'
           python -m pip install --no-cache-dir --no-deps 'kitten_tts_cpp==0.2.0'
+      - name: Install FFmpeg for MP3 conversion
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Generate six audio previews, without publishing
         run: python -u scripts/reddit_kittentts2_voice_previews.py
       - name: Upload MP3, WAV and report
