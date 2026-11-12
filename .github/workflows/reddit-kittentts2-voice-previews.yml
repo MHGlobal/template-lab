@@ -1,0 +1,51 @@
+name: Reddit AITA - KittenTTS 2 voice previews
+on:
+  pull_request:
+    branches: [editor]
+    paths:
+      - "scripts/reddit_kittentts2_voice_previews.py"
+      - ".github/workflows/reddit-kittentts2-voice-previews.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reddit-kittentts2-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  voices:
+    name: Generate 6 PT/EN audio samples
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU-only PyTorch (not CUDA wheels)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir 'torch==2.13.0+cpu' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir 'numpy>=1.26' 'soundfile>=0.12' 'certifi>=2024.7.4'
+          python -m pip install --no-cache-dir --no-deps 'kitten_tts_cpp==0.2.0'
+      - name: Install FFmpeg for MP3 conversion
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Generate six audio previews, without publishing
+        run: python -u scripts/reddit_kittentts2_voice_previews.py
+      - name: Upload MP3, WAV and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reddit-kittentts2-pt-en-previews
+          path: voice-previews/
+          if-no-files-found: warn
+          retention-days: 14
