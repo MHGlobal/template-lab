@@ -1,0 +1,98 @@
+name: "Ponto Animado - Comparar Chatterbox vs Gemini TTS"
+
+on:
+  workflow_dispatch:
+    inputs:
+      engine:
+        description: "Que motor testar?"
+        required: true
+        type: choice
+        default: both
+        options: [both, chatterbox, gemini]
+  push:
+    branches: [editor]
+    paths:
+      - ".github/workflows/ponto-animado-chatterbox-gemini.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    name: "Validar textos e configuracao"
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m py_compile audio/compare_chatterbox_gemini.py
+          python audio/compare_chatterbox_gemini.py --engine all --dry-run
+
+  gemini:
+    name: "Gemini 3.8 Flash TTS - 3 interpretacoes PT-BR"
+    needs: validar
+    if: ${{ github.event_name == 'push' || inputs.engine == 'both' || inputs.engine == 'gemini' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_TTS_MODEL: gemini-3.8-flash-tts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: "Verificar chave Gemini"
+        shell: bash
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::GEMINI_API_KEY ausente. Adicione em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+      - name: "Gerar narrador, sussurro e mensagem de telefone"
+        run: python audio/compare_chatterbox_gemini.py --engine gemini
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ponto-animado-gemini-tts-ptbr-${{ github.run_number }}
+          path: outputs/tts-comparativo/
+          if-no-files-found: error
+          retention-days: 14
+
+  chatterbox:
+    name: "Chatterbox Multilingual V3 - CPU PT-BR"
+    needs: validar
+    if: ${{ github.event_name == 'push' || inputs.engine == 'both' || inputs.engine == 'chatterbox' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HF_HUB_DISABLE_PROGRESS_BARS: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: "Instalar PyTorch CPU e Chatterbox V3 (sem GPU)"
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0+cpu torchaudio==2.6.0+cpu
+          python -m pip install --no-cache-dir "git+https://github.com/resemble-ai/chatterbox.git@master"
+          python -m pip check
+          df -h .
+      - name: "Gerar narrador e fala de suspense"
+        run: python audio/compare_chatterbox_gemini.py --engine chatterbox
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ponto-animado-chatterbox-v3-ptbr-${{ github.run_number }}
+          path: outputs/tts-comparativo/
+          if-no-files-found: error
+          retention-days: 14
