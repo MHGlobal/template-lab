@@ -141,13 +141,21 @@ def generate_gemini():
         except (KeyError, IndexError, StopIteration, ValueError) as exc:
             raise RuntimeError(f"Gemini provided no usable audio for {role}: {type(exc).__name__}") from None
         mime = media.get("mimeType", "audio/pcm;rate=24000").lower()
-        if "audio/pcm" not in mime and "audio/l16" not in mime:
-            raise RuntimeError(f"Unexpected Gemini audio MIME: {mime}")
-        import re
-        match = re.search(r"rate=(\d+)", mime)
-        rate = int(match.group(1)) if match else 24000
         wav = dest / f"gemini_{role}_{GEMINI_VOICES[role].lower()}.wav"
-        save_wav(wav, raw, sr=rate)
+        if "audio/wav" in mime or "audio/x-wav" in mime or "audio/wave" in mime:
+            if raw[:4] != b"RIFF" or raw[8:12] != b"WAVE":
+                raise RuntimeError(f"Invalid Gemini WAV payload: {role}")
+            wav.write_bytes(raw)
+            with wave.open(str(wav), "rb") as check:
+                if check.getnframes() < check.getframerate() // 2:
+                    raise RuntimeError(f"Gemini returned too little audio: {role}")
+        elif "audio/pcm" in mime or "audio/l16" in mime:
+            import re
+            match = re.search(r"rate=(\\d+)", mime)
+            rate = int(match.group(1)) if match else 24000
+            save_wav(wav, raw, sr=rate)
+        else:
+            raise RuntimeError(f"Unexpected Gemini audio MIME: {mime}")
         mp3(wav)
         if role == "telefone":
             mp3(wav, effect="phone")
