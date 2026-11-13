@@ -30,6 +30,7 @@ jobs:
       - run: |
           python -m py_compile audio/compare_chatterbox_gemini.py
           python audio/compare_chatterbox_gemini.py --engine all --dry-run
+          echo 'Configuracoes de voz PT-BR validadas'
 
   gemini:
     name: "Gemini 3.8 Flash TTS - 3 interpretacoes PT-BR"
