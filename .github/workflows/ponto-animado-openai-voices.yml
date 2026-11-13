@@ -1,0 +1,86 @@
+name: "Ponto Animado - Vozes OpenAI.fm (PT-BR)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        description: "Que vozes gerar?"
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - narrator
+          - whisper
+          - phone
+      text_override:
+        description: "Texto alternativo em portugues brasileiro (ate 900 caracteres; opcional)"
+        type: string
+        required: false
+        default: ""
+  push:
+    branches: [editor]
+    paths:
+      - ".github/workflows/ponto-animado-openai-voices.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openai-fm-ptbr-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  vozes:
+    name: "Gerar amostras de narracao, sussurro e telefone"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      PRESET: ${{ inputs.preset || 'all' }}
+      TEXT_OVERRIDE: ${{ inputs.text_override || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: "Validar scripts e presets (sem custo)"
+        shell: bash
+        run: |
+          python -m py_compile audio/openai_fm_samples.py
+          python audio/openai_fm_samples.py --dry-run --preset "$PRESET" --text "$TEXT_OVERRIDE"
+      - name: "Confirmar API e ferramentas"
+        shell: bash
+        run: |
+          if [[ -z "$OPENAI_API_KEY" ]]; then
+            echo "::error::Falta o secret OPENAI_API_KEY em Settings > Secrets and variables > Actions do template-lab."
+            exit 1
+          fi
+          command -v ffmpeg
+          command -v ffprobe
+      - name: "Gerar audio com o motor do OpenAI.fm"
+        shell: bash
+        run: |
+          python audio/openai_fm_samples.py --preset "$PRESET" --text "$TEXT_OVERRIDE"
+      - name: "Validar entregas"
+        shell: bash
+        run: |
+          test -s outputs/openai-fm-ptbr/00_comparativo.mp3
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("outputs/openai-fm-ptbr")
+          data = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+          for entry in data["files"]:
+              p = root / entry["file"]
+              assert p.is_file() and p.stat().st_size > 2048, f"MP3 inexistente: {p}"
+          print(f"Validados {len(data['files'])} MP3 individuais")
+          PY
+      - name: "Disponibilizar MP3 e comparativo"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ponto-animado-openai-fm-vozes-ptbr-${{ github.run_number }}
+          path: outputs/openai-fm-ptbr/
+          if-no-files-found: warn
+          retention-days: 14
