@@ -16,7 +16,6 @@ import time
 import urllib.error
 import urllib.request
 import wave
-import imageio_ffmpeg
 
 ROOT = Path("outputs/tts-comparativo")
 MODEL_GEMINI = os.getenv("GEMINI_TTS_MODEL", "gemini-3.8-flash-tts")
@@ -58,6 +57,7 @@ def save_wav(path: Path, pcm: bytes, sr=24000):
 
 def mp3(wav_path: Path, effect: str = ""):
     out = wav_path.with_suffix(".mp3") if not effect else wav_path.with_name(wav_path.stem + "_telefone.mp3")
+    import imageio_ffmpeg
     cmd = [imageio_ffmpeg.get_ffmpeg_exe(), "-nostdin", "-loglevel", "error", "-y", "-i", str(wav_path)]
     if effect:
         cmd.extend(["-af", "highpass=f=300,lowpass=f=3400,acompressor=threshold=0.089:ratio=2:attack=7:release=80"])
