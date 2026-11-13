@@ -68,7 +68,7 @@ jobs:
   chatterbox:
     name: "Chatterbox Multilingual V3 - CPU PT-BR"
     needs: validar
-    if: ${{ github.event_name == 'push' || inputs.engine == 'both' || inputs.engine == 'chatterbox' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.engine == 'both' || inputs.engine == 'chatterbox') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
