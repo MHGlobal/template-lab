@@ -52,6 +52,8 @@ jobs:
             echo "::error::GEMINI_API_KEY ausente. Adicione em Settings > Secrets and variables > Actions."
             exit 1
           fi
+      - name: "Instalar codificador MP3 portable"
+        run: python -m pip install --disable-pip-version-check imageio-ffmpeg
       - name: "Gerar narrador, sussurro e mensagem de telefone"
         run: python audio/compare_chatterbox_gemini.py --engine gemini
       - uses: actions/upload-artifact@v4
@@ -85,6 +87,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0+cpu torchaudio==2.6.0+cpu
           python -m pip install --no-cache-dir "git+https://github.com/resemble-ai/chatterbox.git@master"
+          python -m pip install --disable-pip-version-check imageio-ffmpeg
           python -m pip check
           df -h .
       - name: "Gerar narrador e fala de suspense"
