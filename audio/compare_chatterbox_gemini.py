@@ -146,12 +146,11 @@ def generate_gemini():
             if raw[:4] != b"RIFF" or raw[8:12] != b"WAVE":
                 raise RuntimeError(f"Invalid Gemini WAV payload: {role}")
             wav.write_bytes(raw)
-            with wave.open(str(wav), "rb") as check:
-                if check.getnframes() < check.getframerate() // 2:
-                    raise RuntimeError(f"Gemini returned too little audio: {role}")
+            if wav.stat().st_size < 2048:
+                raise RuntimeError(f"Gemini returned too little audio: {role}")
         elif "audio/pcm" in mime or "audio/l16" in mime:
             import re
-            match = re.search(r"rate=(\\d+)", mime)
+            match = re.search(r"rate=(\d+)", mime)
             rate = int(match.group(1)) if match else 24000
             save_wav(wav, raw, sr=rate)
         else:
