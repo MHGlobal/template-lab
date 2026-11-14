@@ -1,0 +1,40 @@
+name: "Ponto Animado - Kitten TTS 2 C++ CPU PT"
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - ".github/workflows/ponto-animado-kitten-cpp-pt.yml"
+      - "audio/kitten_cpu_expressions.py"
+permissions:
+  contents: read
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OMP_NUM_THREADS: "4"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: "Instalar FFmpeg"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: "Instalar runtime Kitten CPU optimizado"
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0+cpu"
+          python -m pip install --disable-pip-version-check --no-cache-dir kitten_tts_cpp
+          python -m pip check
+          python -m py_compile audio/kitten_cpu_expressions.py
+      - name: "Gerar expressividade e sussurro"
+        run: python audio/kitten_cpu_expressions.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kitten-tts-2-cpp-ptbr-${{ github.run_number }}
+          path: outputs/kitten-cpp-ptbr/
+          if-no-files-found: warn
+          retention-days: 14
