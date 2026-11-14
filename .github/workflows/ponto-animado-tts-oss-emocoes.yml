@@ -1,0 +1,97 @@
+name: "Ponto Animado - Open Source TTS AB Emoções e Voz Gemini"
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - ".github/workflows/ponto-animado-tts-oss-emocoes.yml"
+      - "audio/tts_oss_emotion_ab.py"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ponto-tts-oss-ab-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: "Validar estrutura sem gerar audio nem usar API"
+        run: |
+          python -m py_compile audio/tts_oss_emotion_ab.py
+          for engine in pocket kitten chatterbox; do
+            python audio/tts_oss_emotion_ab.py --engine "$engine" --dry-run
+          done
+
+  sintetizar:
+    needs: validar
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [pocket, kitten, chatterbox]
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HUB_DISABLE_PROGRESS_BARS: "1"
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: "Recuperar WAV Gemini gerados no run comprovado #43492866506"
+        id: baseline
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ponto-animado-gemini-tts-ptbr-4
+          run-id: 43492866506
+          github-token: ${{ github.token }}
+          path: reference-gemini/
+
+      - name: "Verificar se baseline permite clonagem e registar origem"
+        shell: bash
+        run: |
+          find reference-gemini -maxdepth 4 -type f -name '*.wav' -print || true
+          test -s reference-gemini/gemini/gemini_narrador_charon.wav && echo "Referencia do narrador Gemini encontrada" || echo "::warning::Baseline indisponivel: voces de origem serao usadas"
+
+      - name: "Instalar PyTorch CPU (sem CUDA)"
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0+cpu" "torchaudio==2.6.0+cpu"
+
+      - name: "Instalar motor TTS CPU"
+        shell: bash
+        run: |
+          case "${{ matrix.engine }}" in
+            pocket) python -m pip install --disable-pip-version-check --no-cache-dir pocket-tts ;;
+            kitten) python -m pip install --disable-pip-version-check --no-cache-dir kittenml soundfile ;;
+            chatterbox) python -m pip install --disable-pip-version-check --no-cache-dir "git+https://github.com/resemble-ai/chatterbox.git@master" soundfile ;;
+          esac
+          python -m pip check
+          ffmpeg -version | head -n 1
+          df -h .
+
+      - name: "Gerar 4 cenarios PT-BR: narrativa, medo, sussurro, telefone"
+        run: python audio/tts_oss_emotion_ab.py --engine "${{ matrix.engine }}"
+
+      - name: "Publicar amostras reais e manifestos, inclusive parciais"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ponto-animado-tts-ab-${{ matrix.engine }}-${{ github.run_number }}
+          path: outputs/tts-oss-ab/${{ matrix.engine }}/
+          if-no-files-found: warn
+          retention-days: 14
