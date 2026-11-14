@@ -68,7 +68,7 @@ jobs:
           find reference-gemini -maxdepth 4 -type f -name '*.wav' -print || true
           test -s reference-gemini/gemini/gemini_narrador_charon.wav && echo "Referencia do narrador Gemini encontrada" || echo "::warning::Baseline indisponivel: voces de origem serao usadas"
 
-      - name: "Instalar PyTorch CPU (sem CUDA)"
+      - name: "Instalar FFmpeg e FFprobe do sistema"\n        run: |\n          sudo apt-get update -qq\n          sudo apt-get install -y -qq ffmpeg\n          command -v ffmpeg\n          command -v ffprobe\n\n      - name: "Instalar PyTorch CPU (sem CUDA)"
         run: |
           python -m pip install --disable-pip-version-check --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0+cpu" "torchaudio==2.6.0+cpu"
 
