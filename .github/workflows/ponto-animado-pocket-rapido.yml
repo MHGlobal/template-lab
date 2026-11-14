@@ -1,0 +1,37 @@
+name: "Ponto Animado - Pocket TTS CPU PT-BR teste rapido"
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - ".github/workflows/ponto-animado-pocket-rapido.yml"
+permissions:
+  contents: read
+  actions: read
+jobs:
+  pocket:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: "Instalar ffmpeg e ffprobe"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: "Instalar PyTorch CPU e Pocket TTS"
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0+cpu"
+          python -m pip install --disable-pip-version-check --no-cache-dir pocket-tts
+          python -m pip check
+      - name: "Gerar quatro amostras PT-BR sem login gated"
+        run: python audio/tts_oss_emotion_ab.py --engine pocket
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ponto-animado-pocket-test-${{ github.run_number }}
+          path: outputs/tts-oss-ab/pocket/
+          if-no-files-found: warn
+          retention-days: 14
