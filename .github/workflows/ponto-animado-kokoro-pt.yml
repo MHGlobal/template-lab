@@ -1,0 +1,37 @@
+name: "Ponto Animado - Kokoro 82M PT CPU"
+on:
+  workflow_dispatch:
+  push:
+    branches: [editor]
+    paths:
+      - ".github/workflows/ponto-animado-kokoro-pt.yml"
+      - "audio/kokoro_cpu_expressions.py"
+permissions:
+  contents: read
+jobs:
+  synth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: "Instalar FFmpeg e espeak"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng
+      - name: "Instalar Kokoro PT"
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0+cpu"
+          python -m pip install --disable-pip-version-check --no-cache-dir "kokoro>=0.9.4" soundfile
+          python -m pip check
+      - name: "Gerar 4 audios com voz pm_alex"
+        run: python audio/kokoro_cpu_expressions.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ponto-animado-kokoro-pt-${{ github.run_number }}
+          path: outputs/kokoro-ptbr/
+          if-no-files-found: warn
+          retention-days: 14
