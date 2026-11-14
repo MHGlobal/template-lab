@@ -70,11 +70,23 @@ def encode(wav, role):
 
 def pocket(role, text, wav):
     ref, _ = ref_for(role)
-    voice = str(ref) if ref else "rafael"
-    run(["pocket-tts", "generate", "--language", "portuguese",
-         "--voice", voice, "--text", text,
-         "--output-path", str(wav)], timeout=1100)
-    return "Gemini clip" if ref else "built-in Rafael"
+    # Pocket TTS voice cloning needs accepted gated Hugging Face terms and HF_TOKEN.
+    # Without both we test the native Portuguese model, never claim a clone.
+    try_clone = bool(ref is not None and os.getenv("HF_TOKEN"))
+    voice = str(ref) if try_clone else "rafael"
+    cmd = ["pocket-tts", "generate", "--language", "portuguese",
+           "--voice", voice, "--text", text, "--output-path", str(wav)]
+    try:
+        run(cmd, timeout=1100)
+    except subprocess.CalledProcessError:
+        if not try_clone:
+            raise
+        print("Pocket cloning access denied; falling back to native Rafael voice.", flush=True)
+        run(["pocket-tts", "generate", "--language", "portuguese",
+             "--voice", "rafael", "--text", text,
+             "--output-path", str(wav)], timeout=1100)
+        try_clone = False
+    return "Gemini clip (authorized clone)" if try_clone else "built-in Rafael (not Gemini clone)"
 
 def kitten(role, text, wav, model):
     ref, transcript = ref_for(role)
